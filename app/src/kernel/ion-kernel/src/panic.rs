@@ -2,7 +2,7 @@ use core::panic::PanicInfo;
 
 use cfg_if::cfg_if;
 
-use crate::{serial_println, text::{Color, println, set_print_color}};
+use crate::{hlt_loop, serial_println, text::{Color, println, set_print_color}};
 
 /// This function is called on panic.
 #[panic_handler]
@@ -43,5 +43,5 @@ pub fn panic(info: &PanicInfo) -> ! {
         }
     }
 
-    loop {}
+    hlt_loop()
 }
