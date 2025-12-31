@@ -14,7 +14,17 @@ lazy_static! {
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
     use core::fmt::Write;
-    SERIAL1.lock().write_fmt(args).expect("Printing to serial failed");
+    use x86_64::instructions::interrupts;
+
+    // Even though `write_fmt` always returns `Ok(())`, we are better off ignoring the value instead of
+    // panicking.
+    //
+    // this also must run without interrupts, as some of our interrupt handlers print to Serial, 
+    // which could cause a deadlock if we are already printing. see 
+    // https://os.phil-opp.com/hardware-interrupts/#provoking-a-deadlock
+    let _ = interrupts::without_interrupts(|| {
+        SERIAL1.lock().write_fmt(args)
+    });
 }
 
 /// Prints to the host through the serial interface.
@@ -47,7 +57,7 @@ pub mod dbg {
     /// 
     /// always works
     pub fn str(s: &str) {
-        for &b in s.as_bytes() { byte(b); }
+        for &b in s.as_bytes(){ byte(b); }
     }
 }
 

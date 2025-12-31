@@ -223,7 +223,15 @@ pub fn query_print_color() -> ColorCode {
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
+    use x86_64::instructions::interrupts;
+
     // Even though `write_fmt` always returns `Ok(())`, we are better off ignoring the value instead of
     // panicking.
-    let _ = WRITER.lock().write_fmt(args);
+    //
+    // this also must run without interrupts, as some of our interrupt handlers print to the VGA
+    // buffer, which could cause a deadlock if we are already printing. see 
+    // https://os.phil-opp.com/hardware-interrupts/#provoking-a-deadlock
+    let _ = interrupts::without_interrupts(|| {
+        WRITER.lock().write_fmt(args)
+    });
 }
