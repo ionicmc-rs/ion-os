@@ -1,4 +1,4 @@
-use crate::{println, serial_println};
+use crate::{interrupts::pic8259::InterruptIndex, println, serial_println};
 use lazy_static::lazy_static;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
@@ -10,6 +10,10 @@ lazy_static! {
             idt.double_fault.set_handler_fn(double_fault::double_fault)
                 .set_stack_index(double_fault::DOUBLE_FAULT_IST_INDEX);
         }
+        // Hardware Interrupts.
+        idt[InterruptIndex::Timer.as_u8()]
+            .set_handler_fn(pic8259::handlers::timer);
+
         idt
     };
 }

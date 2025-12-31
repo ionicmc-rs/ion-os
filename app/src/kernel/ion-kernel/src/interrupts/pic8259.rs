@@ -17,3 +17,49 @@ pub static PICS: spin::Mutex<ChainedPics> =
 pub fn init() {
     unsafe { PICS.lock().initialize() };
 }
+
+/// Index for Hardware Interrupts.
+/// 
+/// List
+/// - Timer: 32
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum InterruptIndex {
+    /// Index for a Timer Interrupt
+    /// 
+    /// Equivalent to the [`PIC_1_OFFSET`]
+    Timer = PIC_1_OFFSET,
+}
+
+impl InterruptIndex {
+    /// Converts the index to a u8
+    pub fn as_u8(self) -> u8 {
+        self as u8
+    }
+
+    /// Converts the index to a usize
+    pub fn as_usize(self) -> usize {
+        usize::from(self.as_u8())
+    }
+}
+
+/// Contains the basic handlers for Hardware Interrupts.
+pub mod handlers {
+    use x86_64::structures::idt::InterruptStackFrame;
+
+    macro notify {
+        (unsafe $name:ident) => {
+            unsafe {
+                super::PICS.lock()
+                    .notify_end_of_interrupt(super::InterruptIndex::$name.as_u8());
+            }
+        }
+    }
+
+    /// Intel 8253 timer interrupt.
+    /// 
+    /// simply notifies PIC that the interrupt was handled.
+    pub extern "x86-interrupt" fn timer(_frame: InterruptStackFrame) {
+        notify!(unsafe Timer);
+    }
+}
