@@ -102,6 +102,24 @@ impl Writer {
         }
     }
 
+    /// Removes the most recent character.
+    pub fn backspace(&mut self) {
+        let row = BUFFER_HEIGHT - 1;
+        let col = self.column_position;
+
+        self.column_position = self.column_position.saturating_sub(1);
+        self.buffer.chars[row][col].write(ScreenChar {
+            ascii_character: b' ',
+            color_code: self.color_code,
+        });
+    }
+
+    /// deletes the current row.
+    pub fn delete_row(&mut self) {
+        self.clear_row(BUFFER_HEIGHT - 1);
+        self.column_position = 0;
+    }
+
     /// Writes a character to the [`Writer`]
     pub fn write_char(&mut self, character: char) {
         self.write_byte(character as u8);

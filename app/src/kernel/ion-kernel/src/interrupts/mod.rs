@@ -2,6 +2,13 @@ use crate::{interrupts::pic8259::InterruptIndex, println, serial_println};
 use lazy_static::lazy_static;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
+macro set_index($idt:expr, $($index:ident => $handler:expr),*) {
+    $(
+        $idt[InterruptIndex::$index.as_u8()]
+            .set_handler_fn($handler);
+    )*
+}
+
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
@@ -11,8 +18,11 @@ lazy_static! {
                 .set_stack_index(double_fault::DOUBLE_FAULT_IST_INDEX);
         }
         // Hardware Interrupts.
-        idt[InterruptIndex::Timer.as_u8()]
-            .set_handler_fn(pic8259::handlers::timer);
+        set_index!(
+            idt,
+            Timer => pic8259::handlers::timer,
+            Keyboard => keyboard::keyboard_interrupt_handler
+        );
 
         idt
     };
@@ -48,4 +58,6 @@ pub mod test {
 pub mod gdt;
 /// PIC 8259 Compatibility.
 pub mod pic8259;
+/// Keyboard Interrupt Handling.
+pub mod keyboard;
 mod double_fault;

@@ -22,6 +22,7 @@ pub fn init() {
 /// 
 /// List
 /// - Timer: 32
+/// - Keyboard: 33
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum InterruptIndex {
@@ -29,6 +30,12 @@ pub enum InterruptIndex {
     /// 
     /// Equivalent to the [`PIC_1_OFFSET`]
     Timer = PIC_1_OFFSET,
+    /// Index for a Keyboard Interrupt.
+    /// 
+    /// The keyboard interrupt is used to detect key inputs.
+    /// 
+    /// Equivalent to [`PIC_1_OFFSET`] + 1
+    Keyboard,
 }
 
 impl InterruptIndex {
@@ -47,7 +54,10 @@ impl InterruptIndex {
 pub mod handlers {
     use x86_64::structures::idt::InterruptStackFrame;
 
-    macro notify {
+    /// Notifies that the interrupt handler has ended.
+    /// 
+    /// Requires an explicit `unsafe` keyword.
+    pub macro notify {
         (unsafe $name:ident) => {
             unsafe {
                 super::PICS.lock()
