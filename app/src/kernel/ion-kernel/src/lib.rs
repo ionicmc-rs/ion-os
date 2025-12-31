@@ -156,7 +156,6 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
     }
 }
 
-// TODO: Move these to `c_lib`
 /// The entry to the kernel
 /// 
 /// Do Not call - at all.
