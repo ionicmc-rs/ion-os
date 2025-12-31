@@ -212,9 +212,9 @@ For Safety Comments:
 ```
 ## 4. Size Concerns
 Currently, our stack is very limited - only 64 KIB. While it is being worked on, we still recommend using `Box`, `Vec`, and other alloc types
-(when we implement them) for now, as we do not have enough memory, and finishing the memory causes [triple faults]()
+(when we implement them) for now, as we do not have enough memory, and finishing the memory causes [triple faults](https://wiki.osdev.org/Triple_Fault)
 
-The issue for this can be found [here](#1)
+The issue for this can be found [here](#3)
 
 ## 5. File Structure
 Usually, when you have more than one module related to one topic, you should have a folder housing all the modules
