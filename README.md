@@ -22,14 +22,3 @@ Currently, We do not have any notable features. Here is the full list anyways:
 - Testing (See [Contributing.md#Testing](/CONTRIBUTING.md#2-testing))
 - Logging (To VGA)
 
-## Github Issues
-
-There are 3 types of Github Issues
-
-- tracking:
-  - these track a feature implementation/removal.
-  - similar to Rust's.
-- reports:
-  - report a problem with the OS.
-- enhance:
-  - requests for features, docs, or other items.

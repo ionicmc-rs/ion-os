@@ -4,11 +4,8 @@ use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
-        serial_println!("ANYTHING???");
         let mut idt = InterruptDescriptorTable::new();
-        serial_println!("Setting Breakpoint");
         idt.breakpoint.set_handler_fn(breakpoint_handler);
-        serial_println!("Done");
         idt
     };
 }
@@ -16,7 +13,7 @@ lazy_static! {
 /// inits the idt.
 pub fn init_idt() {
     IDT.load();
-    serial_println!("Well, it loads");
+    serial_println!("Initialized IDT properly");
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {

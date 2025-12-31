@@ -166,7 +166,7 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
 #[cfg_attr(feature = "test", expect(unreachable_code, reason = "panics always occur at end of tests"))]
 pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 
-    serial::dbg::str("\nWelcome User of QEMU! Thank you for using Ion OS\n");
+    serial_println!("\nWelcome User of QEMU! Thank you for using Ion OS");
 
     // initialize first to catch page faults/double faults
     match init::init() {
@@ -195,7 +195,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
     
-    serial::dbg::str("Initialized\n");
+    serial_println!("Initialized");
 
     cfg_if! {
         if #[cfg(feature = "test")] {

@@ -70,6 +70,8 @@ impl TestResult {
 /// 
 /// however, you may be able to find alternative uses elsewhere
 pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) {
+    // TODO: Use Serial Prints, and Exit QEMU, as this is planned in CONTRIBUTING.md
+
     println!("Now Running {} Tests.", tests.len());
     let mut fail_count = 0;
     let mut pass_count = 0;

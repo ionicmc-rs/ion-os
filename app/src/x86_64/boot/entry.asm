@@ -43,6 +43,10 @@ start:
     mov     [boot_info_data + 0x18], eax
     mov     dword [boot_info_data + 0x1C], 0
 
+    mov     dword [0xb8000], 0x0F314F53      ; "S1"
+    mov     al, '2'
+    out     0xE9, al
+
     ; Restore multiboot registers
     pop     ebx               ; ebx = multiboot info
     pop     eax               ; eax = multiboot magic

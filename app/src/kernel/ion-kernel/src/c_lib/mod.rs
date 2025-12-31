@@ -162,6 +162,7 @@ impl BootInfoC {
             panic!("MEMORY ERROR: BOOT INFO POINTER IS INVALID  ({:?}) (aligned: {})", self.input_ptr, self.input_ptr.is_aligned());
         }
 
+        // Safety: We check the pointer is non-null, and we ensure in C this pointer is never invalid.
         f(unsafe { self.input_ptr.read_unaligned() })
     }
 }
