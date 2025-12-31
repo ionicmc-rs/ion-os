@@ -38,7 +38,7 @@ pub fn init() -> Result<(), InitErr> {
     // serial_println!("Now Initializing GDT and TSS.");
     // interrupts::init_gdt_tss();
     serial_println!("Now Initializing IDT.");
-    interrupts::init_idt();
+    interrupts::init_interrupt_operations();
 
     // interrupts::enable();
 

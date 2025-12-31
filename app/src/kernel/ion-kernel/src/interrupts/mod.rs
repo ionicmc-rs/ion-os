@@ -15,9 +15,11 @@ lazy_static! {
 }
 
 /// inits the idt.
-pub fn init_idt() {
+pub fn init_interrupt_operations() {
     gdt::init();
     IDT.load();
+    pic8259::init();
+    x86_64::instructions::interrupts::enable();
     serial_println!("Initialized IDT properly");
 }
 
@@ -40,4 +42,6 @@ pub mod test {
 
 /// GDT
 pub mod gdt;
+/// PIC 8259 Compatibility.
+pub mod pic8259;
 mod double_fault;
