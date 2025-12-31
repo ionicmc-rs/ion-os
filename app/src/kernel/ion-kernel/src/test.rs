@@ -97,7 +97,7 @@ impl Try for TestResult {
 /// do not call - this function is called automatically in lib.rs
 /// 
 /// however, you may be able to find alternative uses elsewhere
-pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) {
+pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
     // TODO: Use Serial Prints, and Exit QEMU, as this is planned in CONTRIBUTING.md
 
     serial_println!("Now Running {} Tests.", tests.len());
