@@ -47,6 +47,8 @@ pub mod interrupts;
 pub mod log;
 /// serial printing
 pub mod serial;
+/// Memory and Paging Operations
+pub mod mem;
 
 
 cfg_if::cfg_if! {
@@ -188,12 +190,18 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     let boot_info = boot_info.into_inner().unwrap_or_else(|e| {
         panic!("Invalid Boot Info:\n {e:#?}")
     }).into_rust();
-
+    
     // TODO: load boot data here into global var
     
     // x86_64::instructions::interrupts::int3();
     
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
+
+    use x86_64::registers::control::Cr3;
+
+    let (level_4_page_table, _) = Cr3::read();
+
+    assert_eq!(level_4_page_table.start_address(), x86_64::PhysAddr::new(boot_info.page_table_base.as_ptr() as usize as u64));
     
     serial_println!("Initialized");
 
