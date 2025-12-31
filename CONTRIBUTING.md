@@ -26,7 +26,9 @@ For unix based devices (linux, macos), enter the docker build environment using:
 docker run --rm -it -v $(pwd):/root/env ion-os-buildenv
 ```
 
-> [!TODO]
+> [!NOTE]
+> Todo:
+> 
 > Add command for windows
 
 The prompt should change to a basic, all-white, root prompt at /root/env (~/env)
