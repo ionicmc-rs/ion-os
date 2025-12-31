@@ -202,7 +202,8 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
             run_tests(&[
                 // all tests go here
                 &trivial_assertion,
-                &interrupts::test::test_breakpoint
+                &interrupts::test::test_breakpoint,
+                &text::test_println_output
             ]);
             panic!("End of tests; you can now exit.");
         } else {

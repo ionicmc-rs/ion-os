@@ -156,6 +156,9 @@ impl fmt::Write for Writer {
 use lazy_static::lazy_static;
 use spin::Mutex;
 
+#[cfg(feature = "test")]
+use crate::test::{TestInfo, TestResult};
+
 lazy_static! {
     /// The Global Writer
     pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
@@ -234,4 +237,26 @@ pub fn _print(args: fmt::Arguments) {
     let _ = interrupts::without_interrupts(|| {
         WRITER.lock().write_fmt(args)
     });
+}
+
+// test
+
+
+#[cfg(feature = "test")]
+/// Tests println output is valid
+pub fn test_println_output(_: TestInfo) -> TestResult {
+    use crate::test::{TestResult};
+    use core::fmt::Write;
+    use x86_64::instructions::interrupts;
+
+    let s = "Some test string that fits on a single line";
+    interrupts::without_interrupts(|| {
+        let mut writer = WRITER.lock();
+        writeln!(writer, "\n{}", s).expect("writeln failed");
+        for (i, c) in s.chars().enumerate() {
+            let screen_char = writer.buffer.chars[BUFFER_HEIGHT - 2][i].read();
+            assert_eq!(char::from(screen_char.ascii_character), c);
+        }
+    });
+    TestResult::Ok
 }

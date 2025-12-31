@@ -30,7 +30,7 @@ build/x86_64/kernel/%.o: app/src/kernel/%.c
 build/x86_64/kernel/ion_kernel.a:
 	mkdir -p $(dir $@) && \
 	cd /root/env && \
-	cargo build -p ion-kernel --target-dir build/x86_64/kernel/rust && \
+	cargo build --no-default-features -p ion-kernel --target-dir build/x86_64/kernel/rust && \
 	cp build/x86_64/kernel/rust/target/debug/libion_kernel.a $@
 
 build/x86_64/kernel/ion_kernel_test.a:

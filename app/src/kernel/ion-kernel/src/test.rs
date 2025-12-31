@@ -2,7 +2,7 @@
 //! 
 //! It includes the test runner, and other related items.
 #![cfg_attr(not(feature = "test"), allow(dead_code))]
-use core::any::{Any, TypeId, type_name};
+use core::{any::{Any, TypeId, type_name}, convert::Infallible, ops::{FromResidual, Try}};
 
 use crate::text::{Color, print, println, reset_print_color, set_print_color};
 
@@ -61,6 +61,34 @@ impl TestResult {
         } else {
             Self::Failure(err)
         }
+    }
+}
+
+impl FromResidual<&'static str> for TestResult {
+    fn from_residual(residual: &'static str) -> Self {
+        Self::Failure(residual)
+    }
+}
+
+impl FromResidual<Result<Infallible, &'static str>> for TestResult {
+    fn from_residual(residual: Result<Infallible, &'static str>) -> Self {
+        let Err(e) = residual;
+        Self::Failure(e)
+    }
+}
+
+impl Try for TestResult {
+    type Output = ();
+    type Residual = &'static str;
+    fn branch(self) -> core::ops::ControlFlow<Self::Residual, Self::Output> {
+        match self {
+            Self::Failure(e) => core::ops::ControlFlow::Break(e),
+            _ => core::ops::ControlFlow::Continue(())
+        }
+    }
+
+    fn from_output(_: Self::Output) -> Self {
+        Self::Ok
     }
 }
 
