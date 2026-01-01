@@ -29,6 +29,9 @@ start:
     mov     esp, stack_top
 
 
+    mov     [boot_info_data + 0x00], eax
+    mov     [boot_info_data + 0x04], ebx ; multiboot info.
+
     ; Preserve entry registers
     push    eax
     push    ebx
@@ -50,8 +53,7 @@ start:
     ; Restore multiboot registers
     pop     ebx               ; ebx = multiboot info
     pop     eax               ; eax = multiboot magic
-    mov     [boot_info_data + 0x00], eax
-    mov     [boot_info_data + 0x04], ebx
+
 
     call    check_multiboot
     ; TODO: Support for Mutltiboot1
@@ -130,14 +132,13 @@ check_multiboot1_mmap:
     mov     dword [boot_info_data + 0x2C], 0  ; high dword zero for 64-bit field
 
     ; Optional: publish framebuffer_addr if bit 12 set (video info)
-    ; mov     eax, [esi + 0x54] ; fb_addr low (if VBE/graphics provided)
-    ; mov     [boot_info_data + 0x20], eax
-    ; mov     dword [boot_info_data + 0x24], 0
+    mov     eax, [esi + 0x54] ; fb_addr low (if VBE/graphics provided)
+    mov     [boot_info_data + 0x20], eax
+    mov     dword [boot_info_data + 0x24], 0
 
     jmp     .done
 .no_mmap:
-    ; leave memory_map_addr = 0 to signal “not available”
-    mov al, "M",
+    mov al, 'M',
     jmp error
 .done:
     ret
@@ -156,33 +157,74 @@ check_multiboot2_mmap:
     mov     eax, [esi + 0]            ; tag type
     mov     edx, [esi + 4]            ; tag size
 
+    cmp     edx, 8
+    jb      .bad_tag
+
+    mov     edi, edx
+    add     edi, 7
+    and     edi, -8
+    cmp     edi, ecx
+    ja      .bad_tag
+
+    cmp     eax, 0          ; End tag
+    je      .done
+
+
     cmp     eax, 6                    ; memory map tag
     jne     .check_fb
-    ; Publish the address of the entries (the payload after entry_size/version)
-    ; entries start at esi + 16
-    lea     eax, [esi + 16]
+    cmp     edx, 16           ; need type,size,entry_size,entry_version
+    jb      .bad_tag
+
+    ; Publish the tag
+    ; entries start at esi + 16, but we publish the start
+    lea     eax, [esi]
     mov     [boot_info_data + 0x28], eax
     mov     dword [boot_info_data + 0x2C], 0
     jmp     .advance
 
 .check_fb:
-    cmp     eax, 8                    ; framebuffer tag
+    cmp     eax, 8
     jne     .advance
-    ; Tag layout: type=8, size, then fields; first qword is framebuffer address
-    ; For simplicity publish fb addr low dword
-    mov     eax, [esi + 8]            ; framebuffer_addr low
+    mov     eax, [esi + 8]    ; low
     mov     [boot_info_data + 0x20], eax
-    mov     dword [boot_info_data + 0x24], 0
+    mov     eax, [esi + 12]   ; high
+    mov     [boot_info_data + 0x24], eax
+
 
 .advance:
-    ; advance to next tag (size rounded up to 8-byte alignment)
-    mov     eax, edx
-    add     eax, 7
-    and     eax, -8
-    add     esi, eax
-    sub     ecx, eax
+    ; esi = current tag ptr (start at info + 8)
+    ; ecx = remaining bytes in the tag list (total_size - 8)
+    ; eax = typ, edx = size
+
+    ; 1) Read header
+    mov     eax, [esi + 0]        ; typ
+    mov     edx, [esi + 4]        ; size
+
+    ; 2) Per-tag sanity: size >= 8
+    cmp     edx, 8
+    jb      .bad_tag
+
+    ; 3) Compute aligned size: (size + 7) & ~7
+    mov     edi, edx
+    add     edi, 7
+    and     edi, -8
+
+    ; 4) Remaining bytes check
+    cmp     edi, ecx
+    ja      .bad_tag
+
+    ; 5) End tag check
+    cmp     eax, 0
+    je      .done
+
+    ; 6) Process tag payload here (you can safely read up to [esi + edx])
+
+    ; 7) Advance by aligned size and decrement remaining
+    add     esi, edi
+    sub     ecx, edi
     jmp     .next_tag
-.error
+
+.bad_tag:
     mov al, "M"
     jmp error
 .done:

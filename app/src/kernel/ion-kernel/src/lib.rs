@@ -27,9 +27,12 @@
     debug_closure_helpers
 )]
 
+use alloc::boxed::Box;
 use cfg_if::cfg_if;
 
-use crate::{c_lib::{BootInfoC, bit_flags::BitFlags}, log::{info, warn}, text::println};
+extern crate alloc;
+
+use crate::{c_lib::{BootInfoC, bit_flags::BitFlags}, log::{info, warn}, text::println, lib_alloc::init_heap};
 
 
 /// module for panicking
@@ -49,8 +52,8 @@ pub mod log;
 pub mod serial;
 /// Memory and Paging Operations
 pub mod mem;
-// /// Allocation tools
-// pub mod lib_alloc;
+/// Allocation tools
+pub mod lib_alloc;
 
 
 cfg_if::cfg_if! {
@@ -189,17 +192,35 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     // Violate the unsafe precondition.
     let boot_info = unsafe { boot_info.read() };
 
-    let boot_info = boot_info.into_inner().unwrap_or_else(|e| {
+    let boot_info = boot_info.into_inner();
+    
+    serial_println!("{:?}", boot_info);
+
+    let boot_info = boot_info.unwrap_or_else(|e| {
         panic!("Invalid Boot Info:\n {e:#?}")
     }).into_rust();
+
     
-    // TODO: load boot data here into global var
-    
-    // x86_64::instructions::interrupts::int3();
     
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
+    
+    let _ptr = boot_info.multiboot_info.into_inner().as_ref().unwrap();
+
+    
+
+    // TODO: load boot data here into global var
+
+    // allocation
+
+    let mut mapper = mem::init();
+    let mut f_alloc = mem::BootInfoFrameAllocator::init(boot_info.mem_map_addr);
+
+    init_heap(&mut mapper, &mut f_alloc)
+        .expect("Heap Initialization Failed");
 
     serial_println!("Initialized");
+
+    _ = Box::new(41);
 
     cfg_if! {
         if #[cfg(feature = "test")] {
