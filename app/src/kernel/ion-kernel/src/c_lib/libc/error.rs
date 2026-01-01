@@ -2,7 +2,6 @@
 use crate::serial_println;
 
 /// Represents the last KERNEL Error.
-#[thread_local]
 static mut ERRNO: i32 = 0;
 
 /// Returns a pointer to the Err Number

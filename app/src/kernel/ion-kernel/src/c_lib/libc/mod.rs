@@ -18,10 +18,8 @@
     missing_unsafe_on_extern,
     edition_2024_expr_fragment_specifier,
     // Allowed globally, the warning is enabled in individual modules as we work through them
-    unsafe_op_in_unsafe_fn
 )]
 
-mod macros;
 pub mod primitive;
 pub mod mem;
 pub mod malloc_wraps;

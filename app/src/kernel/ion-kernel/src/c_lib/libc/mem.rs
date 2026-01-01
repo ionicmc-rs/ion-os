@@ -26,7 +26,7 @@ use crate::test::{TestInfo, TestResult};
 /// # `malloc_safe` for unsized values.
 /// for unsized values, use [`malloc_unsized_safe_val`], as not having value is unsafe (use [`malloc`] or [`Box`](alloc::boxed) instead)
 pub unsafe fn malloc_safe<T>() -> *mut T {
-    alloc(Layout::new::<T>()).cast()
+    unsafe { alloc(Layout::new::<T>()).cast() }
 }
 
 /// Allocates using malloc, and writes the argument into it.
@@ -35,8 +35,8 @@ pub unsafe fn malloc_safe<T>() -> *mut T {
 /// # Safety
 /// See [`malloc_safe`]
 pub unsafe fn malloc_safe_val<T>(val: T) -> *mut T {
-    let ptr: *mut T = alloc(Layout::new::<T>()).cast();
-    ptr.write(val);
+    let ptr: *mut T = unsafe { alloc(Layout::new::<T>()).cast() };
+    unsafe { ptr.write(val) };
     ptr
 }
 
@@ -54,7 +54,7 @@ pub unsafe fn malloc_unsized_safe_val<T: ?Sized>(val: &T) -> *mut u8 {
     let layout = Layout::for_value(val);
 
     // Allocate raw memory
-    let raw = malloc(layout.size());
+    let raw = unsafe { malloc(layout.size()) };
     if raw.is_null() {
         super::error::set_errno(5);
         alloc::alloc::handle_alloc_error(layout);
@@ -77,7 +77,7 @@ pub unsafe fn free_safe<T: ?Sized>(ptr: *mut T) {
         super::error::set_errno(5);
         return;
     }
-    dealloc(ptr.cast(), Layout::for_value_raw(ptr));
+    unsafe { dealloc(ptr.cast(), Layout::for_value_raw(ptr)) };
 }
 
 /// Reallocates Memory in `ptr` suitable for holding values of type `T`
@@ -89,8 +89,8 @@ pub unsafe fn free_safe<T: ?Sized>(ptr: *mut T) {
 /// # Why this returns `*mut u8`
 /// If your type unsized, this function cant cast that ptr, so you get a `*mut u8`
 pub unsafe fn realloc_safe<T: ?Sized>(ptr: *mut T) -> *mut u8 {
-    let layout = Layout::for_value_raw(ptr);
-    let res = alloc::alloc::realloc(ptr.cast(), layout, size_of_val_raw(ptr));
+    let layout = unsafe { Layout::for_value_raw(ptr) };
+    let res = unsafe { alloc::alloc::realloc(ptr.cast(), layout, size_of_val_raw(ptr)) };
     if res.is_null() {
         super::error::set_errno(5);
         alloc::alloc::handle_alloc_error(layout);
@@ -125,14 +125,14 @@ pub unsafe fn calloc_safe<T>(nmemb: usize) -> *mut T {
         });
 
     // Allocate
-    let raw = alloc(layout);
+    let raw = unsafe { alloc(layout) };
     if raw.is_null() {
         super::error::set_errno(5);
         return ptr::null_mut();
     }
 
     // Zero-initialize the memory
-    ptr::write_bytes(raw, 0, total_size);
+    unsafe { ptr::write_bytes(raw, 0, total_size) };
 
     raw.cast()
 }
@@ -166,17 +166,17 @@ pub unsafe extern "C" fn malloc(size: usize) -> *mut u8 {
     let layout = Layout::from_size_align(size + core::mem::size_of::<usize>(), core::mem::align_of::<usize>())
         .unwrap();
 
-    let raw = alloc(layout);
+    let raw = unsafe { alloc(layout) };
     if raw.is_null() {
         super::error::set_errno(5);
         return core::ptr::null_mut();
     }
 
     // Store size at the beginning
-    *(raw as *mut usize) = size;
+    unsafe { *(raw as *mut usize) = size };
 
     // Return pointer after metadata
-    raw.add(core::mem::size_of::<usize>())
+    unsafe { raw.add(core::mem::size_of::<usize>()) }
 }
 
 /// Frees the Allocation.
@@ -192,13 +192,13 @@ pub unsafe extern "C" fn free(ptr: *mut u8) {
     }
 
     // Step back to metadata
-    let meta_ptr = ptr.sub(core::mem::size_of::<usize>());
-    let size = *(meta_ptr as *mut usize);
+    let meta_ptr = unsafe { ptr.sub(core::mem::size_of::<usize>()) };
+    let size = unsafe { *(meta_ptr as *mut usize) };
 
     let layout = Layout::from_size_align(size + core::mem::size_of::<usize>(), core::mem::align_of::<usize>())
         .unwrap();
 
-    dealloc(meta_ptr, layout);
+    unsafe { dealloc(meta_ptr, layout) };
 }
 
 /// Allocates `nmemb` elements, of size `size`, all zeroed.
@@ -222,18 +222,18 @@ pub unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut u8 {
     let layout = Layout::from_size_align(total + core::mem::size_of::<usize>(), core::mem::align_of::<usize>())
         .unwrap();
 
-    let raw = alloc(layout);
+    let raw = unsafe { alloc(layout) };
     if raw.is_null() {
         super::error::set_errno(5);
         return ptr::null_mut();
     }
 
     // Store size
-    *(raw as *mut usize) = total;
+    unsafe { *(raw as *mut usize) = total };
 
     // Zero initialize
-    let user_ptr = raw.add(core::mem::size_of::<usize>());
-    ptr::write_bytes(user_ptr, 0, total);
+    let user_ptr = unsafe { raw.add(core::mem::size_of::<usize>()) };
+    unsafe { ptr::write_bytes(user_ptr, 0, total) };
 
     user_ptr
 }
@@ -248,30 +248,30 @@ pub unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut u8 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn realloc(ptr: *mut u8, new_size: usize) -> *mut u8 {
     if ptr.is_null() {
-        return malloc(new_size);
+        return unsafe { malloc(new_size) };
     }
     if new_size == 0 {
         super::error::set_errno(5);
-        free(ptr);
+        unsafe { free(ptr) };
         return ptr::null_mut();
     }
 
     // Recover old size
-    let meta_ptr = ptr.sub(core::mem::size_of::<usize>());
-    let old_size = *(meta_ptr as *mut usize);
+    let meta_ptr = unsafe { ptr.sub(core::mem::size_of::<usize>()) };
+    let old_size = unsafe { *(meta_ptr as *mut usize) };
 
     // Allocate new block
-    let new_ptr = malloc(new_size);
+    let new_ptr = unsafe { malloc(new_size) };
     if new_ptr.is_null() {
         super::error::set_errno(5);
         return ptr::null_mut();
     }
 
     // Copy min(old_size, new_size)
-    ptr::copy_nonoverlapping(ptr, new_ptr, core::cmp::min(old_size, new_size));
+    unsafe { ptr::copy_nonoverlapping(ptr, new_ptr, core::cmp::min(old_size, new_size)) };
 
     // Free old block
-    free(ptr);
+    unsafe { free(ptr) };
 
     new_ptr
 }
