@@ -14,6 +14,8 @@
     missing_abi,
     missing_debug_implementations
 )]
+#![warn(rust_2024_compatibility)]
+#![allow(incomplete_features)]
 #![feature(
     lang_items, 
     decl_macro, 
@@ -24,7 +26,12 @@
     const_range, 
     const_destruct,
     abi_x86_interrupt,
-    debug_closure_helpers
+    debug_closure_helpers,
+    c_size_t,
+    layout_for_ptr,
+    allocator_api,
+    lazy_type_alias,
+    ptr_metadata
 )]
 
 use alloc::boxed::Box;
@@ -204,7 +211,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
     
-    let _ptr = boot_info.multiboot_info.into_inner().as_ref().unwrap();
+    let _ptr = unsafe { boot_info.multiboot_info.into_inner().as_ref().unwrap() };
 
     
 
@@ -212,8 +219,8 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 
     // allocation
 
-    let mut mapper = mem::init();
-    let mut f_alloc = mem::BootInfoFrameAllocator::init(boot_info.mem_map_addr);
+    let mut mapper = unsafe { mem::init() };
+    let mut f_alloc = unsafe { mem::BootInfoFrameAllocator::init(boot_info.mem_map_addr) };
 
     init_heap(&mut mapper, &mut f_alloc)
         .expect("Heap Initialization Failed");

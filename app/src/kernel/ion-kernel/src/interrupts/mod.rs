@@ -2,7 +2,7 @@ use crate::{interrupts::pic8259::InterruptIndex, println, serial_println};
 use lazy_static::lazy_static;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
-macro set_index($idt:expr, $($index:ident => $handler:expr),*) {
+macro set_index($idt:expr_2021, $($index:ident => $handler:expr_2021),*) {
     $(
         $idt[InterruptIndex::$index.as_u8()]
             .set_handler_fn($handler);

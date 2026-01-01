@@ -6,6 +6,8 @@ use crate::{c_lib::bit_flags::BitFlags, serial_println};
 pub mod bit_flags;
 /// module for handling bits.
 pub mod bit;
+/// libc by Rust for Ion OS.
+pub mod libc;
 
 /// The Actual BootInfo used, in raw numbers
 /// 

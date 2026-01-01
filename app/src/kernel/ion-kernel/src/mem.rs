@@ -141,7 +141,7 @@ impl BootInfoFrameAllocator {
 
 impl BootInfoFrameAllocator {
     /// Returns an iterator over the usable frames specified in the memory map.
-    fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> {
+    fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> + use<'_> {
         // Safety: we ensure the Memory Map is always a valid pointer.
         // We Also ensure that the pointer is not being used elsewhere (asynchronously)
         let mem_ref = unsafe { self.memory_map.as_ref() };
@@ -166,8 +166,7 @@ unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
     /// # Panics
     /// panics if the next frame is outside of usize range
     fn allocate_frame(&mut self) -> Option<PhysFrame> {
-        let mut iter = self.usable_frames();
-        let frame = iter.nth(self.next);
+        let frame = self.usable_frames().nth(self.next);
         self.next = self.next.strict_add(1);
         frame
     }
