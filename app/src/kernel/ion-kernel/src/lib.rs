@@ -243,6 +243,8 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
                 &lib_alloc::tests::test_large_alloc,
                 &lib_alloc::tests::test_freed_mem_used,
                 &lib_alloc::tests::test_alloc_tools,
+                // C Lib / LibC
+                &c_lib::libc::mem::test_malloc
             ]);
             panic!("End of tests; you can now exit.");
         } else {

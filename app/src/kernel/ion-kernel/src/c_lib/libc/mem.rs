@@ -9,6 +9,9 @@ use core::{alloc::Layout, mem::size_of_val_raw, ptr};
 
 use alloc::alloc::{alloc, dealloc};
 
+#[cfg(feature = "test")]
+use crate::test::{TestInfo, TestResult};
+
 // SAFE API
 
 /// Allocates memory suitable for holding `T`
@@ -219,7 +222,7 @@ pub unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut u8 {
 /// # Safety
 /// - [`malloc`]\(`new_size`) must be a valid call
 ///
-/// the pointer does not need to point to valid data.
+/// the pointer must point to valid data if it is not null
 /// # Alloc Sizes
 /// see [`malloc`] for more info.
 #[unsafe(no_mangle)]
@@ -251,3 +254,71 @@ pub unsafe extern "C" fn realloc(ptr: *mut u8, new_size: usize) -> *mut u8 {
     new_ptr
 }
 
+/// Test malloc and related functions
+#[cfg(feature = "test")]
+pub fn test_malloc(inf: TestInfo) -> TestResult {
+    // safe api.
+
+    // variable data for better testing.
+
+    use crate::{c_lib::libc::malloc_wraps::{MallocAllocator, MallocBox}, test::test_assert_eq};
+    unsafe { 
+        let safe_ptr = malloc_safe_val(inf.ord);
+        test_assert_eq!(*safe_ptr, inf.ord)?;
+        free_safe(safe_ptr); 
+    };
+
+    // raw api
+
+    unsafe {
+        let alloc = malloc(1);
+        alloc.write(42);
+        test_assert_eq!(*alloc, 42)?;
+        // this fails on invalid allocation.
+        free(alloc);
+    }
+
+    // malloc wrapper
+
+    let boxed = MallocBox::new_in(42, MallocAllocator);
+    test_assert_eq!(*boxed, 42)?;
+
+    // realloc test
+
+    unsafe {
+        let alloc = malloc(1);
+        alloc.write(1);
+        let re: *mut u16 = realloc(alloc, 2).cast();
+        re.write(2);
+        test_assert_eq!(*re, 2)?;
+        free(re.cast());
+    }
+
+    // uninit safe
+
+    unsafe {
+        let alloc = malloc_safe::<u16>();
+        let new: *mut u16 = realloc_safe(alloc).cast();
+        new.write(42);
+        test_assert_eq!(*new, 42)?;
+        free_safe(new);
+    }
+
+    // calloc, final 2
+
+    unsafe {
+        let slice_alloc = calloc(3, 1);
+        let slice = core::slice::from_raw_parts(slice_alloc, 3);
+        test_assert_eq!(slice, &[0, 0, 0])?;
+        free(slice_alloc);
+    }
+
+    unsafe {
+        let slice_safe = calloc_safe::<u16>(3);
+        let slice = core::slice::from_raw_parts(slice_safe, 3);
+        test_assert_eq!(slice, &[0, 0, 0]);
+        free_safe(slice_safe);
+    }
+
+    TestResult::Ok
+} 
