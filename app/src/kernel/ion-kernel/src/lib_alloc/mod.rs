@@ -62,3 +62,7 @@ pub fn init_heap(
 /// 
 /// This should be used through [`Box`](alloc::boxed::Box), and other alloc types.
 static GLOBAL_ALLOC: LockedHeap = LockedHeap::empty();
+
+#[cfg(feature = "test")]
+/// Tests
+pub mod tests;

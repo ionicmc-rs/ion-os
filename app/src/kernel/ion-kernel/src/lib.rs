@@ -226,9 +226,16 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
         if #[cfg(feature = "test")] {
             run_tests(&[
                 // all tests go here
+                // control, test for tests
                 &trivial_assertion,
+                // interrupts
                 &interrupts::test::test_breakpoint,
-                &text::test_println_output
+                // VGA
+                &text::test_println_output,
+                // Alloc
+                &lib_alloc::tests::test_large_alloc,
+                &lib_alloc::tests::test_freed_mem_used,
+                &lib_alloc::tests::test_alloc_tools,
             ]);
             panic!("End of tests; you can now exit.");
         } else {
