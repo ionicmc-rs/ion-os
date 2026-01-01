@@ -1,6 +1,6 @@
 use core::panic::PanicInfo;
 
-use crate::{c_lib::libc::error::get_errno, hlt_loop, serial_println, text::{Color, println, set_print_color}};
+use crate::{c_lib::libc::{error::get_errno, perror}, hlt_loop, serial_println, text::{Color, println, set_print_color}};
 
 /// This function is called on panic.
 #[panic_handler]
@@ -35,7 +35,8 @@ pub fn panic(info: &PanicInfo) -> ! {
         println!("=> Last OS Error: {} (os error {})", meaning, err_code);
     } else {
         let err_code = *err_code;
-        serial_println!("=> Last OS Error: {}", err_code);
+        let c = c"=> Last OS Error";
+        perror(c.as_ptr().cast_mut());
         println!("=> Last OS Error: {}", err_code);
     }
 

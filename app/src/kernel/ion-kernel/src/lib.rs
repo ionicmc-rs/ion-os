@@ -214,8 +214,6 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     
     let _ptr = unsafe { boot_info.multiboot_info.into_inner().as_ref().unwrap() };
 
-    
-
     // TODO: load boot data here into global var
 
     // allocation

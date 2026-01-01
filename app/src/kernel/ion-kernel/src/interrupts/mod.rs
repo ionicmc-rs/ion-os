@@ -46,13 +46,14 @@ extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
 #[cfg(feature = "test")]
 /// Tests
 pub mod test {
-    use crate::{c_lib::libc, test::{TestInfo, TestResult, test_assert_eq}};
+    use crate::{c_lib::libc, serial_println, test::{TestInfo, TestResult, test_assert_eq}};
 
     /// breakpoint test
     pub fn test_breakpoint(_inf: TestInfo) -> TestResult {
         x86_64::instructions::interrupts::int3();
         // // always passes, which may be a problem...
         // now can check the error code number
+        serial_println!("Error Code Retrieved");
         test_assert_eq!(libc::get_errno().0, 3)
     }
 }
