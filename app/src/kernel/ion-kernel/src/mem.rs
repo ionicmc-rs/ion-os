@@ -4,7 +4,7 @@ use x86_64::{
     PhysAddr, VirtAddr, structures::paging::{OffsetPageTable, PageTable}
 };
 
-use crate::{c_lib::{EntryKind, PHYSICAL_MEMORY_OFFSET}, serial_println};
+use crate::{c_lib::{PHYSICAL_MEMORY_OFFSET, USABLE_ENTRY}, serial_println};
 
 /// Returns a mutable reference to the active level 4 table.
 ///
@@ -149,7 +149,7 @@ impl BootInfoFrameAllocator {
         // get usable regions from memory map
         let regions = (mem_ref.entries).iter();
         let usable_regions = regions
-            .filter(|r| r.entry_type == EntryKind::Usable);
+            .filter(|r| r.entry_type == USABLE_ENTRY);
         // map each region to its address range
         let addr_ranges = usable_regions
             .map(|r| r.start_addr()..r.end_addr());
@@ -166,7 +166,8 @@ unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
     /// # Panics
     /// panics if the next frame is outside of usize range
     fn allocate_frame(&mut self) -> Option<PhysFrame> {
-        let frame = self.usable_frames().nth(self.next);
+        let mut iter = self.usable_frames();
+        let frame = iter.nth(self.next);
         self.next = self.next.strict_add(1);
         frame
     }

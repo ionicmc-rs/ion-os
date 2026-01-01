@@ -9,8 +9,12 @@ use crate::{hlt_loop, serial_print, serial_println};
 /// Info Passed to Tests
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TestInfo {
-    ord: usize,
-    type_id: TypeId
+    /// The index at which the test is ran
+    pub ord: usize,
+    /// TypeID of the Test.
+    /// 
+    /// Usually a function's
+    pub type_id: TypeId
 }
 
 /// A Testable Object

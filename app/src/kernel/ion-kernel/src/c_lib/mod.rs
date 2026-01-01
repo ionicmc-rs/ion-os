@@ -1,6 +1,6 @@
 use core::{ffi::CStr, fmt::Debug, marker::PhantomData, ptr::NonNull};
 
-use crate::c_lib::bit_flags::BitFlags;
+use crate::{c_lib::bit_flags::BitFlags, serial_println};
 
 /// module containing tools for handling Bit Flags
 pub mod bit_flags;
@@ -47,36 +47,41 @@ impl BootInfoInput {
             // Safety: kernel entry is always set.
             kernel_entry: unsafe { mem::transmute::<usize, unsafe extern "C" fn(BootInfoInput) -> !>(self.kernel_entry as usize) },
             // Safety: We cast a u32 to a usize, which means the address is always valid
-            multiboot_info: unsafe { SmallPtr::new_unchecked(without_provenance(self.multiboot_info as usize)) },
-            multiboot_magic: self.multiboot_magic,
+            multiboot_info: { 
+                let ptr: SmallPtr<MultibootTag> = unsafe { SmallPtr::new_unchecked(without_provenance(self.multiboot_info as usize)) };
+                let inner = unsafe { ptr.into_inner().as_ref().unwrap() };
+                serial_println!("{:#?}", inner);
+                ptr
+            } ,
+            multiboot_magic: {
+                if self.multiboot_magic == 0x36d76289 {
+                    MultibootMagic::Multiboot2
+                } else {
+                    // always called with valid boot info,
+                    // so we can have cleaner `else` case
+                    MultibootMagic::Multiboot1
+                }
+            },
             page_table_base: NonNull::new(without_provenance_mut(self.page_table_base as usize)).unwrap(),
             stack_top: NonNull::new(without_provenance_mut(self.stack_top as usize)).unwrap(),
             frame_buffer: NonNull::new(without_provenance_mut(self.framebuffer_addr as usize)).unwrap(),
             mem_map_addr: {
-                // Safety:
-                // - ptr deref: The Pointer returned is always valid.
-                // - Type Cast: The Memory Layouts of u128, and NonNull<{unsized}> are the same,
-                // however, using empty bit data may be a problem...
-                unsafe { *type_cast::<u128, NonNull<MultibootMemory>>(&(self.memory_map_addr as u128)) }
+                let data_ptr = self.memory_map_addr as *const MultibootMemoryIntermediate;
+                let header = unsafe {
+                    data_ptr.as_ref().unwrap()
+                };
+                serial_println!("Header: {:#?}", header);
+                let entries_len = {
+                    (header.size.strict_sub(size_of::<MultibootMemoryIntermediate>() as u32))
+                        / header.entry_size
+                } as usize;
+                let full_ptr: *const MultibootMemory =
+                core::ptr::slice_from_raw_parts(data_ptr as *const MemoryMapEntry, entries_len)
+                as *const MultibootMemory;  
+                NonNull::new(full_ptr as *mut MultibootMemory).unwrap()
             },
         }
     }
-}
-
-fn type_cast<T: ?Sized, U: ?Sized>(src: &T) -> *const U {
-    fn cast<T, U>(value: T) -> U {
-        let ptr = &value as *const T as *const U;
-
-        // the value is used - we will not drop it.
-        core::mem::forget(value);
-
-        // Safety: this is not safe - we are bypassing rust's safety
-        unsafe {
-            ptr.read()
-        }
-    }
-    let ptr: *const U = cast(src as *const T);
-    ptr
 }
 
 /// A Pointer from the 32 bit stage
@@ -108,13 +113,30 @@ impl<T> SmallPtr<T> {
     }
 }
 
+/// The Multiboot Magic value
+#[repr(u32)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum MultibootMagic {
+    /// Value for Multiboot1
+    Multiboot1 = 0x2badb002,
+    #[default]
+    /// Value for Multiboot2
+    Multiboot2 = 0x36d76289
+}
+
+impl Debug for MultibootMagic {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:#x}", *self as u32)
+    }
+}
+
 #[derive(Debug, Clone)]
 /// Boot info, with proper Rust types.
 pub struct BootInfo {
     /// Multiboot magic value
     /// 
     /// equal to 0x36d76289 on multiboot2
-    pub multiboot_magic: u32,
+    pub multiboot_magic: MultibootMagic,
 
     /// multiboot info, stored as a 32bit pointer.
     // this should be a ptr, but it is 32 bits, and we 
@@ -134,7 +156,7 @@ pub struct BootInfo {
     /// pointer to stack top
     pub stack_top: NonNull<()>,
     /// pointer to frame buffer.
-    pub frame_buffer: NonNull<MultibootFramebufferTag>,
+    pub frame_buffer: NonNull<()>,
     /// pointer to memory map.
     pub mem_map_addr: NonNull<MultibootMemory>,
     /// C kernel entry, as a function pointer
@@ -182,7 +204,7 @@ impl BootInfoC {
 pub const PHYSICAL_MEMORY_OFFSET: usize = 0;
 
 /// Multiboot Tag
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct MultibootTag {
     /// Tag Type
@@ -213,11 +235,11 @@ pub enum EntryKind {
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryMapEntry {
     /// Address.
-    pub addr: NonNull<()>,
+    pub addr: u64,
     /// Length
     pub len: u64,
     /// Entry Kind
-    pub entry_type: EntryKind,
+    pub entry_type: u32,
     /// Reserved Memory.
     pub reserved: u32,
 }
@@ -225,7 +247,7 @@ pub struct MemoryMapEntry {
 impl MemoryMapEntry {
     /// Starting address for MemoryMapEntry
     pub fn start_addr(&self) -> usize {
-        self.addr.addr().get()
+        self.addr as usize
     }
 
     /// Size of entry
@@ -274,6 +296,21 @@ pub enum MultibootTagType {
     // Unknown(u32),
 }
 
+/// Intermediate stage to convert a memory address to NonNull<[`MultibootMemory`]>
+#[repr(C)]
+#[derive(Debug)]
+pub struct MultibootMemoryIntermediate {
+    /// Type (6)
+    pub typ: MultibootTagType,
+    /// Size
+    pub size: u32,
+    /// Size of one entry
+    pub entry_size: u32,
+    /// Version (0 until Multiboot updates it)
+    pub entry_version: u32,
+    // no entries here
+}
+
 /// Multiboot Memory Data.
 #[repr(C)]
 #[derive(Debug)]
@@ -284,7 +321,7 @@ pub struct MultibootMemory {
     pub size: u32,         // total size of this tag
     /// Entry Size
     pub entry_size: u32,   // size of each entry
-    /// Entry Version
+    /// Entry Version (0)
     pub entry_version: u32,
     /// All [`MemoryMapEntry`]s
     pub entries: [MemoryMapEntry]
@@ -303,7 +340,7 @@ pub enum FBType {
 }
 
 /// Frame Buffer Tag
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct MultibootFramebufferTag {
     /// Type (8)
@@ -347,14 +384,10 @@ pub struct Multiboot2ModuleTag {
 // MemoryMap entry types
 
 /// Number for a Usable Entry
-#[deprecated(since = "0.0.0", note = "We no longer use numbers, kept around in case needed.")]
 pub const USABLE_ENTRY: u32 = 1;
 /// Number for a APIC Reclaimable Entry.
-#[deprecated(since = "0.0.0", note = "We no longer use numbers, kept around in case needed.")]
 pub const ACPI_RECLAIMABLE: u32 = 3;
 /// Number for a Non Volatile Storage Entry.
-#[deprecated(since = "0.0.0", note = "We no longer use numbers, kept around in case needed.")]
 pub const NON_VOLATILE_STORAGE: u32 = 4;
 /// Number for a Bad Memory Storage Entry.
-#[deprecated(since = "0.0.0", note = "We no longer use numbers, kept around in case needed.")]
 pub const BAD_MEM: u32 = 5;
