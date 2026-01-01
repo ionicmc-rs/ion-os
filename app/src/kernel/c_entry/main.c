@@ -32,6 +32,8 @@ static bool validate_boot_info(const BootInfo* bi) {
     if (bi->page_table_base == 0 || (bi->page_table_base & 0xFFF) != 0) return false;
     if (bi->stack_top == 0 || (bi->stack_top & 0xF) != 0) return false;
     if (bi->kernel_entry == 0) return false;
+    if (bi->framebuffer_addr == 0 ) return false;
+    if (bi->memory_map_addr == 0) return false;
     return true;
 }
 
