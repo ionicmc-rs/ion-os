@@ -24,7 +24,10 @@ unsafe impl Allocator for MallocAllocator {
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: core::alloc::Layout) {
         let size: usize = ptr.sub(size_of::<usize>()).cast().read();
-        debug_assert_eq!(size, layout.size(), "Deallocation with `free` failed: size improperly stored.");
+        if size != layout.size() {
+            super::error::set_errno(5);
+            panic!("Invalid Layout: {layout:?} - does not match stored metadata.");
+        }
         // Safety: Caller ensures pointer comes from this allocator, which always comes from
         // malloc
         free(ptr.as_ptr());

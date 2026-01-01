@@ -56,6 +56,7 @@ pub unsafe fn malloc_unsized_safe_val<T: ?Sized>(val: &T) -> *mut u8 {
     // Allocate raw memory
     let raw = malloc(layout.size());
     if raw.is_null() {
+        super::error::set_errno(5);
         alloc::alloc::handle_alloc_error(layout);
     }
 
@@ -73,6 +74,7 @@ pub unsafe fn malloc_unsized_safe_val<T: ?Sized>(val: &T) -> *mut u8 {
 /// [`buddy_system_allocator::LockedHeap`]
 pub unsafe fn free_safe<T: ?Sized>(ptr: *mut T) {
     if ptr.is_null() {
+        super::error::set_errno(5);
         return;
     }
     dealloc(ptr.cast(), Layout::for_value_raw(ptr));
@@ -87,7 +89,13 @@ pub unsafe fn free_safe<T: ?Sized>(ptr: *mut T) {
 /// # Why this returns `*mut u8`
 /// If your type unsized, this function cant cast that ptr, so you get a `*mut u8`
 pub unsafe fn realloc_safe<T: ?Sized>(ptr: *mut T) -> *mut u8 {
-    alloc::alloc::realloc(ptr.cast(), Layout::for_value_raw(ptr), size_of_val_raw(ptr))
+    let layout = Layout::for_value_raw(ptr);
+    let res = alloc::alloc::realloc(ptr.cast(), layout, size_of_val_raw(ptr));
+    if res.is_null() {
+        super::error::set_errno(5);
+        alloc::alloc::handle_alloc_error(layout);
+    }
+    res
 }
 
 /// Allocs a slice of size `nmemb`, suitable to hold `[T]`
@@ -104,15 +112,22 @@ pub unsafe fn calloc_safe<T>(nmemb: usize) -> *mut T {
 
     // Compute total size
     let total_size = nmemb.checked_mul(size_of::<T>())
-        .expect("calloc_safe: size overflow");
+        .unwrap_or_else(|| {
+            super::error::set_errno(5);
+            panic!("calloc_safe: size too big")
+        });
 
     // Create layout for the array
     let layout = Layout::from_size_align(total_size, core::mem::align_of::<T>())
-        .expect("calloc_safe: invalid layout");
+        .unwrap_or_else(|e| {
+            super::error::set_errno(5);
+            panic!("calloc_safe: invalid layout: {e}");
+        });
 
     // Allocate
     let raw = alloc(layout);
     if raw.is_null() {
+        super::error::set_errno(5);
         return ptr::null_mut();
     }
 
@@ -143,6 +158,7 @@ pub unsafe fn calloc_safe<T>(nmemb: usize) -> *mut T {
 #[unsafe(no_mangle)] // This allows it to be used elsewhere in implicit compiler calls
 pub unsafe extern "C" fn malloc(size: usize) -> *mut u8 {
     if size == 0 {
+        super::error::set_errno(5);
         return core::ptr::null_mut();
     }
 
@@ -152,6 +168,7 @@ pub unsafe extern "C" fn malloc(size: usize) -> *mut u8 {
 
     let raw = alloc(layout);
     if raw.is_null() {
+        super::error::set_errno(5);
         return core::ptr::null_mut();
     }
 
@@ -170,6 +187,7 @@ pub unsafe extern "C" fn malloc(size: usize) -> *mut u8 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn free(ptr: *mut u8) {
     if ptr.is_null() {
+        super::error::set_errno(5);
         return;
     }
 
@@ -196,6 +214,7 @@ pub unsafe extern "C" fn free(ptr: *mut u8) {
 pub unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut u8 {
     let total = nmemb.checked_mul(size).unwrap_or(0);
     if total == 0 {
+        super::error::set_errno(5);
         return ptr::null_mut();
     }
 
@@ -205,6 +224,7 @@ pub unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut u8 {
 
     let raw = alloc(layout);
     if raw.is_null() {
+        super::error::set_errno(5);
         return ptr::null_mut();
     }
 
@@ -231,6 +251,7 @@ pub unsafe extern "C" fn realloc(ptr: *mut u8, new_size: usize) -> *mut u8 {
         return malloc(new_size);
     }
     if new_size == 0 {
+        super::error::set_errno(5);
         free(ptr);
         return ptr::null_mut();
     }
@@ -242,6 +263,7 @@ pub unsafe extern "C" fn realloc(ptr: *mut u8, new_size: usize) -> *mut u8 {
     // Allocate new block
     let new_ptr = malloc(new_size);
     if new_ptr.is_null() {
+        super::error::set_errno(5);
         return ptr::null_mut();
     }
 

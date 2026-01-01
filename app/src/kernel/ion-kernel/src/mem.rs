@@ -4,7 +4,7 @@ use x86_64::{
     PhysAddr, VirtAddr, structures::paging::{OffsetPageTable, PageTable}
 };
 
-use crate::{c_lib::{PHYSICAL_MEMORY_OFFSET, USABLE_ENTRY}, serial_println};
+use crate::{c_lib::{PHYSICAL_MEMORY_OFFSET, USABLE_ENTRY, libc}, serial_println};
 
 /// Returns a mutable reference to the active level 4 table.
 ///
@@ -167,7 +167,10 @@ unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
     /// panics if the next frame is outside of usize range
     fn allocate_frame(&mut self) -> Option<PhysFrame> {
         let frame = self.usable_frames().nth(self.next);
-        self.next = self.next.strict_add(1);
+        self.next = self.next.checked_add(1).unwrap_or_else(|| {
+            libc::set_errno(5);
+            panic!("Out of memory") 
+        });
         frame
     }
 }

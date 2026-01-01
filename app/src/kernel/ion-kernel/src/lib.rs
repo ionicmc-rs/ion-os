@@ -31,7 +31,8 @@
     layout_for_ptr,
     allocator_api,
     lazy_type_alias,
-    ptr_metadata
+    ptr_metadata,
+    thread_local
 )]
 
 use alloc::boxed::Box;
@@ -39,7 +40,7 @@ use cfg_if::cfg_if;
 
 extern crate alloc;
 
-use crate::{c_lib::{BootInfoC, bit_flags::BitFlags}, log::{info, warn}, text::println, lib_alloc::init_heap};
+use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, lib_alloc::init_heap, log::{info, warn}, text::println};
 
 
 /// module for panicking
@@ -75,6 +76,7 @@ cfg_if::cfg_if! {
 
 macro feature_missing {
     ($feature:ident) => {
+        libc::set_errno(7);
         panic!("The feature `{}` is disabled, but is required for Ion OS.\n\nCaused By:\n    The System does not meet the minimum requirements.", stringify!($feature));
     },
     ($feature:ident, optional) => {
@@ -193,7 +195,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
         }
     }
 
-    
+
     // Read the pointer
     // Safety: the pointer is guaranteed always to be valid, as this is passed in from C. other calls
     // Violate the unsafe precondition.
@@ -204,11 +206,10 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     serial_println!("{:?}", boot_info);
 
     let boot_info = boot_info.unwrap_or_else(|e| {
+        libc::set_errno(6);
         panic!("Invalid Boot Info:\n {e:#?}")
     }).into_rust();
 
-    
-    
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
     
     let _ptr = unsafe { boot_info.multiboot_info.into_inner().as_ref().unwrap() };

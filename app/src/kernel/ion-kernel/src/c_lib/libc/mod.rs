@@ -25,3 +25,11 @@ mod macros;
 pub mod primitive;
 pub mod mem;
 pub mod malloc_wraps;
+pub mod error;
+
+// prelude
+
+pub use primitive::*;
+pub use malloc_wraps::*;
+pub use mem::*;
+pub use error::*;
