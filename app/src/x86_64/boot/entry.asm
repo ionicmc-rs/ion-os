@@ -54,6 +54,8 @@ start:
     mov     [boot_info_data + 0x04], ebx
 
     call    check_multiboot
+    ; TODO: Support for Mutltiboot1
+    call    check_multiboot2_mmap
 
     ; Marker S3
     mov     dword [0xb8000+8], 0x0F334F53
@@ -115,6 +117,76 @@ start:
     hlt
 
 ; --- Checks ---
+
+check_multiboot1_mmap:
+    ; EBX points to multiboot1 info struct
+    mov     esi, ebx           ; info ptr
+    mov     eax, [esi + 0x00]  ; flags
+    test    eax, 1 << 6        ; bit 6 => mmap_* present
+    jz      .no_mmap
+
+    mov     eax, [esi + 0x30]  ; mmap_addr (phys)
+    mov     [boot_info_data + 0x28], eax
+    mov     dword [boot_info_data + 0x2C], 0  ; high dword zero for 64-bit field
+
+    ; Optional: publish framebuffer_addr if bit 12 set (video info)
+    ; mov     eax, [esi + 0x54] ; fb_addr low (if VBE/graphics provided)
+    ; mov     [boot_info_data + 0x20], eax
+    ; mov     dword [boot_info_data + 0x24], 0
+
+    jmp     .done
+.no_mmap:
+    ; leave memory_map_addr = 0 to signal “not available”
+    mov al, "M",
+    jmp error
+.done:
+    ret
+
+check_multiboot2_mmap:
+    ; EBX -> multiboot2 info header
+    mov     esi, ebx                  ; base
+    mov     ecx, [esi + 0]            ; total_size
+    sub     ecx, 8                    ; account for first 8 byte header.
+    add     esi, 8                    ; first tag (skip header)
+
+.next_tag:
+    cmp     ecx, 0
+    jbe     .done
+
+    mov     eax, [esi + 0]            ; tag type
+    mov     edx, [esi + 4]            ; tag size
+
+    cmp     eax, 6                    ; memory map tag
+    jne     .check_fb
+    ; Publish the address of the entries (the payload after entry_size/version)
+    ; entries start at esi + 16
+    lea     eax, [esi + 16]
+    mov     [boot_info_data + 0x28], eax
+    mov     dword [boot_info_data + 0x2C], 0
+    jmp     .advance
+
+.check_fb:
+    cmp     eax, 8                    ; framebuffer tag
+    jne     .advance
+    ; Tag layout: type=8, size, then fields; first qword is framebuffer address
+    ; For simplicity publish fb addr low dword
+    mov     eax, [esi + 8]            ; framebuffer_addr low
+    mov     [boot_info_data + 0x20], eax
+    mov     dword [boot_info_data + 0x24], 0
+
+.advance:
+    ; advance to next tag (size rounded up to 8-byte alignment)
+    mov     eax, edx
+    add     eax, 7
+    and     eax, -8
+    add     esi, eax
+    sub     ecx, eax
+    jmp     .next_tag
+.error
+    mov al, "M"
+    jmp error
+.done:
+    ret
 
 check_multiboot:
     ; Accept MB2 or MB1, depending on your loader

@@ -34,7 +34,7 @@ use crate::{c_lib::{BootInfoC, bit_flags::BitFlags}, log::{info, warn}, text::pr
 
 /// module for panicking
 pub mod panic;
-/// module for linked with the C Kernel Entry.
+/// module for link with the C Kernel Entry.
 pub mod c_lib;
 /// module for printing to the VGA Buffer.
 pub mod text;
@@ -47,6 +47,10 @@ pub mod interrupts;
 pub mod log;
 /// serial printing
 pub mod serial;
+/// Memory and Paging Operations
+pub mod mem;
+// /// Allocation tools
+// pub mod lib_alloc;
 
 
 cfg_if::cfg_if! {
@@ -188,13 +192,13 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     let boot_info = boot_info.into_inner().unwrap_or_else(|e| {
         panic!("Invalid Boot Info:\n {e:#?}")
     }).into_rust();
-
+    
     // TODO: load boot data here into global var
     
     // x86_64::instructions::interrupts::int3();
     
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
-    
+
     serial_println!("Initialized");
 
     cfg_if! {
