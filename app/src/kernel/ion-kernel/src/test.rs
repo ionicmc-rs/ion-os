@@ -2,9 +2,9 @@
 //! 
 //! It includes the test runner, and other related items.
 #![cfg_attr(not(feature = "test"), allow(dead_code))]
-use core::any::{Any, TypeId, type_name};
+use core::{any::{Any, TypeId, type_name}, convert::Infallible, ops::{FromResidual, Try}};
 
-use crate::text::{Color, print, println, reset_print_color, set_print_color};
+use crate::{hlt_loop, serial_print, serial_println};
 
 /// Info Passed to Tests
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -23,7 +23,7 @@ pub trait Testable: Any {
 
 impl<T: Fn(TestInfo) -> TestResult + Any> Testable for T {
     fn run(&self, info: TestInfo) -> TestResult {
-        print!("{}: ", type_name::<T>());
+        serial_print!("{}: ", type_name::<T>());
         self(info)
     }
 }
@@ -64,53 +64,81 @@ impl TestResult {
     }
 }
 
+impl FromResidual<&'static str> for TestResult {
+    fn from_residual(residual: &'static str) -> Self {
+        Self::Failure(residual)
+    }
+}
+
+impl FromResidual<Result<Infallible, &'static str>> for TestResult {
+    fn from_residual(residual: Result<Infallible, &'static str>) -> Self {
+        let Err(e) = residual;
+        Self::Failure(e)
+    }
+}
+
+impl Try for TestResult {
+    type Output = ();
+    type Residual = &'static str;
+    fn branch(self) -> core::ops::ControlFlow<Self::Residual, Self::Output> {
+        match self {
+            Self::Failure(e) => core::ops::ControlFlow::Break(e),
+            _ => core::ops::ControlFlow::Continue(())
+        }
+    }
+
+    fn from_output(_: Self::Output) -> Self {
+        Self::Ok
+    }
+}
+
 /// Runs tests
 /// 
 /// do not call - this function is called automatically in lib.rs
 /// 
 /// however, you may be able to find alternative uses elsewhere
-pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) {
+pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
     // TODO: Use Serial Prints, and Exit QEMU, as this is planned in CONTRIBUTING.md
 
-    println!("Now Running {} Tests.", tests.len());
+    serial_println!("Now Running {} Tests.", tests.len());
     let mut fail_count = 0;
     let mut pass_count = 0;
     let mut ignore_count = 0;
     for (i, test) in tests.iter().enumerate() {
-        print!("[{}] ", i + 1); // run should print test name
+        serial_print!("[{}] ", i + 1); // run should print test name
         match test.run(TestInfo {
             ord: i,
             type_id: test.type_id()
         }) {
             TestResult::Ok => { 
-                set_print_color(Color::LightGreen, Color::Black);
-                println!("[OK]");
-                reset_print_color();
+                serial_println!("[OK]");
                 pass_count += 1;
             },
             TestResult::Failure(e) => {
-                set_print_color(Color::LightRed, Color::Black);
-                println!("[FAIL]");
-                println!(" => {e}");
-                reset_print_color();
+                serial_println!("[FAIL]");
+                serial_println!(" => {}", e);
                 fail_count += 1;
             },
             TestResult::Ignored => { 
-                set_print_color(Color::Yellow, Color::Black);
-                println!("[IGNORED]");
-                reset_print_color();
+                serial_println!("[IGNORED]");
                 ignore_count += 1;
             }
         }
     }
-    println!("Ran Tests: ");
-    set_print_color(Color::LightGreen, Color::Black);
-    println!(" {pass_count} Passed");
-    set_print_color(Color::LightRed, Color::Black);
-    println!(" {fail_count} Failed");
-    set_print_color(Color::Yellow, Color::Black);
-    println!(" {ignore_count} Ignored");
-    reset_print_color();
+    serial_print!("Ran Tests: ");
+    if fail_count > 0 {
+        serial_println!("[FAILED]");
+    } else {
+        serial_println!("[OK]");
+    }
+    serial_println!("=> {} Passed", pass_count);
+    serial_println!("=> {} Failed", fail_count);
+    serial_println!("=> {} Ignored", ignore_count);
+    if fail_count > 0 {
+        exit(QemuExitCode::Failed)
+    } else {
+        exit(QemuExitCode::Passed)
+    }
 }
 
 /// Asserts the passed in value, with an optional, Statically set message
@@ -152,4 +180,39 @@ pub macro test_assert_matches {
     ($a:expr, $b:expr, $msg:literal) => {
         $crate::test::test_assert!(matches!($a, $pat), $msg)
     }
+}
+
+// QEMU exiting.
+
+/// Represents a Qemu Exit Code
+/// 
+/// This is used when ending tests, which is why prints must be serial.
+/// 
+/// # Example
+/// in run_tests...
+/// ```rust,no_run
+/// # let fails = 0
+/// use crate::test::{QemuExitCode, exit};
+/// 
+/// exit(QemuExitCode::Passed);
+/// ```
+#[derive(Debug)]
+pub enum QemuExitCode {
+    /// Tests Passed
+    Passed = 0x10,
+    /// Tests Failed
+    Failed = 0x11
+}
+
+/// Exits QEMU using the code
+/// 
+/// see [`QemuExitCode`] for more info
+pub fn exit(code: QemuExitCode) -> ! {
+    use x86_64::instructions::port::Port;
+
+    unsafe {
+        let mut port = Port::new(0xf4);
+        port.write(code as u32);
+    }
+    hlt_loop();
 }

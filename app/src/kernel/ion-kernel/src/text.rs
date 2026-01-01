@@ -102,6 +102,24 @@ impl Writer {
         }
     }
 
+    /// Removes the most recent character.
+    pub fn backspace(&mut self) {
+        let row = BUFFER_HEIGHT - 1;
+        let col = self.column_position;
+
+        self.column_position = self.column_position.saturating_sub(1);
+        self.buffer.chars[row][col].write(ScreenChar {
+            ascii_character: b' ',
+            color_code: self.color_code,
+        });
+    }
+
+    /// deletes the current row.
+    pub fn delete_row(&mut self) {
+        self.clear_row(BUFFER_HEIGHT - 1);
+        self.column_position = 0;
+    }
+
     /// Writes a character to the [`Writer`]
     pub fn write_char(&mut self, character: char) {
         self.write_byte(character as u8);
@@ -155,6 +173,9 @@ impl fmt::Write for Writer {
 
 use lazy_static::lazy_static;
 use spin::Mutex;
+
+#[cfg(feature = "test")]
+use crate::test::{TestInfo, TestResult};
 
 lazy_static! {
     /// The Global Writer
@@ -223,7 +244,37 @@ pub fn query_print_color() -> ColorCode {
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
+    use x86_64::instructions::interrupts;
+
     // Even though `write_fmt` always returns `Ok(())`, we are better off ignoring the value instead of
     // panicking.
-    let _ = WRITER.lock().write_fmt(args);
+    //
+    // this also must run without interrupts, as some of our interrupt handlers print to the VGA
+    // buffer, which could cause a deadlock if we are already printing. see 
+    // https://os.phil-opp.com/hardware-interrupts/#provoking-a-deadlock
+    let _ = interrupts::without_interrupts(|| {
+        WRITER.lock().write_fmt(args)
+    });
+}
+
+// test
+
+
+#[cfg(feature = "test")]
+/// Tests println output is valid
+pub fn test_println_output(_: TestInfo) -> TestResult {
+    use crate::test::{TestResult};
+    use core::fmt::Write;
+    use x86_64::instructions::interrupts;
+
+    let s = "Some test string that fits on a single line";
+    interrupts::without_interrupts(|| {
+        let mut writer = WRITER.lock();
+        writeln!(writer, "\n{}", s).expect("writeln failed");
+        for (i, c) in s.chars().enumerate() {
+            let screen_char = writer.buffer.chars[BUFFER_HEIGHT - 2][i].read();
+            assert_eq!(char::from(screen_char.ascii_character), c);
+        }
+    });
+    TestResult::Ok
 }

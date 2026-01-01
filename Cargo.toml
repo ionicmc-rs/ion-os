@@ -16,10 +16,17 @@ spin = "0.5.2"
 cfg-if = "*"
 x86_64 = "*"
 uart_16550 = "0.2.0"
+pic8259 = "0.10.1"
+pc-keyboard = "0.7.0"
 
-[features]
-test = []
 
 [dependencies.lazy_static]
 version = "1.0"
 features = ["spin_no_std"]
+
+[features]
+default = ["test"]
+test = []
+
+[package.metadata.bootimage]
+test-args = ["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"]

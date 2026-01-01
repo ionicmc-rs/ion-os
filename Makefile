@@ -30,7 +30,7 @@ build/x86_64/kernel/%.o: app/src/kernel/%.c
 build/x86_64/kernel/ion_kernel.a:
 	mkdir -p $(dir $@) && \
 	cd /root/env && \
-	cargo build -p ion-kernel --target-dir build/x86_64/kernel/rust && \
+	cargo build --no-default-features -p ion-kernel --target-dir build/x86_64/kernel/rust && \
 	cp build/x86_64/kernel/rust/target/debug/libion_kernel.a $@
 
 build/x86_64/kernel/ion_kernel_test.a:
@@ -58,9 +58,9 @@ build-x86_64-test: $(x86_64_asm_obj_files) $(x86_64_c_obj_files) build/x86_64/ke
 	grub-mkrescue /usr/lib/grub/i386-pc -o dist/x86_64/test/kernel.iso app/targets/x86_64/iso
 
 run-qemu:
-	qemu-system-x86_64 dist/x86_64/kernel.iso -debugcon stdio
+	qemu-system-x86_64 dist/x86_64/kernel.iso -debugcon stdio -device isa-debug-exit,iobase=0xf4,iosize=0x04
 run-qemu-tests:
-	qemu-system-x86_64 dist/x86_64/test/kernel.iso -debugcon stdio
+	qemu-system-x86_64 dist/x86_64/test/kernel.iso -debugcon stdio -device isa-debug-exit,iobase=0xf4,iosize=0x04
 clean:
 	rm -f build/x86_64/kernel/ion_kernel.a build/x86_64/kernel/ion_kernel_test.a $(x86_64_asm_obj_files) $(x86_64_c_obj_files)
 clean-build:
