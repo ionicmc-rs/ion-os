@@ -1,3 +1,6 @@
+//! Tools for reading bits.
+//! 
+//! use [`bit_flags`](super::bit_flags) for reading bit flags.
 // /// Create a bool from a signed integer
 // /// # Panics
 // /// panics if i is not 1 or 0

@@ -43,23 +43,15 @@ extern crate alloc;
 use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, log::{info, trace, warn}, text::println};
 
 
-/// module for panicking
 pub mod panic;
-/// module for link with the C Kernel Entry.
 pub mod c_lib;
-/// module for printing to the VGA Buffer.
 pub mod text;
 pub mod test;
 pub mod init;
-/// module for handling interrupts.
 pub mod interrupts;
-/// module for logging
 pub mod log;
-/// serial printing
 pub mod serial;
-/// Memory and Paging Operations
 pub mod mem;
-/// Allocation tools
 pub mod lib_alloc;
 
 
@@ -171,7 +163,6 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
     }
 }
 
-// TODO: Move these to `c_lib`
 /// The entry to the kernel
 /// 
 /// Do Not call - at all.

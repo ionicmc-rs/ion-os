@@ -1,6 +1,6 @@
-/// Tools for handling memory
-/// 
-/// This module is a low level API for allocation, and other related ops.
+//! Tools for handling memory
+//! 
+//! This module is a low level API for allocation, and other related ops.
 use core::ptr::NonNull;
 
 use x86_64::{
