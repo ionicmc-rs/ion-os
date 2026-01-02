@@ -1,12 +1,30 @@
 //! This module is not for tests, but instead the test frame-work
 //! 
 //! It includes the test runner, and other related items.
+//! 
+//! # Writing your Tests
+//! See CONTRIBUTING.md for better documentation
+//! # Example
+//! ```
+//! use crate::test::{TestInfo, TestResult, test_assert_eq};
+//! use core::any::type_id_of_val;
+//! 
+//! fn test_info(inf: TestInfo) -> TestResult {
+//!     test_assert_eq!(inf.ord, 0, "Make Me First!")?; // implements `Try`
+//!     test_assert_eq!(inf.type_id, type_id_of_val(&test_info))?;
+//!     TestResult::Ok
+//! }
+//! ```
 #![cfg_attr(not(feature = "test"), allow(dead_code))]
 use core::{any::{Any, TypeId, type_name}, convert::Infallible, ops::{FromResidual, Try}};
 
-use crate::{hlt_loop, serial_print, serial_println};
+use crate::{serial_print, serial_println};
 
 /// Info Passed to Tests
+/// 
+/// contains the index at which a test is executed, and the type ID.
+/// 
+/// this is subject to change in the future, plan accordingly!
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TestInfo {
     /// The index at which the test is ran
@@ -20,7 +38,10 @@ pub struct TestInfo {
 /// A Testable Object
 /// 
 /// This allows for any type to be a test.
+/// 
+/// by default, implemented for `T: Fn(TestInfo) -> TestResult`
 pub trait Testable: Any {
+    /// # To Implementors
     /// This should print the test name using the `print` macro.
     fn run(&self, info: TestInfo) -> TestResult;
 }
@@ -38,6 +59,12 @@ impl<T: Fn(TestInfo) -> TestResult + Any> Testable for T {
 /// - pass (Ok)
 /// - fail: (Failure(/* err */))
 /// - be ignored (Ignored)
+/// # Example
+/// ```
+/// fn my_ignored_test(inf: TestInfo) -> TestResult {
+///     TestResult::Ignored
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub enum TestResult {
     /// The Test Has Passed
@@ -102,8 +129,6 @@ impl Try for TestResult {
 /// 
 /// however, you may be able to find alternative uses elsewhere
 pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
-    // TODO: Use Serial Prints, and Exit QEMU, as this is planned in CONTRIBUTING.md
-
     serial_println!("Now Running {} Tests.", tests.len());
     let mut fail_count = 0;
     let mut pass_count = 0;
@@ -147,30 +172,30 @@ pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
 
 /// Asserts the passed in value, with an optional, Statically set message
 pub macro test_assert {
-    ($test:expr $(,)?) => {{
+    ($test:expr_2021 $(,)?) => {{
         $crate::test::TestResult::assertion($test, concat!("Assertion `", stringify!($test), "` Failed"))
     }},
-    ($test:expr, $msg:literal) => {{
+    ($test:expr_2021, $msg:literal) => {{
         $crate::test::TestResult::assertion($test, concat!("Assertion `", stringify!($test), "` Failed: ", $msg))
     }}
 }
 
 /// Asserts the passed in values are equal, with an optional, Statically set message
 pub macro test_assert_eq {
-    ($a:expr, $b:expr $(,)?) => {
+    ($a:expr_2021, $b:expr_2021 $(,)?) => {
         $crate::test::test_assert!($a == $b)
     },
-    ($a:expr, $b:expr, $msg:literal) => {
+    ($a:expr_2021, $b:expr_2021, $msg:literal) => {
         $crate::test::test_assert!($a == $b, $msg)
     }
 }
 
 /// Asserts the passed in values are not equal, with an optional, Statically set message
 pub macro test_assert_ne {
-    ($a:expr, $b:expr $(,)?) => {
+    ($a:expr_2021, $b:expr_2021 $(,)?) => {
         $crate::test::test_assert!($a != $b)
     },
-    ($a:expr, $b:expr, $msg:literal) => {
+    ($a:expr_2021, $b:expr_2021, $msg:literal) => {
         $crate::test::test_assert!($a != $b, $msg)
     }
 }
@@ -178,10 +203,10 @@ pub macro test_assert_ne {
 
 /// Asserts the passed in value matches the pattern, with an optional, Statically set message
 pub macro test_assert_matches {
-    ($a:expr, $pat:pat $(,)?) => {
+    ($a:expr_2021, $pat:pat $(,)?) => {
         $crate::test::test_assert!(matches!($a, $pat))
     },
-    ($a:expr, $b:expr, $msg:literal) => {
+    ($a:expr_2021, $b:expr_2021, $msg:literal) => {
         $crate::test::test_assert!(matches!($a, $pat), $msg)
     }
 }
@@ -195,12 +220,11 @@ pub macro test_assert_matches {
 /// # Example
 /// in run_tests...
 /// ```rust,no_run
-/// # let fails = 0
 /// use crate::test::{QemuExitCode, exit};
 /// 
 /// exit(QemuExitCode::Passed);
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum QemuExitCode {
     /// Tests Passed
     Passed = 0x10,
@@ -218,5 +242,6 @@ pub fn exit(code: QemuExitCode) -> ! {
         let mut port = Port::new(0xf4);
         port.write(code as u32);
     }
-    hlt_loop();
+
+    panic!("Attempted to write `{code:?}` ({:#x}) to port `0xf4`, but it did not exit.", code as u32);
 }

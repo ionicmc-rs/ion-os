@@ -1,18 +1,18 @@
+//! Tools for handling memory
+//! 
+//! This module is a low level API for allocation, and other related ops.
 use core::ptr::NonNull;
 
 use x86_64::{
     PhysAddr, VirtAddr, structures::paging::{OffsetPageTable, PageTable}
 };
 
-use crate::{c_lib::{PHYSICAL_MEMORY_OFFSET, USABLE_ENTRY}, serial_println};
+use crate::{c_lib::{PHYSICAL_MEMORY_OFFSET, USABLE_ENTRY, libc}, serial_println};
 
 /// Returns a mutable reference to the active level 4 table.
 ///
 /// # Safety
-/// This function is unsafe because the caller must guarantee that the
-/// complete physical memory is mapped to virtual memory at the passed
-/// `physical_memory_offset`. Also, this function must be only called once
-/// to avoid aliasing `&mut` references (which is undefined behavior).
+/// this function must be only called once to avoid aliasing `&mut` references (which is undefined behavior).
 pub unsafe fn active_level_4_table()
     -> &'static mut PageTable
 {
@@ -31,6 +31,8 @@ pub unsafe fn active_level_4_table()
 
 /// Translates the given virtual address to the mapped physical address, or
 /// `None` if the address is not mapped.
+#[deprecated(since = "0.0.1", note = "No Longer needed")]
+#[allow(deprecated)]
 pub fn translate_addr(addr: VirtAddr)
     -> Option<PhysAddr>
 {
@@ -42,6 +44,7 @@ pub fn translate_addr(addr: VirtAddr)
 /// This function is safe to limit the scope of `unsafe` because Rust treats
 /// the whole body of unsafe functions as an unsafe block. This function must
 /// only be reachable through `unsafe fn` from outside of this module.
+#[deprecated(since = "0.0.1", note = "No Longer needed")]
 fn translate_addr_inner(addr: VirtAddr, physical_memory_offset: VirtAddr)
     -> Option<PhysAddr>
 {
@@ -72,8 +75,7 @@ fn translate_addr_inner(addr: VirtAddr, physical_memory_offset: VirtAddr)
 /// Initialize a new OffsetPageTable.
 ///
 /// # Safety
-/// this function must be only called once
-/// to avoid aliasing `&mut` references (which is undefined behavior).
+/// this function must be only called once to avoid aliasing `&mut` references (which is undefined behavior).
 pub unsafe fn init() -> OffsetPageTable<'static> {
     unsafe {
         let level_4_table = active_level_4_table();
@@ -81,41 +83,24 @@ pub unsafe fn init() -> OffsetPageTable<'static> {
     }
 }
 
-use x86_64::{
-    structures::paging::{Page, PhysFrame, Mapper, Size4KiB, FrameAllocator}
-};
-
-/// Creates an example mapping for the given page to frame `0xb8000`.
-pub fn create_example_mapping(
-    page: Page,
-    mapper: &mut OffsetPageTable,
-    frame_allocator: &mut impl FrameAllocator<Size4KiB>,
-) {
-    use x86_64::structures::paging::PageTableFlags as Flags;
-
-    let frame = PhysFrame::containing_address(PhysAddr::new(0xb8000));
-    let flags = Flags::PRESENT | Flags::WRITABLE;
-
-    let map_to_result = unsafe {
-        // FIXME: this is not safe, we do it only for testing
-        mapper.map_to(page, frame, flags, frame_allocator)
-    };
-    map_to_result.expect("map_to failed").flush();
-}
+use x86_64::structures::paging::{PhysFrame, Size4KiB, FrameAllocator};
 
 /// A FrameAllocator that always returns `None`.
 #[derive(Debug)]
+#[deprecated(since = "0.0.1", note = "Was only for testing")]
 pub struct EmptyFrameAllocator;
 
-unsafe impl FrameAllocator<Size4KiB> for EmptyFrameAllocator {
-    fn allocate_frame(&mut self) -> Option<PhysFrame> {
-        None
-    }
-}
+// unsafe impl FrameAllocator<Size4KiB> for EmptyFrameAllocator {
+//     fn allocate_frame(&mut self) -> Option<PhysFrame> {
+//         None
+//     }
+// }
 
 use crate::c_lib::MultibootMemory;
 
 /// A FrameAllocator that returns usable frames from the bootloader's memory map.
+/// 
+/// Ideally, only the init function uses this.
 #[derive(Debug)]
 pub struct BootInfoFrameAllocator {
     memory_map: NonNull<MultibootMemory>,
@@ -141,7 +126,7 @@ impl BootInfoFrameAllocator {
 
 impl BootInfoFrameAllocator {
     /// Returns an iterator over the usable frames specified in the memory map.
-    fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> {
+    fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> + use<'_> {
         // Safety: we ensure the Memory Map is always a valid pointer.
         // We Also ensure that the pointer is not being used elsewhere (asynchronously)
         let mem_ref = unsafe { self.memory_map.as_ref() };
@@ -166,9 +151,11 @@ unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
     /// # Panics
     /// panics if the next frame is outside of usize range
     fn allocate_frame(&mut self) -> Option<PhysFrame> {
-        let mut iter = self.usable_frames();
-        let frame = iter.nth(self.next);
-        self.next = self.next.strict_add(1);
+        let frame = self.usable_frames().nth(self.next);
+        self.next = self.next.checked_add(1).unwrap_or_else(|| {
+            libc::set_errno(5);
+            panic!("Out of memory") 
+        });
         frame
     }
 }

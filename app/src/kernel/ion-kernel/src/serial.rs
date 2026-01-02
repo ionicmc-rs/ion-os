@@ -1,9 +1,34 @@
+//! Serial Printing to STDOUT (Terminal)
+//! 
+//! This module is only for debugging purposes and its functionality is disabled in release mode.
+//! # Implementation Details
+//! This module writes to port `0xE9` (Mapped to rust in [`SERIAL1`]), which prints to the standard output (terminal).
+//! 
+//! We support 2 forms of this.
+//! 
+//! - basic form
+//!   - almost never fails
+//!   - basic - does not support [`fmt::Arguments`](core::fmt::Arguments)
+//! - Port form
+//!   - use the active [`SERIAL1`] port
+//!   - prone to failure.
+//!   - supports all input forms
+//! # Example
+//! debug logs
+//! ```
+//! serial_println!("Initialized Ion OS!");
+//! serial::dbg::str("An it did not crash!\n");
+//! ```
+
 use uart_16550::SerialPort;
 use spin::Mutex;
 use lazy_static::lazy_static;
 
 lazy_static! {
-    /// Serial Port
+    /// Serial Port for Standard Output
+    /// 
+    /// Use the safe abstractions [`serial_println`], [`serial_print`], [`serial::dbg::*`](dbg),
+    /// which support actual strings.
     pub static ref SERIAL1: Mutex<SerialPort> = {
         let mut serial_port = unsafe { SerialPort::new(0xE9) };
         serial_port.init();
@@ -39,8 +64,8 @@ macro_rules! serial_print {
 #[macro_export]
 macro_rules! serial_println {
     () => ($crate::serial_print!("\n"));
-    ($fmt:expr) => ($crate::serial_print!(concat!($fmt, "\n")));
-    ($fmt:expr, $($arg:tt)*) => ($crate::serial_print!(
+    ($fmt:expr_2021) => ($crate::serial_print!(concat!($fmt, "\n")));
+    ($fmt:expr_2021, $($arg:tt)*) => ($crate::serial_print!(
         concat!($fmt, "\n"), $($arg)*))
 }
 

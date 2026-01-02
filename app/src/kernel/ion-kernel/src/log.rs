@@ -1,8 +1,13 @@
+//! Tools for logging to VGA buffer.
+//! 
+//! These are meant for users, but we plan to add a `serial_log`
 use core::fmt;
 
 use crate::text::{Color, print, println, query_print_color, set_print_color};
 
 /// Log levels
+/// 
+/// Ideally, you would use the logging macros [`info`], [`trace`], [`debug`], [`error`], and [`warn`]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Level {
     /// Trace log

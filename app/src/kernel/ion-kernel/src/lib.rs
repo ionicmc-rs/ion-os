@@ -14,6 +14,8 @@
     missing_abi,
     missing_debug_implementations
 )]
+#![warn(rust_2024_compatibility)]
+#![allow(incomplete_features)]
 #![feature(
     lang_items, 
     decl_macro, 
@@ -24,7 +26,13 @@
     const_range, 
     const_destruct,
     abi_x86_interrupt,
-    debug_closure_helpers
+    debug_closure_helpers,
+    c_size_t,
+    layout_for_ptr,
+    allocator_api,
+    lazy_type_alias,
+    ptr_metadata,
+    thread_local
 )]
 
 use alloc::boxed::Box;
@@ -32,27 +40,18 @@ use cfg_if::cfg_if;
 
 extern crate alloc;
 
-use crate::{c_lib::{BootInfoC, bit_flags::BitFlags}, log::{info, warn}, text::println, lib_alloc::init_heap};
+use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, log::{info, trace, warn}, text::println};
 
 
-/// module for panicking
 pub mod panic;
-/// module for link with the C Kernel Entry.
 pub mod c_lib;
-/// module for printing to the VGA Buffer.
 pub mod text;
 pub mod test;
-/// module for initializing the Kernel.
 pub mod init;
-/// module for handling interrupts.
 pub mod interrupts;
-/// module for logging
 pub mod log;
-/// serial printing
 pub mod serial;
-/// Memory and Paging Operations
 pub mod mem;
-/// Allocation tools
 pub mod lib_alloc;
 
 
@@ -68,6 +67,7 @@ cfg_if::cfg_if! {
 
 macro feature_missing {
     ($feature:ident) => {
+        libc::set_errno(7);
         panic!("The feature `{}` is disabled, but is required for Ion OS.\n\nCaused By:\n    The System does not meet the minimum requirements.", stringify!($feature));
     },
     ($feature:ident, optional) => {
@@ -163,7 +163,6 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
     }
 }
 
-// TODO: Move these to `c_lib`
 /// The entry to the kernel
 /// 
 /// Do Not call - at all.
@@ -175,18 +174,6 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 
     serial_println!("\nWelcome User of QEMU! Thank you for using Ion OS");
 
-    // initialize first to catch page faults/double faults
-    match init::init() {
-        Ok(()) => info!("Initialized Ion OS."),
-        Err(e) => {
-            println!("Handling Err...\n{e:#?}");
-            if e.is_fatal() {
-                panic!("Error while initializing Ion OS: {e}")
-            }
-        }
-    }
-
-    
     // Read the pointer
     // Safety: the pointer is guaranteed always to be valid, as this is passed in from C. other calls
     // Violate the unsafe precondition.
@@ -197,26 +184,28 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     serial_println!("{:?}", boot_info);
 
     let boot_info = boot_info.unwrap_or_else(|e| {
+        libc::set_errno(6);
         panic!("Invalid Boot Info:\n {e:#?}")
     }).into_rust();
 
-    
-    
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
     
-    let _ptr = boot_info.multiboot_info.into_inner().as_ref().unwrap();
+    // FIXME(asm): this tag is currently always corrupt
+    let _ptr = unsafe { boot_info.multiboot_info.into_inner().as_ref().unwrap() };
 
-    
+    match init::init(boot_info) {
+        Ok(()) => info!("Initialized Ion OS."),
+        Err(e) => {
+            trace!("Handling Init Err: {e}");
+            if e.is_fatal() {
+                panic!("Error while initializing Ion OS: {e}")
+            }
+        }
+    }
+
+
 
     // TODO: load boot data here into global var
-
-    // allocation
-
-    let mut mapper = mem::init();
-    let mut f_alloc = mem::BootInfoFrameAllocator::init(boot_info.mem_map_addr);
-
-    init_heap(&mut mapper, &mut f_alloc)
-        .expect("Heap Initialization Failed");
 
     serial_println!("Initialized");
 
@@ -236,6 +225,8 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
                 &lib_alloc::tests::test_large_alloc,
                 &lib_alloc::tests::test_freed_mem_used,
                 &lib_alloc::tests::test_alloc_tools,
+                // C Lib / LibC
+                &c_lib::libc::mem::test_malloc
             ]);
             panic!("End of tests; you can now exit.");
         } else {
