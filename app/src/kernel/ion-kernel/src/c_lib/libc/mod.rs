@@ -24,6 +24,7 @@ pub mod primitive;
 pub mod mem;
 pub mod malloc_wraps;
 pub mod error;
+pub mod math;
 
 // prelude
 
