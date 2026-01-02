@@ -1,3 +1,9 @@
+//! Tools for both Software and Hardware Interrupts.
+//! 
+//! We use this module for setting the IDT, GDT and TSS tables, and handling keyboard inputs.
+//! 
+//! These things are handled in Ion OS's initialization, so you wouldn't typically have to see them.
+
 use crate::{c_lib::libc, interrupts::pic8259::InterruptIndex, println, serial_println};
 use lazy_static::lazy_static;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
@@ -29,13 +35,13 @@ lazy_static! {
     };
 }
 
-/// inits the idt.
+/// inits the IDT, GDT, TSS, PIC8259, and interrupts.
 pub fn init_interrupt_operations() {
     gdt::init();
     IDT.load();
     pic8259::init();
     x86_64::instructions::interrupts::enable();
-    serial_println!("Initialized IDT properly");
+    serial_println!("Initialized interrupt operations properly");
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
@@ -46,21 +52,19 @@ extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
 #[cfg(feature = "test")]
 /// Tests
 pub mod test {
-    use crate::{c_lib::libc, serial_println, test::{TestInfo, TestResult, test_assert_eq}};
+    use crate::{c_lib::libc, test::{TestInfo, TestResult, test_assert_eq}};
 
     /// breakpoint test
     pub fn test_breakpoint(_inf: TestInfo) -> TestResult {
         x86_64::instructions::interrupts::int3();
         // // always passes, which may be a problem...
         // now can check the error code number
-        serial_println!("Error Code Retrieved");
         test_assert_eq!(libc::get_errno().0, 3)
     }
 }
 
 /// GDT
 pub mod gdt;
-/// PIC 8259 Compatibility.
 pub mod pic8259;
 /// Keyboard Interrupt Handling.
 pub mod keyboard;

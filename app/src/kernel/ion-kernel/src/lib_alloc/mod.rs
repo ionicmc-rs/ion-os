@@ -1,3 +1,6 @@
+//! Contains tools for Allocation
+//! 
+//! Typically, you dont use this module, you use [`alloc`]
 use buddy_system_allocator::LockedHeap;
 
 // Heap Defs.
