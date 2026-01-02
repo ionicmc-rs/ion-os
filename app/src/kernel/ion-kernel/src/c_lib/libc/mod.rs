@@ -20,8 +20,9 @@
 //! free(new);
 //! 
 //! let for_bytes = calloc(4, 1);
-//! let slice = slice::from_raw_parts(for_bytes);
-//! assert_eq!(slice, &[0, 0, 0, 0])
+//! let slice = slice::from_raw_parts(for_bytes, 4);
+//! assert_eq!(slice, &[0, 0, 0, 0]);
+//! free(for_bytes)
 //! ```
 //! Get the last os error
 //! ```
