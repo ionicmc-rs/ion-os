@@ -6,6 +6,8 @@ use crate::{c_lib::bit_flags::BitFlags, serial_println};
 pub mod bit_flags;
 /// module for handling bits.
 pub mod bit;
+/// libc by Rust for Ion OS.
+pub mod libc;
 
 /// The Actual BootInfo used, in raw numbers
 /// 
@@ -290,7 +292,7 @@ pub enum MultibootTagType {
     Efi32ImageHandle   = 19,
     Efi64ImageHandle   = 20,
     LoadBaseAddr       = 21,
-    // Catch‑all for unknown or future values
+    // /// Catch‑all for unknown or future values
     // Unfortunately, we must keep this enum Transmute Safe.
     // Tuple Variants fail to transmute.
     // Unknown(u32),

@@ -14,6 +14,8 @@
     missing_abi,
     missing_debug_implementations
 )]
+#![warn(rust_2024_compatibility)]
+#![allow(incomplete_features)]
 #![feature(
     lang_items, 
     decl_macro, 
@@ -24,7 +26,13 @@
     const_range, 
     const_destruct,
     abi_x86_interrupt,
-    debug_closure_helpers
+    debug_closure_helpers,
+    c_size_t,
+    layout_for_ptr,
+    allocator_api,
+    lazy_type_alias,
+    ptr_metadata,
+    thread_local
 )]
 
 use alloc::boxed::Box;
@@ -32,7 +40,7 @@ use cfg_if::cfg_if;
 
 extern crate alloc;
 
-use crate::{c_lib::{BootInfoC, bit_flags::BitFlags}, log::{info, warn}, text::println, lib_alloc::init_heap};
+use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, lib_alloc::init_heap, log::{info, warn}, text::println};
 
 
 /// module for panicking
@@ -68,6 +76,7 @@ cfg_if::cfg_if! {
 
 macro feature_missing {
     ($feature:ident) => {
+        libc::set_errno(7);
         panic!("The feature `{}` is disabled, but is required for Ion OS.\n\nCaused By:\n    The System does not meet the minimum requirements.", stringify!($feature));
     },
     ($feature:ident, optional) => {
@@ -186,7 +195,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
         }
     }
 
-    
+
     // Read the pointer
     // Safety: the pointer is guaranteed always to be valid, as this is passed in from C. other calls
     // Violate the unsafe precondition.
@@ -197,23 +206,20 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     serial_println!("{:?}", boot_info);
 
     let boot_info = boot_info.unwrap_or_else(|e| {
+        libc::set_errno(6);
         panic!("Invalid Boot Info:\n {e:#?}")
     }).into_rust();
 
-    
-    
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
     
-    let _ptr = boot_info.multiboot_info.into_inner().as_ref().unwrap();
-
-    
+    let _ptr = unsafe { boot_info.multiboot_info.into_inner().as_ref().unwrap() };
 
     // TODO: load boot data here into global var
 
     // allocation
 
-    let mut mapper = mem::init();
-    let mut f_alloc = mem::BootInfoFrameAllocator::init(boot_info.mem_map_addr);
+    let mut mapper = unsafe { mem::init() };
+    let mut f_alloc = unsafe { mem::BootInfoFrameAllocator::init(boot_info.mem_map_addr) };
 
     init_heap(&mut mapper, &mut f_alloc)
         .expect("Heap Initialization Failed");
@@ -236,6 +242,8 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
                 &lib_alloc::tests::test_large_alloc,
                 &lib_alloc::tests::test_freed_mem_used,
                 &lib_alloc::tests::test_alloc_tools,
+                // C Lib / LibC
+                &c_lib::libc::mem::test_malloc
             ]);
             panic!("End of tests; you can now exit.");
         } else {
