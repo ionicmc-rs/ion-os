@@ -3,6 +3,8 @@ use core::fmt;
 use crate::text::{Color, print, println, query_print_color, set_print_color};
 
 /// Log levels
+/// 
+/// Ideally, you would use the logging macros [`info`], [`trace`], [`debug`], [`error`], and [`warn`]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Level {
     /// Trace log

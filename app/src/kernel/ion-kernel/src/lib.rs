@@ -40,7 +40,7 @@ use cfg_if::cfg_if;
 
 extern crate alloc;
 
-use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, lib_alloc::init_heap, log::{info, warn}, text::println};
+use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, log::{info, trace, warn}, text::println};
 
 
 /// module for panicking
@@ -50,7 +50,6 @@ pub mod c_lib;
 /// module for printing to the VGA Buffer.
 pub mod text;
 pub mod test;
-/// module for initializing the Kernel.
 pub mod init;
 /// module for handling interrupts.
 pub mod interrupts;
@@ -184,18 +183,6 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 
     serial_println!("\nWelcome User of QEMU! Thank you for using Ion OS");
 
-    // initialize first to catch page faults/double faults
-    match init::init() {
-        Ok(()) => info!("Initialized Ion OS."),
-        Err(e) => {
-            println!("Handling Err...\n{e:#?}");
-            if e.is_fatal() {
-                panic!("Error while initializing Ion OS: {e}")
-            }
-        }
-    }
-
-
     // Read the pointer
     // Safety: the pointer is guaranteed always to be valid, as this is passed in from C. other calls
     // Violate the unsafe precondition.
@@ -212,17 +199,22 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
     
+    // FIXME(asm): this tag is currently always corrupt
     let _ptr = unsafe { boot_info.multiboot_info.into_inner().as_ref().unwrap() };
 
+    match init::init(boot_info) {
+        Ok(()) => info!("Initialized Ion OS."),
+        Err(e) => {
+            trace!("Handling Init Err: {e}");
+            if e.is_fatal() {
+                panic!("Error while initializing Ion OS: {e}")
+            }
+        }
+    }
+
+
+
     // TODO: load boot data here into global var
-
-    // allocation
-
-    let mut mapper = unsafe { mem::init() };
-    let mut f_alloc = unsafe { mem::BootInfoFrameAllocator::init(boot_info.mem_map_addr) };
-
-    init_heap(&mut mapper, &mut f_alloc)
-        .expect("Heap Initialization Failed");
 
     serial_println!("Initialized");
 
