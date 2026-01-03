@@ -2,7 +2,7 @@
 
 use alloc::{string::String, vec::Vec};
 
-use crate::io::{Error, IoSlice, IoSliceMut, Read, Seek, Write};
+use crate::io::{BufRead, Error, IoSlice, IoSliceMut, Read, Seek, Write};
 
 /// An empty stream.
 /// 
@@ -61,6 +61,14 @@ impl Seek for Empty {
     }
 }
 
+impl BufRead for Empty {
+    fn fill_buf(&mut self) -> Result<&[u8]> {
+        Ok(&[])
+    }
+
+    fn consume(&mut self, _amt: usize) {}
+}
+
 /// Emulates writing, but discards the value.
 /// 
 /// this does not implement [`Read`]
@@ -77,6 +85,7 @@ impl Write for Sink {
     fn write_all_vectored(&mut self, _bufs: &[super::IoSlice<'_>]) -> super::Result<()> {
         Ok(())
     }
+
     fn write_fmt(&mut self, _args: core::fmt::Arguments<'_>) -> super::Result<()> {
         Ok(())
     }
@@ -124,14 +133,12 @@ impl<R: Read + ?Sized> Read for &mut R {
     
     
     fn is_endless(&self) -> bool {
-        false
+        (**self).is_endless()
     }
     
     fn size_hint(&self) -> Option<usize> {
-        None
-    }
-
-    
+        (**self).size_hint()
+    }    
 }
 impl<W: Write + ?Sized> Write for &mut W {
     #[inline]
@@ -223,3 +230,4 @@ impl Seek for Repeat {
         Ok(0) // this is fine as the reader is identical everywhere.
     }
 }
+

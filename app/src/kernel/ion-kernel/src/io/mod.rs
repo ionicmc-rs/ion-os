@@ -2,17 +2,17 @@
 //! 
 //! This similar to `std::io` in the fact it provides similar functionality, but the implementation details are quite different.
 //! # Features
-//! This module provides [`Read`], [`Write`], and [`Seek`], which are the basic functionalities of I/O.
+//! This module provides [`Read`], [`Write`], [`BufRead`] and [`Seek`], which are the basic functionalities of I/O.
 //! 
-//! Read:
+//! [`Read`]:
 //! - Read data.
 //! - Size hints
 //! 
-//! Write:
+//! [`Write`]:
 //! - Write data.
 //! - Usually implements [`Read`]
 //! 
-//! Seek:
+//! [`Seek`]:
 //! - move the internal cursor.
 
 pub mod read;
@@ -32,3 +32,5 @@ pub use tools::*;
 pub use write::*;
 #[allow(unused)]
 pub use seek::*;
+#[allow(unused)]
+pub use buf_read::*;
