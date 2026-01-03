@@ -32,7 +32,8 @@
     allocator_api,
     lazy_type_alias,
     ptr_metadata,
-    thread_local
+    thread_local,
+    const_convert
 )]
 
 use alloc::boxed::Box;
@@ -53,6 +54,7 @@ pub mod log;
 pub mod serial;
 pub mod mem;
 pub mod lib_alloc;
+pub mod io;
 
 
 cfg_if::cfg_if! {

@@ -64,12 +64,12 @@ impl ErrCode {
         match self.0 {
             0 => Some("Ok"),
             1 => Some("Failed"),
-            2 => Some("Memory Corruption"),
+            2 => Some("Out Of Memory"),
             3 => Some("CPU Exception"),
             4 => Some("Process Failure"),
             5 => Some("Allocation Failure"),
             6 => Some("Invalid Input"),
-            7 => Some("Missing Feature"),
+            7 => Some("Unsupported"),
             _ => None
         }
     }
