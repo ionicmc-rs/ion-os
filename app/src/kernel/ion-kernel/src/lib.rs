@@ -36,7 +36,6 @@
     const_convert
 )]
 
-use alloc::boxed::Box;
 use cfg_if::cfg_if;
 
 extern crate alloc;
@@ -212,12 +211,11 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 
     serial_println!("Initialized");
 
-    _ = Box::new(41);
-
     cfg_if! {
         if #[cfg(feature = "test")] {
             run_tests(&[
                 // all tests go here
+
                 // control, test for tests
                 &trivial_assertion,
                 // interrupts
