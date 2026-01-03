@@ -25,15 +25,35 @@ typedef struct {
 
 // Forward declaration of Rust entry
 extern void rust_kernel_entry(const ValidatedBootInfo* boot_info);
+extern int* __errno_location();
 
 // Validation function
 static bool validate_boot_info(const BootInfo* bi) {
-    if (bi->multiboot_magic != 0x36d76289) return false;
-    if (bi->page_table_base == 0 || (bi->page_table_base & 0xFFF) != 0) return false;
-    if (bi->stack_top == 0 || (bi->stack_top & 0xF) != 0) return false;
-    if (bi->kernel_entry == 0) return false;
-    if (bi->framebuffer_addr == 0 ) return false;
-    if (bi->memory_map_addr == 0) return false;
+    int* errno = __errno_location();
+    if (bi->multiboot_magic != 0x36d76289) {
+        *errno = 7;
+        return false;
+    };
+    if (bi->page_table_base == 0 || (bi->page_table_base & 0xFFF) != 0) {
+        *errno = 2;
+        return false;
+    };
+    if (bi->stack_top == 0 || (bi->stack_top & 0xF) != 0) {
+        *errno = 2;
+        return false;
+    };
+    if (bi->kernel_entry == 0) {
+        *errno = 2;
+        return false;
+    }
+    if (bi->framebuffer_addr == 0 ) {
+        *errno = 2;
+        return false;
+    };
+    if (bi->memory_map_addr == 0) {
+        *errno = 2;
+        return false;
+    };
     return true;
 }
 

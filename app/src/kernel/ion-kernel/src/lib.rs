@@ -41,7 +41,7 @@ use cfg_if::cfg_if;
 
 extern crate alloc;
 
-use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, log::{info, trace, warn}, text::println};
+use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, io::Error, log::{info, trace, warn}, text::println};
 
 
 pub mod panic;
@@ -185,9 +185,10 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     
     serial_println!("{:?}", boot_info);
 
-    let boot_info = boot_info.unwrap_or_else(|e| {
+    let boot_info = boot_info.unwrap_or_else(|_| {
+        let err = Error::last_os_err();
         libc::set_errno(6);
-        panic!("Invalid Boot Info:\n {e:#?}")
+        panic!("Invalid Boot Info: {err}")
     }).into_rust();
 
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);

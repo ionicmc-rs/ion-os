@@ -8,7 +8,7 @@ static mut ERRNO: i32 = 0;
 #[unsafe(no_mangle)]
 #[allow(static_mut_refs)]
 pub extern "C" fn __errno_location() -> *mut i32 {
-    unsafe { &mut ERRNO }
+   &raw mut ERRNO 
 }
 
 use core::{ffi::{CStr, c_char}, ops::Deref};
@@ -64,7 +64,7 @@ impl ErrCode {
         match self.0 {
             0 => Some("Ok"),
             1 => Some("Failed"),
-            2 => Some("Out Of Memory"),
+            2 => Some("Memory Error"),
             3 => Some("CPU Exception"),
             4 => Some("Process Failure"),
             5 => Some("Allocation Failure"),
