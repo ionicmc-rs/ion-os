@@ -1,6 +1,6 @@
 use core::sync::atomic::Ordering;
 
-use crate::{interrupts::pic8259::handlers::notify, serial_println, thread::{INIT, NEED_RESCHED, SCHED, ThreadState, switch_interrupt_context_raw}};
+use crate::{interrupts::pic8259::handlers::notify, serial::dbg, thread::{INIT, NEED_RESCHED, SCHED, ThreadState, switch_interrupt_context_raw}};
 
 /// Naked assembly entry. Saves volatile registers, calls `timer_isr_handler`,
 /// restores registers and iretq if the handler returns (no switch).
@@ -44,11 +44,11 @@ pub unsafe extern "C" fn timer_isr_entry() {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn b_log() {
-    serial_println!("pushed registers.");
+    dbg::str("pushed registers");
 }
 
 pub extern "C" fn a_log() {
-    serial_println!("returning from timer")
+    dbg::str("returning from timer interrupt.");
 }
 
 /// Rust-side handler called from the naked ISR entry.
@@ -64,11 +64,11 @@ pub extern "C" fn timer_isr_handler() {
     // This mirrors your previous logic but runs from a non-compiler-managed frame.
     unsafe {
         if NEED_RESCHED.swap(false, Ordering::Acquire) && INIT.load(Ordering::Relaxed) {
-            serial_println!("switching stack now.");
+            dbg::str("switching stack now.");
             let me = match SCHED.current_id {
                 Some(id) => id,
                 None => {
-                    serial_println!("Nothing to switch to.");
+                    dbg::str("Nothing to switch to.");
                     notify!(unsafe Timer);
                     return;
                 }, // nothing to preempt
@@ -76,7 +76,7 @@ pub extern "C" fn timer_isr_handler() {
 
             let next = SCHED.pick_next_ready(me);
             if next != me {
-                serial_println!("Found next");
+                dbg::str("Found next");
                 // mark current ready and re-enqueue
                 {
                     let me_tcb = SCHED.tcb.get_mut(&me).unwrap();
@@ -97,7 +97,7 @@ pub extern "C" fn timer_isr_handler() {
                 let rip = unsafe { *rsp.add(0) };
                 let cs  = unsafe { *rsp.add(1) };
                 let rf  = unsafe { *rsp.add(2) };
-                serial_println!("next frame: RIP={:#x} CS={:#x} RFLAGS={:#x}", rip, cs as u16, rf);
+                dbg::fmt(format_args!("next frame: RIP={:#x} CS={:#x} RFLAGS={:#x}", rip, cs as u16, rf));
 
                 let old_sp_ptr: *mut *mut u8 = &mut SCHED.tcb.get_mut(&me).unwrap().stack_ptr;
                 // Call the naked iretq switcher. This will not return.

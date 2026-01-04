@@ -23,6 +23,7 @@
 use uart_16550::SerialPort;
 use spin::Mutex;
 use lazy_static::lazy_static;
+use x86_64::instructions::interrupts;
 
 lazy_static! {
     /// Serial Port for Standard Output
@@ -36,20 +37,23 @@ lazy_static! {
     };
 }
 
+
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
-    use core::fmt::Write;
-    use x86_64::instructions::interrupts;
-
     // Even though `write_fmt` always returns `Ok(())`, we are better off ignoring the value instead of
     // panicking.
     //
     // this also must run without interrupts, as some of our interrupt handlers print to Serial, 
     // which could cause a deadlock if we are already printing. see 
     // https://os.phil-opp.com/hardware-interrupts/#provoking-a-deadlock
-    let _ = interrupts::without_interrupts(|| {
-        SERIAL1.lock().write_fmt(args)
-    });
+    // note: we now use another api.
+
+    // new API
+    use core::fmt::Write;
+    interrupts::without_interrupts(|| {
+        let mut bs = BasicSerial;
+        let _ = write!(&mut bs, "{args}");
+    })
 }
 
 /// Prints to the host through the serial interface.
@@ -63,14 +67,26 @@ macro_rules! serial_print {
 /// Prints to the host through the serial interface, appending a newline.
 #[macro_export]
 macro_rules! serial_println {
-    () => ($crate::serial_print!("\n"));
-    ($fmt:expr_2021) => ($crate::serial_print!(concat!($fmt, "\n")));
-    ($fmt:expr_2021, $($arg:tt)*) => ($crate::serial_print!(
-        concat!($fmt, "\n"), $($arg)*))
+    () => {
+        $crate::serial::_print(format_args!("\n"))
+    };
+    ($($arg:tt)*) => {
+        $crate::serial::_print(format_args!("{}\n", format_args!($($arg)*)))
+    };
 }
 
+struct BasicSerial;
+
+impl core::fmt::Write for BasicSerial {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        dbg::str(s);
+        Ok(())
+    }
+}
 /// base form for serial prints
 pub mod dbg {
+    use core::fmt::Write as _;
+
     /// print a single byte using asm
     /// 
     /// always works
@@ -78,11 +94,18 @@ pub mod dbg {
     pub fn byte(b: u8) {
         unsafe { core::arch::asm!("out dx, al", in("dx") 0xE9u16, in("al") b); }
     }
-    /// print a str to asm
+    /// print a str using asm
     /// 
     /// always works
     pub fn str(s: &str) {
-        for &b in s.as_bytes(){ byte(b); }
+        for &b in s.as_bytes() { byte(b); }
+    }
+
+    /// Writes arguments to serial
+    /// 
+    /// always works
+    pub fn fmt(fmt: core::fmt::Arguments) {
+        let _ = super::BasicSerial.write_fmt(fmt);
     }
 }
 
