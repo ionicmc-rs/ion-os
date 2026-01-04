@@ -6,7 +6,7 @@
 
 use crate::{c_lib::libc, interrupts::pic8259::InterruptIndex, println, serial_println};
 use lazy_static::lazy_static;
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+use x86_64::{VirtAddr, structures::idt::{InterruptDescriptorTable, InterruptStackFrame}};
 
 macro set_index($idt:expr_2021, $($index:ident => $handler:expr_2021),*) {
     $(
@@ -24,10 +24,17 @@ lazy_static! {
             idt.double_fault.set_handler_fn(double_fault::double_fault)
                 .set_stack_index(double_fault::DOUBLE_FAULT_IST_INDEX);
         }
+        idt.general_protection_fault.set_handler_fn(gp::protection_fault);
         // Hardware Interrupts.
+
+        unsafe {
+            // due to timer being the core component to threads, it requires special handling.
+            idt[InterruptIndex::Timer.as_u8()]
+                .set_handler_addr(VirtAddr::new(timer::timer_isr_entry as *const () as u64));
+        }
+
         set_index!(
             idt,
-            Timer => pic8259::handlers::timer,
             Keyboard => keyboard::keyboard_interrupt_handler
         );
 
@@ -40,7 +47,7 @@ pub fn init_interrupt_operations() {
     gdt::init();
     IDT.load();
     pic8259::init();
-    x86_64::instructions::interrupts::enable();
+    // x86_64::instructions::interrupts::enable(); // enabled when we begin threading.
     serial_println!("Initialized interrupt operations properly");
 }
 
@@ -70,3 +77,5 @@ pub mod pic8259;
 pub mod keyboard;
 mod double_fault;
 mod page_fault;
+mod timer;
+mod gp;

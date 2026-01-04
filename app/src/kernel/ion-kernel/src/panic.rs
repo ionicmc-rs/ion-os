@@ -15,6 +15,8 @@ use crate::{c_lib::libc::{error::get_errno, perror}, hlt_loop, serial_println, t
 /// ```
 #[panic_handler]
 pub fn panic(info: &PanicInfo) -> ! {
+    x86_64::instructions::interrupts::disable();
+
     let message = info.message();
     let loc = info.location();
     let unwind = info.can_unwind();

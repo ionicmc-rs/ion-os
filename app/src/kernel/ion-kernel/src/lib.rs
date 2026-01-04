@@ -14,7 +14,7 @@
     missing_abi,
     missing_debug_implementations
 )]
-#![warn(rust_2024_compatibility)]
+#![deny(rust_2024_compatibility)]
 #![allow(incomplete_features)]
 #![feature(
     lang_items, 
@@ -40,7 +40,7 @@ use cfg_if::cfg_if;
 
 extern crate alloc;
 
-use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, io::Error, log::{info, trace, warn}, text::println};
+use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, io::Error, log::{info, trace, warn}, text::println, thread::{SCHED, rt}};
 
 
 pub mod panic;
@@ -54,7 +54,7 @@ pub mod serial;
 pub mod mem;
 pub mod lib_alloc;
 pub mod io;
-
+pub mod thread;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {
@@ -169,6 +169,7 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
 /// Do Not call - at all.
 /// # Safety
 /// The boot_info ptr must point to valid data.
+#[allow(static_mut_refs, unreachable_code)]
 #[unsafe(no_mangle)]
 #[cfg_attr(feature = "test", expect(unreachable_code, reason = "panics always occur at end of tests"))]
 pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
@@ -195,6 +196,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     // FIXME(asm): this tag is currently always corrupt
     let _ptr = unsafe { boot_info.multiboot_info.into_inner().as_ref().unwrap() };
 
+    
     match init::init(boot_info) {
         Ok(()) => info!("Initialized Ion OS."),
         Err(e) => {
@@ -204,8 +206,10 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
             }
         }
     }
-
-
+    unsafe { rt::boot() }; // boot before interrupts are enabled.
+    let _hj = unsafe { SCHED.spawn(|| {
+        joiner_entry()
+    }, 8 * 1024) };
 
     // TODO: load boot data here into global var
 
@@ -235,7 +239,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
         }
     }
 
-
+    unsafe { rt::start() };
     hlt_loop()
 }
 
@@ -246,4 +250,65 @@ pub fn hlt_loop() -> ! {
     loop {
         x86_64::instructions::hlt();
     }
+}
+
+// ================================
+// Worker threads
+// ================================
+
+#[allow(unused, clippy::never_loop)]
+fn worker_a() -> u64 {
+    let mut acc = 0u64;
+    for i in 0..1000 {
+        acc = acc.wrapping_add(i);
+        // cooperative yield to let scheduler run others
+        unsafe { rt::yield_now(); }
+    }
+    acc
+}
+
+fn worker_b() -> u64 {
+    let mut acc = 1u64;
+    for i in 1..500 {
+        acc = acc.wrapping_mul(i as u64);
+        if i % 50 == 0 {
+            unsafe { rt::yield_now(); }
+        }
+    }
+    acc
+}
+
+// ================================
+// Joiner thread
+// ================================
+
+#[allow(static_mut_refs)]
+extern "C" fn joiner_entry() {
+    unsafe {
+        // Spawn two workers that return u64
+        let h1 = SCHED.spawn(worker_a, 32 * 1024);
+        let h2 = SCHED.spawn(worker_b, 32 * 1024);
+
+        // Block until both finish
+        let r1 = h1.join();
+        let r2 = h2.join();
+
+        // Replace with your kernel logging
+        info!("worker_a={r1}, worker_b={r2}");
+
+        // Terminate this thread
+        SCHED.finish_current_and_wake_joiners();
+    }
+}
+
+// ================================
+// Boot and start
+// ================================
+
+/// # Safety
+/// its safe.
+#[allow(static_mut_refs)]
+pub unsafe fn demo_boot() -> ! {
+
+    unsafe { rt::start() }
 }
