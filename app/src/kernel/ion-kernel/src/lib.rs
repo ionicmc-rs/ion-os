@@ -40,7 +40,7 @@ use cfg_if::cfg_if;
 
 extern crate alloc;
 
-use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, io::Error, log::{info, trace, warn}, text::println, thread::{SCHED, rt}};
+use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, io::Error, log::{info, trace, warn}, text::println, thread::rt};
 
 
 pub mod panic;
@@ -200,17 +200,22 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     match init::init(boot_info) {
         Ok(()) => info!("Initialized Ion OS."),
         Err(e) => {
-            trace!("Handling Init Err: {e}");
-            if e.is_fatal() {
-                panic!("Error while initializing Ion OS: {e}")
-            }
+            x86_64::instructions::interrupts::without_interrupts(|| {
+                trace!("Handling Init Err: {e}");
+                if e.is_fatal() {
+                    panic!("Error while initializing Ion OS: {e}")
+                }
+            })
         }
     }
-    unsafe { rt::boot() }; // boot before interrupts are enabled.
-    let _hj = unsafe { SCHED.spawn(|| {
-        joiner_entry()
-    }, 8 * 1024) };
+    // thread::spawn(|| {
+    //     let thread = thread::spawn(|| {
+    //         42
+    //     }, 1024);
+    //     assert_eq!(thread.join(), 42);
+    // }, 4 * 1024);
 
+    
     // TODO: load boot data here into global var
 
     serial_println!("Initialized");
@@ -250,65 +255,4 @@ pub fn hlt_loop() -> ! {
     loop {
         x86_64::instructions::hlt();
     }
-}
-
-// ================================
-// Worker threads
-// ================================
-
-#[allow(unused, clippy::never_loop)]
-fn worker_a() -> u64 {
-    let mut acc = 0u64;
-    for i in 0..1000 {
-        acc = acc.wrapping_add(i);
-        // cooperative yield to let scheduler run others
-        unsafe { rt::yield_now(); }
-    }
-    acc
-}
-
-fn worker_b() -> u64 {
-    let mut acc = 1u64;
-    for i in 1..500 {
-        acc = acc.wrapping_mul(i as u64);
-        if i % 50 == 0 {
-            unsafe { rt::yield_now(); }
-        }
-    }
-    acc
-}
-
-// ================================
-// Joiner thread
-// ================================
-
-#[allow(static_mut_refs)]
-extern "C" fn joiner_entry() {
-    unsafe {
-        // Spawn two workers that return u64
-        let h1 = SCHED.spawn(worker_a, 32 * 1024);
-        let h2 = SCHED.spawn(worker_b, 32 * 1024);
-
-        // Block until both finish
-        let r1 = h1.join();
-        let r2 = h2.join();
-
-        // Replace with your kernel logging
-        info!("worker_a={r1}, worker_b={r2}");
-
-        // Terminate this thread
-        SCHED.finish_current_and_wake_joiners();
-    }
-}
-
-// ================================
-// Boot and start
-// ================================
-
-/// # Safety
-/// its safe.
-#[allow(static_mut_refs)]
-pub unsafe fn demo_boot() -> ! {
-
-    unsafe { rt::start() }
 }

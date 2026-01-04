@@ -5,6 +5,7 @@
 //! - GDT and TSS tables
 //! - PIC8259 interrupts.
 //! - Keyboard handler.
+//! - Threads.
 //! 
 //! # Errors
 //! Currently, initialization is infallible, but this is subject to change, and can cause breaking changes
@@ -18,7 +19,7 @@ use core::fmt::Display;
 
 use x86_64::structures::paging::{Size4KiB, mapper::MapToError};
 
-use crate::{c_lib::BootInfo, interrupts, lib_alloc::init_heap, mem, serial_println};
+use crate::{c_lib::BootInfo, interrupts, lib_alloc::init_heap, mem, serial_println, thread::rt};
 
 /// An error while Initializing the Kernel
 /// 
@@ -69,6 +70,7 @@ impl From<MapToError<Size4KiB>> for InitErr {
 /// - GDT and TSS tables
 /// - PIC8259 interrupts.
 /// - Keyboard handler.
+/// - Threads.
 /// 
 /// and the rest is TODO.
 /// # Errors
@@ -86,7 +88,9 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
 
     init_heap(&mut mapper, &mut f_alloc)?;
 
-    // interrupts::enable();
+    x86_64::instructions::interrupts::enable();
+
+    unsafe { rt::boot(); }
 
     serial_println!("Initializing Done.");
     Ok(())
