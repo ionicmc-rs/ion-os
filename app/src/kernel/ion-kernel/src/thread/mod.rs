@@ -438,6 +438,9 @@ impl Scheduler {
         unsafe { 
             // dump_and_assert_next_frame(new_sp_ptr);
             // x86_64::instructions::interrupts::enable();
+            INIT.store(true, Ordering::Relaxed);
+            // the chance of an interrupt happening here is extremely low - but not zero.
+            // FIXME(threads): interrupts happen here causing failure
             switch_interrupt_context_raw(old_sp_ptr, new_sp_ptr);
             unreachable_unchecked();
         }
@@ -595,7 +598,7 @@ pub mod rt {
     /// Must be called once at kernel entry before enabling interrupts.
     pub unsafe fn boot() {
         let id = 0;
-
+        
         let bootstrap = Thread {
             id,
             state: ThreadState::Running,
@@ -633,3 +636,10 @@ pub mod rt {
 pub static mut SCHED: Scheduler = Scheduler::new();
 pub static NEED_RESCHED: AtomicBool = AtomicBool::new(false);
 pub static INIT: AtomicBool = AtomicBool::new(false);
+
+// helpers
+
+#[allow(static_mut_refs)]
+pub fn spawn<T: Send + 'static, F: Fn() -> T + Send + 'static>(f: F, stack: usize) -> JoinHandle<T> {
+    unsafe { SCHED.spawn(f, stack) }
+}

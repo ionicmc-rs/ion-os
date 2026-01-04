@@ -3,6 +3,8 @@
 //! These are meant for users, but we plan to add a `serial_log`
 use core::fmt;
 
+use x86_64::instructions::interrupts;
+
 use crate::text::{Color, print, println, query_print_color, set_print_color};
 
 /// Log levels
@@ -26,25 +28,27 @@ pub enum Level {
 #[inline]
 #[track_caller]
 pub fn log(level: Level, args: fmt::Arguments) {
-    if !cfg!(debug_assertions) && level == Level::Debug {
-        return;
-    }
-    let loc = core::panic::Location::caller();
-    let (fore, back) = query_print_color().tupled();
-    print!("[");
-    let col = match level {
-        Level::Debug => Color::Green,
-        Level::Error => Color::LightRed,
-        Level::Trace => Color::Magenta,
-        Level::Info => Color::LightCyan,
-        Level::Warn => Color::Yellow
-    };
-    set_print_color(col, Color::Black);
-
-    print!("{level:?}");
-
-    set_print_color(fore, back);
-    println!(" {}] {}", loc, args);
+    interrupts::without_interrupts(|| {
+        if !cfg!(debug_assertions) && level == Level::Debug {
+            return;
+        }
+        let loc = core::panic::Location::caller();
+        let (fore, back) = query_print_color().tupled();
+        print!("[");
+        let col = match level {
+            Level::Debug => Color::Green,
+            Level::Error => Color::LightRed,
+            Level::Trace => Color::Magenta,
+            Level::Info => Color::LightCyan,
+            Level::Warn => Color::Yellow
+        };
+        set_print_color(col, Color::Black);
+    
+        print!("{level:?}");
+    
+        set_print_color(fore, back);
+        println!(" {}] {}", loc, args);
+    })
 }
 
 /// Info log

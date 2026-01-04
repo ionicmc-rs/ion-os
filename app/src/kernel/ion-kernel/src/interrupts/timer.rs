@@ -1,6 +1,6 @@
 use core::sync::atomic::Ordering;
 
-use crate::{interrupts::pic8259::handlers::notify, serial_println, thread::{NEED_RESCHED, SCHED, ThreadState, switch_interrupt_context_raw}};
+use crate::{interrupts::pic8259::handlers::notify, serial_println, thread::{INIT, NEED_RESCHED, SCHED, ThreadState, switch_interrupt_context_raw}};
 
 /// Naked assembly entry. Saves volatile registers, calls `timer_isr_handler`,
 /// restores registers and iretq if the handler returns (no switch).
@@ -23,7 +23,6 @@ pub unsafe extern "C" fn timer_isr_entry() {
         // Align stack if needed (we assume it is already aligned by hardware).
         // Call the Rust handler (C ABI)
         "call {handler}",
-        "call {a_log}",
         // If handler returns, restore volatile regs and iretq (normal interrupt return).
         "pop r11",
         "pop r10",
@@ -35,6 +34,7 @@ pub unsafe extern "C" fn timer_isr_entry() {
         "pop rcx",
         "pop rax",
         // Return from interrupt normally (handler returned and did not switch).
+        "call {a_log}",
         "iretq",
         handler = sym timer_isr_handler,
         b_log = sym b_log,
@@ -48,7 +48,7 @@ pub extern "C" fn b_log() {
 }
 
 pub extern "C" fn a_log() {
-    serial_println!("handler returned.")
+    serial_println!("returning from timer")
 }
 
 /// Rust-side handler called from the naked ISR entry.
@@ -57,18 +57,19 @@ pub extern "C" fn a_log() {
 #[unsafe(no_mangle)]
 #[allow(static_mut_refs, unused_unsafe)]
 pub extern "C" fn timer_isr_handler() {
-    serial_println!("switching stack now.");
     // Mark need-resched
     NEED_RESCHED.store(true, Ordering::Release);
-
+    
     // If we need to reschedule, pick next and switch.
     // This mirrors your previous logic but runs from a non-compiler-managed frame.
     unsafe {
-        if NEED_RESCHED.swap(false, Ordering::Acquire) {
+        if NEED_RESCHED.swap(false, Ordering::Acquire) && INIT.load(Ordering::Relaxed) {
+            serial_println!("switching stack now.");
             let me = match SCHED.current_id {
                 Some(id) => id,
                 None => {
                     serial_println!("Nothing to switch to.");
+                    notify!(unsafe Timer);
                     return;
                 }, // nothing to preempt
             };
@@ -89,7 +90,6 @@ pub extern "C" fn timer_isr_handler() {
 
                 // Sanity checks before switching: alignment and frame contents
                 let new_sp_ptr: *const *mut u8 = &SCHED.tcb.get(&next).unwrap().stack_ptr;
-                serial_println!("getting rsp (new gotten)");
                 let rsp = unsafe { *new_sp_ptr } as *const u64;
                 debug_assert_eq!((rsp as usize) & 0xF, 0, "iretq entry must be 16-byte aligned");
 
