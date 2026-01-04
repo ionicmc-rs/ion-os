@@ -60,8 +60,6 @@ impl InterruptIndex {
 
 /// Contains the basic handlers for Hardware Interrupts.
 pub mod handlers {
-    use x86_64::structures::idt::InterruptStackFrame;
-
     /// Notifies that the interrupt handler has ended.
     /// 
     /// Requires an explicit `unsafe` keyword.
@@ -72,12 +70,5 @@ pub mod handlers {
                     .notify_end_of_interrupt(super::InterruptIndex::$name.as_u8());
             }
         }
-    }
-
-    /// Intel 8253 timer interrupt.
-    /// 
-    /// simply notifies PIC that the interrupt was handled, but this is subject to change!
-    pub extern "x86-interrupt" fn timer(_frame: InterruptStackFrame) {
-        notify!(unsafe Timer);
     }
 }

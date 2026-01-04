@@ -9,7 +9,7 @@ use buddy_system_allocator::LockedHeap;
 pub const HEAP_START: usize = 0x_4444_4444_0000;
 
 /// The Heap's Size
-pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
+pub const HEAP_SIZE: usize = (500 * 1024) * 2; // 500 KiB (half a MiB)
 
 /// The Heap's End.
 /// 
