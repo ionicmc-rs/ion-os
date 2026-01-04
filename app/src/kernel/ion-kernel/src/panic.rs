@@ -3,7 +3,7 @@
 //! see [`core::panicking`]
 use core::panic::PanicInfo;
 
-use crate::{c_lib::libc::{error::get_errno, perror}, hlt_loop, serial_println, text::{Color, println, set_print_color}};
+use crate::{hlt_loop, serial_println};
 
 /// This function is called on panic.
 /// 
@@ -14,46 +14,58 @@ use crate::{c_lib::libc::{error::get_errno, perror}, hlt_loop, serial_println, t
 /// panic!("Abort Ship!");
 /// ```
 #[panic_handler]
+#[allow(unused_must_use)]
 pub fn panic(info: &PanicInfo) -> ! {
-    x86_64::instructions::interrupts::disable();
+    serial_println!("{info}");
+    hlt_loop();
+    // use core::fmt::Write;
+    // x86_64::instructions::interrupts::disable();
+    // let message = info.message();
+    // let loc = info.location();
+    // let unwind = info.can_unwind();
+    // if let Some(loc) = loc {
+    //     if unwind {
+    //         serial_println!("Unwinding panic caused at {}: ", loc);
+    //     } else {
+    //         serial_println!("abort: panic caused at {}: ", loc);
+    //     }
+    // } else if unwind {
+    //     serial_println!("Unwinding panic caused at unknown location: ");
+    // } else {
+    //     serial_println!("abort: panic caused at unknown location: ");
+    // }
 
-    let message = info.message();
-    let loc = info.location();
-    let unwind = info.can_unwind();
-    set_print_color(Color::LightCyan, Color::Black);
-    if let Some(loc) = loc {
-        if unwind {
-            println!("Unwinding panic caused at {loc}: ");
-            serial_println!("Unwinding panic caused at {}: ", loc);
-        } else {
-            println!("abort: panic caused at {loc}: ");
-            serial_println!("abort: panic caused at {}: ", loc);
-        }
-    } else if unwind {
-        println!("Unwinding panic caused at unknown location: ");
-        serial_println!("Unwinding panic caused at unknown location: ");
-    } else {
-        println!("abort: panic caused at unknown location: ");
-        serial_println!("abort: panic caused at unknown location: ");
-    }
-    set_print_color(Color::White, Color::Black);
-    println!("{message}");
-    serial_println!("{}", message);
-    set_print_color(Color::LightCyan, Color::Black);
-    let err_code = get_errno();
-    let c = c"=> Last OS Error";
-    perror(c.as_ptr().cast_mut());
-    if let Some(meaning) = err_code.meaning() {
-        let err_code = *err_code;
-        println!("=> Last OS Error: {} (os error {})", meaning, err_code);
-    } else {
-        let err_code = *err_code;
-        println!("=> Last OS Error: {}", err_code);
-    }
+    // serial_println!("{}", message);
+    // let c = c"=> Last OS Error";
+    // perror(c.as_ptr().cast_mut());
 
-    // Here we disable all things enabled
 
-    x86_64::instructions::interrupts::disable();
-
-    hlt_loop()
+    // if let Some(mut wlock) = WRITER.try_lock() {
+    //     let message = info.message();
+    //     let loc = info.location();
+    //     let unwind = info.can_unwind();
+    //     if let Some(loc) = loc {
+    //         if unwind {
+    //             writeln!(wlock, "Unwinding panic caused at {loc}: ");
+    //         } else {
+    //             writeln!(wlock, "abort: panic caused at {loc}: ");
+    //         }
+    //     } else if unwind {
+    //         writeln!(wlock, "Unwinding panic caused at unknown location: ");
+    //     } else {
+    //         writeln!(wlock, "abort: panic caused at unknown location: ");
+    //     }
+    //     writeln!(wlock, "{message}");
+    //     let err_code = get_errno();
+    //     if let Some(meaning) = err_code.meaning() {
+    //         let err_code = *err_code;
+    //         writeln!(wlock, "=> Last OS Error: {} (os error {})", meaning, err_code);
+    //     } else {
+    //         let err_code = *err_code;
+    //         writeln!(wlock, "=> Last OS Error: {}", err_code);
+    //     }
+    
+    //     drop(wlock);
+    // }
+    // hlt_loop()
 }

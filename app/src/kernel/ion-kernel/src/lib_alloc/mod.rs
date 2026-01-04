@@ -2,14 +2,13 @@
 //! 
 //! Typically, you dont use this module, you use [`alloc`]
 use buddy_system_allocator::LockedHeap;
-
 // Heap Defs.
 
 /// The Beginning of the Heap.
 pub const HEAP_START: usize = 0x_4444_4444_0000;
 
 /// The Heap's Size
-pub const HEAP_SIZE: usize = (500 * 1024) * 2; // 500 KiB (half a MiB)
+pub const HEAP_SIZE: usize = 1000 * 1024; // 1 MiB by default.
 
 /// The Heap's End.
 /// 

@@ -40,7 +40,7 @@ use cfg_if::cfg_if;
 
 extern crate alloc;
 
-use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, io::Error, log::{info, trace, warn}, text::println, thread::rt};
+use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, io::Error, log::{trace, warn}, text::println, thread::rt};
 
 
 pub mod panic;
@@ -198,7 +198,9 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 
     
     match init::init(boot_info) {
-        Ok(()) => info!("Initialized Ion OS."),
+        Ok(()) => {
+            // don't print from here on out, only in threads.
+        },
         Err(e) => {
             x86_64::instructions::interrupts::without_interrupts(|| {
                 trace!("Handling Init Err: {e}");
@@ -208,12 +210,12 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
             })
         }
     }
-    // thread::spawn(|| {
-    //     let thread = thread::spawn(|| {
-    //         42
-    //     }, 1024);
-    //     assert_eq!(thread.join(), 42);
-    // }, 4 * 1024);
+    thread::spawn(|| {
+        let thread = thread::spawn(|| {
+            42
+        }, 1024);
+        assert_eq!(thread.join(), 42);
+    }, 4 * 1024);
 
     
     // TODO: load boot data here into global var
@@ -239,12 +241,13 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
                 &c_lib::libc::mem::test_malloc
             ]);
             panic!("End of tests; you can now exit.");
-        } else {
-            println!("Not Testing");
         }
     }
 
+    // from this point onwards - execution is passed to interrupt handlers and whatever threads we have now (and whatever threads we make.)
     unsafe { rt::start() };
+    
+    // in case we ever accidentally come back
     hlt_loop()
 }
 

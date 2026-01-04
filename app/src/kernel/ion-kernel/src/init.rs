@@ -88,7 +88,7 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
 
     init_heap(&mut mapper, &mut f_alloc)?;
 
-    x86_64::instructions::interrupts::enable();
+    // x86_64::instructions::interrupts::enable();
 
     unsafe { rt::boot(); }
 

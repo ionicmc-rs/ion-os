@@ -1,6 +1,9 @@
-use x86_64::{registers::control::Cr2, structures::idt::InterruptStackFrame};
+use x86_64::structures::idt::InterruptStackFrame;
 
-pub extern "x86-interrupt" fn protection_fault(frame: InterruptStackFrame, code: u64) {
-    let cr2 = Cr2::read();
-    panic!("General Protection Fault (Cr2: {cr2:?}): {code}\n{frame:#?}");
+use crate::{serial_println, test::exit};
+
+pub extern "x86-interrupt" fn protection_fault(_frame: InterruptStackFrame, _code: u64) {
+    x86_64::instructions::interrupts::disable();
+    serial_println!("General Protection Fault");
+    exit(crate::test::QemuExitCode::Failed)
 }

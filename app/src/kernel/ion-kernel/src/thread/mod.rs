@@ -9,6 +9,7 @@ use x86_64::registers::rflags::RFlags;
 use x86_64::structures::gdt::SegmentSelector;
 use core::cell::UnsafeCell;
 use core::hint::{self, unreachable_unchecked};
+use core::ptr;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 // ================================
@@ -103,12 +104,15 @@ impl Thread {
         // Align down to 16-byte boundary
         let aligned_top = (top as usize & !0xF) as *mut u8;
         serial_println!("initializing stack frame");
+        const RFLAGS_BASE: u64 = 0x0000_0000_0000_0002; // bit 1
+        const RFLAGS_IF:   u64 = 0x0000_0000_0000_0200; // interrupt flag
         let sp = unsafe {
             init_stack_frame(
                 aligned_top,
                 entry,
+                ptr::null_mut(),
                 SegmentSelector::new(1, x86_64::PrivilegeLevel::Ring0),
-                RFlags::INTERRUPT_FLAG,
+                RFlags::from_bits_truncate(RFLAGS_BASE | RFLAGS_IF),
             )
         };
         serial_println!("done");
@@ -128,6 +132,75 @@ impl Thread {
 // Initial stack frame and entry trampoline
 // ================================
 
+#[repr(C)]
+pub struct ThreadStartFrame {
+    // Callee-saved registers...
+    pub r15: u64, pub r14: u64, pub r13: u64, pub r12: u64, pub rbx: u64, pub rbp: u64,
+
+    // Entry arguments (immediately after the interrupt frame)
+    pub ctx: u64,        // pass first (will be pop rdi)
+    pub start_fn: u64,   // pass second (will be pop rax)
+
+    // Interrupt-return portion (bottom-most; popped by iretq)
+    pub rip: u64,
+    pub cs: u64,
+    pub rflags: u64,
+}
+
+impl ThreadStartFrame {
+    pub fn kernel(
+        start_fn: extern "C" fn(*mut ()) -> !,
+        ctx: *mut (),
+        cs: SegmentSelector,
+        rflags_bits: u64,
+        thread_entry_stub_raw: unsafe extern "C" fn(),
+    ) -> Self {
+        ThreadStartFrame {
+            r15: 0xDEADBEEFDEADBEEF, r14: 0xDEADBEEFDEADBEEF, r13: 0xDEADBEEFDEADBEEF,
+            r12: 0xDEADBEEFDEADBEEF, rbx: 0xDEADBEEFDEADBEEF, rbp: 0xDEADBEEFDEADBEEF,
+            ctx: ctx as u64,
+            start_fn: start_fn as *const () as u64,
+            rip: thread_entry_stub_raw as *const () as u64,
+            cs: (cs.0 as u64) & 0xFFFF,
+            rflags: rflags_bits,
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn write_volatile_to(self, mut top: *mut u8) -> *mut u8 {
+        top = ((top as usize) & !0xF) as *mut u8;
+
+        #[inline(always)]
+        unsafe fn push(mut sp: *mut u8, val: u64) -> *mut u8 {
+            sp = sp.sub(core::mem::size_of::<u64>());
+            (sp as *mut u64).write_volatile(val);
+            sp
+        }
+
+        // callee-saved
+        top = push(top, self.r15);
+        top = push(top, self.r14);
+        top = push(top, self.r13);
+        top = push(top, self.r12);
+        top = push(top, self.rbx);
+        top = push(top, self.rbp);
+
+        // interrupt-return portion (bottom-most)
+        top = push(top, self.rflags);
+        top = push(top, self.cs);
+        top = push(top, self.rip);
+
+        // arguments immediately after the frame, in order stub expects
+        top = push(top, 0); // pad
+        top = push(top, self.ctx);
+        top = push(top, self.start_fn);
+
+        // iretq entry must be 16n; after iretq pops 24 bytes, RSP%16==8; then two pops → entry sees RSP%16==8
+        debug_assert_eq!((top as usize) & 0xF, 0, "RSP must be 16n at iretq entry");
+        top
+    }
+}
+
 /// Initializes the stack frame for a new thread.
 /// Ensures iretq-compatible layout, correct alignment, and trailing padding.
 ///
@@ -137,46 +210,20 @@ impl Thread {
 /// - `cs` and `rflags` must be appropriate for kernel entry.
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe fn init_stack_frame(
-    mut top: *mut u8,
+    top: *mut u8,
     start_fn: extern "C" fn(*mut ()) -> !,
+    ctx: *mut (),
     cs: SegmentSelector,
     rflags: RFlags,
 ) -> *mut u8 {
-    use core::mem::size_of;
-    let q = size_of::<u64>();
-
-    // Align down to 16 bytes so the RIP slot we return will be 16n.
-    top = ((top as usize) & !0xF) as *mut u8;
-
-    // Place callee-saved placeholders (r15, r14, r13, r12, rbx, rbp)
-    for _ in 0..6 {
-        top = top.sub(q);
-        *(top as *mut u64) = 0xDEADBEEFDEADBEEF;
-    }
-
-    // Place start_fn and ctx (ctx filled later)
-    top = top.sub(q); // start_fn
-    *(top as *mut u64) = start_fn as usize as u64;
-
-    top = top.sub(q); // ctx
-    *(top as *mut u64) = 0;
-
-    // Fixed 8-byte padding for RSP alignment at start_fn entry (RSP % 16 == 8)
-    top = top.sub(q); // PAD
-    *(top as *mut u64) = 0u64;
-
-    // Interrupt frame: RFLAGS, CS, RIP (write in reverse so returned pointer points at RIP)
-    top = top.sub(q); // RFLAGS
-    *(top as *mut u64) = rflags.bits();
-    top = top.sub(q); // CS
-    *(top as *mut u64) = cs.0 as u64;
-    top = top.sub(q); // RIP
-    *(top as *mut u64) = thread_entry_stub_raw as *const () as u64;
-
-    // Ensure alignment invariant: returned pointer (RIP slot) must be 16n
-    debug_assert_eq!((top as usize) & 0xF, 0, "RSP must be 16n at iretq entry");
-
-    top
+    let frame = ThreadStartFrame::kernel(
+        start_fn,
+        ctx,
+        cs,
+        rflags.bits(),
+        thread_entry_stub_raw, // extern "C" fn() -> !
+    );
+    frame.write_volatile_to(top)
 }
 
 /// # Safety
@@ -186,28 +233,24 @@ pub unsafe extern "C" fn thread_entry_stub_raw() {
     core::arch::naked_asm!(
         r#"
         // Stack on entry (after iretq):
-        //   rsp -> [RIP popped by iretq already]
+        //          [RIP popped by iretq already]
         //          [CS popped]
         //          [RFLAGS popped]
-        //          [PAD]
+        //   rsp -> [PAD]
         //          [start_fn_ptr]
         //          [ctx_ptr]
         //          [callee-saved placeholders...]
         //
         // But our stub expects ctx then start_fn on the stack (pop rdi; pop rax).
+        pop rdi          // padding
         pop rdi          // rdi = ctx_ptr
         pop rax          // rax = start_fn_ptr
         jmp rax          // tail-call start_fn(ctx_ptr)
+
+        // if that fails (which it should never), trigger a double fault.
+        ud2
         "#
     );
-}
-
-#[inline(always)]
-pub unsafe fn thread_entry_stub() -> ! {
-    unsafe {
-        thread_entry_stub_raw();
-        core::hint::unreachable_unchecked()
-    }
 }
 
 // ================================
@@ -236,6 +279,8 @@ pub unsafe extern "C" fn switch_interrupt_context_raw(
 unsafe fn dump_and_assert_next_frame(new_sp_ptr: *const *mut u8) {
     let rsp = *new_sp_ptr as *const u64;
 
+    serial_println!("=== THREAD DUMP ===");
+
     // 1) Alignment
     debug_assert_eq!((rsp as usize) & 0xF, 0, "iretq entry must be 16-byte aligned");
 
@@ -244,16 +289,20 @@ unsafe fn dump_and_assert_next_frame(new_sp_ptr: *const *mut u8) {
     let cs  = *rsp.add(1);
     let rf  = *rsp.add(2);
     serial_println!("NEXT FRAME: RIP={:#018x} CS={:#06x} RFLAGS={:#018x}", rip, cs as u16, rf);
+    // manual printing
 
     // 3) Dump the words after the frame (ctx, start_fn, placeholders)
-    let ctx   = *rsp.add(3);
-    let start = *rsp.add(4);
+    let ctx   = *rsp.add(4);
+    let start = *rsp.add(5);
     serial_println!("AFTER FRAME: ctx={:#018x} start={:#018x}", ctx, start);
     
     // 4) Quick sanity checks
     debug_assert!(rip != 0 && rip != 0x4444_4444_4444_4444 && rip != 0xDEADBEEFDEADBEEF,
         "RIP looks like garbage; stack_ptr likely wrong or stack corrupted");
     debug_assert_eq!(cs as u16 & 0xFFF8, 1 << 3, "CS selector unexpected");
+    debug_assert!(is_heap_addr(ctx as usize));
+
+    serial_println!("=== END ===")
 }
 
 // Keep the old ret-based switcher around if you want to use it for special cooperative stacks.
@@ -313,6 +362,7 @@ impl<T: Send + 'static> JoinHandle<T> {
 // ================================
 
 use alloc::collections::BTreeMap;
+use crate::lib_alloc::is_heap_addr;
 use crate::{hlt_loop, serial_println};
 
 pub struct Scheduler {
@@ -388,7 +438,7 @@ impl Scheduler {
             use core::mem::size_of;
             let q = size_of::<u64>();
             let frame_words = 3 * q; // RIP, CS, RFLAGS
-            let pad = q;             // single 8-byte PAD inserted by init_stack_frame
+            let pad = q;             // single 8-byte PAD inserted by init_stack_frame.
 
             // ctx is at stack_ptr + frame_words + pad
             let ctx_slot = (thread.stack_ptr as usize + frame_words + pad) as *mut u64;
@@ -399,12 +449,15 @@ impl Scheduler {
             *ctx_slot = (&mut *ctx as *mut SpawnCtx<T>) as u64;
             serial_println!("set ctx slot");
             // Read back and sanity-check the start_fn and ctx we expect
+            serial_println!("reading start");
             let start_val = *start_slot;
+            serial_println!("read start");
             let ctx_val = *ctx_slot;
+            serial_println!("read ctx");
 
             debug_assert_eq!(start_val, start_with_ctx::<T> as *const () as u64, "start_fn mismatch in stack layout");
-            debug_assert!(ctx_val != 0, "ctx pointer is null");
-
+            debug_assert_ne!(ctx_val, 0, "ctx pointer is null");
+            serial_println!("assertions done.");
             // Bounds check: ensure stack_ptr lies within the allocated buffer
             let base = thread._stack_mem.as_ptr() as usize;
             let top = base + thread._stack_mem.len();
@@ -412,9 +465,13 @@ impl Scheduler {
                 (thread.stack_ptr as usize) >= base && (thread.stack_ptr as usize) < top,
                 "stack_ptr out of bounds"
             );
+            debug_assert!(
+                is_heap_addr(thread.stack_ptr as usize),
+                "stack_ptr is not a heap address."
+            )
         }
 
-        serial_println!("spawned thread (id {}).", thread.id);
+        serial_println!("spawned thread (id {}).", thread.id); // problematic.
         self.tcb.insert(id, thread);
         self.runq.push_back(id);
 
@@ -436,11 +493,11 @@ impl Scheduler {
         serial_println!("switching stack via iretq.");
         // Keep interrupts disabled here; iretq will restore IF from the thread frame.
         unsafe { 
-            // dump_and_assert_next_frame(new_sp_ptr);
+            dump_and_assert_next_frame(new_sp_ptr);
             // x86_64::instructions::interrupts::enable();
-            INIT.store(true, Ordering::Relaxed);
-            // the chance of an interrupt happening here is extremely low - but not zero.
-            // FIXME(threads): interrupts happen here causing failure
+            if INIT.swap(true, core::sync::atomic::Ordering::Relaxed) {
+                panic!("attempted to start threads twice");
+            }
             switch_interrupt_context_raw(old_sp_ptr, new_sp_ptr);
             unreachable_unchecked();
         }
