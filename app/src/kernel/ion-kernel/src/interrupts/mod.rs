@@ -4,9 +4,9 @@
 //! 
 //! These things are handled in Ion OS's initialization, so you wouldn't typically have to see them.
 
-use crate::{c_lib::libc, interrupts::pic8259::InterruptIndex, println, serial_println};
+use crate::{c_lib::libc, interrupts::pic8259::InterruptIndex, serial_println, text::println};
 use lazy_static::lazy_static;
-use x86_64::{VirtAddr, structures::idt::{InterruptDescriptorTable, InterruptStackFrame}};
+use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
 macro set_index($idt:expr_2021, $($index:ident => $handler:expr_2021),*) {
     $(
@@ -28,14 +28,9 @@ lazy_static! {
         idt.general_protection_fault.set_handler_fn(gp::protection_fault);
         // Hardware Interrupts.
 
-        unsafe {
-            // due to timer being the core component to threads, it requires special handling.
-            idt[InterruptIndex::Timer.as_u8()]
-                .set_handler_addr(VirtAddr::new(timer::timer_isr_entry as *const () as u64));
-        }
-
         set_index!(
             idt,
+            Timer => timer::timer_isr_entry,
             Keyboard => keyboard::keyboard_interrupt_handler
         );
 

@@ -33,14 +33,15 @@
     lazy_type_alias,
     ptr_metadata,
     thread_local,
-    const_convert
+    const_convert,
+    never_type
 )]
 
 use cfg_if::cfg_if;
 
 extern crate alloc;
 
-use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, io::Error, log::{trace, warn}, text::println, thread::rt};
+use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, io::Error, log::{trace, warn}, thread::JoinHandle};
 
 
 pub mod panic;
@@ -55,6 +56,7 @@ pub mod mem;
 pub mod lib_alloc;
 pub mod io;
 pub mod thread;
+pub mod scheduler;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {
@@ -210,13 +212,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
             })
         }
     }
-    thread::spawn(|| {
-        let thread = thread::spawn(|| {
-            42
-        }, 1024);
-        assert_eq!(thread.join(), 42);
-    }, 4 * 1024);
-
+    
     
     // TODO: load boot data here into global var
 
@@ -245,8 +241,25 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     }
 
     // from this point onwards - execution is passed to interrupt handlers and whatever threads we have now (and whatever threads we make.)
-    unsafe { rt::start() };
     
+    #[allow(unused)]
+    {
+        // this is the main thread.
+        let _: JoinHandle<!> = thread::spawn(|| {
+            let thread = thread::spawn(|| {
+                serial_println!("Hello from the other thread!");
+                42
+            }, 4 * 1024);
+            serial_println!("we actually did it.");
+            thread::yield_now(); // allow the other thread to print, and return 42.
+            let result = thread.join();
+            serial_println!("the number is {result}!");
+            hlt_loop() // this thread should never exit.
+        }, 16 * 1024);
+    }
+    
+    // this passes execution to the scheduler.
+    thread::yield_now();
     // in case we ever accidentally come back
     hlt_loop()
 }

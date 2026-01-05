@@ -18,7 +18,7 @@ x86_64 = "*"
 uart_16550 = "0.2.0"
 pic8259 = "0.10.1"
 pc-keyboard = "0.7.0"
-buddy_system_allocator = "*"
+linked_list_allocator = "*"
 [profile.dev]
 panic = "abort"
 [profile.release]

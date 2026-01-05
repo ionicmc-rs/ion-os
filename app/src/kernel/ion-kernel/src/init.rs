@@ -19,7 +19,7 @@ use core::fmt::Display;
 
 use x86_64::structures::paging::{Size4KiB, mapper::MapToError};
 
-use crate::{c_lib::BootInfo, interrupts, lib_alloc::init_heap, mem, serial_println, thread::rt};
+use crate::{c_lib::BootInfo, interrupts, lib_alloc::init_heap, mem, serial_println};
 
 /// An error while Initializing the Kernel
 /// 
@@ -89,8 +89,6 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
     init_heap(&mut mapper, &mut f_alloc)?;
 
     // x86_64::instructions::interrupts::enable();
-
-    unsafe { rt::boot(); }
 
     serial_println!("Initializing Done.");
     Ok(())
