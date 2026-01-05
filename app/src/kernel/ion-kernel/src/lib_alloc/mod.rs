@@ -1,7 +1,7 @@
 //! Contains tools for Allocation
 //! 
 //! Typically, you dont use this module, you use [`alloc`]
-use buddy_system_allocator::LockedHeap;
+use linked_list_allocator::LockedHeap;
 // Heap Defs.
 
 /// The Beginning of the Heap.
@@ -51,7 +51,7 @@ pub fn init_heap(
     }
 
     unsafe {
-        GLOBAL_ALLOC.lock().init(HEAP_START, HEAP_SIZE);
+        GLOBAL_ALLOC.lock().init(HEAP_START as *mut u8, HEAP_SIZE);
     }
 
     Ok(())
@@ -63,7 +63,7 @@ pub fn init_heap(
 /// This static the global allocator.
 /// 
 /// This should be used through [`Box`](alloc::boxed::Box), and other alloc types.
-pub static GLOBAL_ALLOC: LockedHeap<32> = LockedHeap::empty();
+pub static GLOBAL_ALLOC: LockedHeap = LockedHeap::empty();
 
 #[cfg(feature = "test")]
 /// Tests

@@ -236,12 +236,17 @@ pub enum QemuExitCode {
 /// 
 /// see [`QemuExitCode`] for more info
 pub fn exit(code: QemuExitCode) -> ! {
+    exit_raw(code);
+
+    panic!("Attempted to write `{code:?}` ({:#x}) to port `0xf4`, but it did not exit.", code as u32);
+}
+
+/// exits without a panic.
+pub fn exit_raw(code: QemuExitCode) {
     use x86_64::instructions::port::Port;
 
     unsafe {
         let mut port = Port::new(0xf4);
         port.write(code as u32);
     }
-
-    panic!("Attempted to write `{code:?}` ({:#x}) to port `0xf4`, but it did not exit.", code as u32);
 }
