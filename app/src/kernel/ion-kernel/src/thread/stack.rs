@@ -20,7 +20,9 @@ use crate::{c_lib::libc, lib_alloc::is_heap_addr};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThreadStack {
     base: *mut u8,
-    size: usize
+    size: usize,
+    #[cfg(debug_assertions)]
+    should_drop: bool
 }
 
 impl ThreadStack {
@@ -38,8 +40,14 @@ impl ThreadStack {
 
         ThreadStack {
             base: alloc,
-            size
+            size,
+            #[cfg(debug_assertions)]
+            should_drop: true
         }
+    }
+    #[cfg(debug_assertions)]
+    pub fn should_not_drop(&mut self) {
+        self.should_drop = false;
     }
 
     pub const fn size(&self) -> usize {
@@ -55,10 +63,13 @@ impl ThreadStack {
 
 impl Drop for ThreadStack {
     fn drop(&mut self) {
-        unsafe { 
+        unsafe {
             // Safety: if the layout fails here, that means this `ThreadStack` was created illegally.
             let layout = Layout::from_size_align(self.size, 16).unwrap_unchecked();
-            
+            #[cfg(debug_assertions)]
+            if !self.should_drop {
+                panic!("Thread stack that was not supposed to drop reached drop implementation\n\nThis indicates a bug with the scheduler - these checks are optional and should not be relied on.");
+            }
             // Safety: if this fails here, that means this `ThreadStack` was created with an allocation error, which should not happen
             dealloc(self.base, layout);
         };

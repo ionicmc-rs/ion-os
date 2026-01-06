@@ -14,6 +14,13 @@ lazy_static! {
             let stack_start = VirtAddr::from_ptr(&raw const STACK);
             stack_start + STACK_SIZE as u64
         };
+        tss.interrupt_stack_table[PAGE_FAULT_IST_INDEX as usize] = {
+            const STACK_SIZE: usize = 4096 * 5;
+            static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+
+            let stack_start = VirtAddr::from_ptr(&raw const STACK);
+            stack_start + STACK_SIZE as u64
+        };
         tss
     };
 }
@@ -21,6 +28,7 @@ lazy_static! {
 use x86_64::structures::gdt::{GlobalDescriptorTable, SegmentSelector};
 
 use crate::interrupts::double_fault::DOUBLE_FAULT_IST_INDEX;
+use crate::interrupts::page_fault::PAGE_FAULT_IST_INDEX;
 
 lazy_static! {
     static ref GDT: (GlobalDescriptorTable, Selectors) = {

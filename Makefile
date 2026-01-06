@@ -45,8 +45,6 @@ build/x86_64/kernel/ion_kernel_test.a:
 # Final build target
 .PHONY: build-x86_64 build-x86_64-test run-qemu run-qemu-tests clean clean-build clean-test
 build-x86_64: $(x86_64_obj_files)
-# clean
-
 	mkdir -p dist/x86_64
 	$(LD) -n -o dist/x86_64/kernel.bin -T app/targets/x86_64/linker.ld $(x86_64_obj_files)
 	cp dist/x86_64/kernel.bin app/targets/x86_64/iso/boot/kernel.bin

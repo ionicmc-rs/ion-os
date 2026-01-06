@@ -1,98 +1,80 @@
-use crate::{hlt_loop, lib_alloc::is_heap_addr, scheduler, serial_println};
+#![allow(missing_docs)]
+
+use crate::{hlt_loop, serial_println};
 
 #[repr(C)]
+#[derive(Debug, Clone)]
 pub struct Context {
-    rsp: usize,
-    r15: u64,
-    r14: u64,
-    r13: u64,
-    r12: u64,
-    rbx: u64,
-    rbp: u64,
+    /// Stack pointer
+    pub rsp: usize,
+
+    /// Callee-saved registers (System V ABI)
+    pub r15: u64,
+    pub r14: u64,
+    pub r13: u64,
+    pub r12: u64,
+    pub rbx: u64,
+    pub rbp: u64,
 }
 
-
 impl Context {
+    /// Create a fresh context that will start executing `entry(arg)`
     pub fn new(
         entry: extern "C" fn(usize) -> !,
         arg: usize,
-        stack_top: usize
+        stack_top: usize,
     ) -> Self {
-        if !is_heap_addr(stack_top) {
-            serial_println!("failed to create context: {stack_top} is not a heap address");
-        }
-        serial_println!("creating and aligning.");
-        let mut rsp = stack_top;
-        rsp &= !0xF;
+        serial_println!("creating and aligning stack");
 
-        serial_println!("pushing fake stack frame.");
+        // SysV ABI: stack must be 16-byte aligned *before call*
+        let mut rsp = stack_top & !0xF;
+
         unsafe {
-            // We push a fake stack frame to trick the CPU to return to thread_exit if we ever return.
+            // Fake return address → thread_exit
             rsp -= core::mem::size_of::<usize>();
             *(rsp as *mut usize) = thread_exit as *const () as usize;
-            
-            // ... we then push the thread_trampoline to start executing there.
+
+            // Initial return target → thread_trampoline
             rsp -= core::mem::size_of::<usize>();
             *(rsp as *mut usize) = thread_trampoline as *const () as usize;
         }
-        serial_println!("done - now constructing context");
+
+        serial_println!("constructed initial context");
 
         Self {
-            // stack pointer
             rsp,
-
-            // use r12 to pass the arg
-            r12: arg as u64,
-
-            // use r15 to store the entry point.
-            r15: entry as *const () as u64,
-
-            // rest are 0
+            r15: entry as *const () as u64, // entry function
+            r12: arg as u64,   // argument
+            r14: 0,
+            r13: 0,
             rbx: 0,
             rbp: 0,
-            r13: 0,
-            r14: 0,
         }
-        
     }
 
-    /// Switch to a new context
-    /// 
-    /// This may never return.
-    /// # Examples
-    /// Examples are not provided - this a private API.
+    /// Switch from this context to `next`
+    ///
     /// # Safety
-    /// The context switch must only be called with valid [`Context`]s
-    pub unsafe fn switch_to(&mut self, new: &Context) {
-        serial_println!("switching to a new context");
-        unsafe {
-            context_switch(self, new);
-        }
+    /// Must be called only by the scheduler at a safe point.
+    pub unsafe fn switch_to(&mut self, next: &Context) {
+        serial_println!("context switch {:#x} -> {:#x}", self.rsp, next.rsp);
+        unsafe { context_switch(self, next) };
     }
+}
 
-    pub unsafe fn switch_raw(this: *mut Self, new: *const Context) {
-        unsafe {
-            context_switch(this, new);
-        }
-    }
+
+
+/// Called if a thread function ever returns
+extern "C" fn thread_exit() -> ! {
+    serial_println!("thread exited");
+    crate::scheduler::exit_current();
+    hlt_loop()
 }
 
 unsafe extern "C" {
-    /// raw assembly context switch.
-    /// 
-    /// this changes from `o` to `n`
-    /// # Examples
-    /// Examples are not provided - this a private API.
-    unsafe fn context_switch(o: *mut Context, n: *const Context);
-    /// moves the `r12` register into the proper `rdi` register.
-    /// 
-    /// this allows the argument to be used instead of manual register reading.
-    /// # Example
-    /// examples are not provided as this is a private API.
-    unsafe fn thread_trampoline() -> !;
-}
-
-extern "C" fn thread_exit() -> ! {
-    scheduler::exit_current();
-    hlt_loop()
+    /// Save current context into `old`, restore `new`
+    ///
+    /// Implemented in assembly.
+    pub unsafe fn context_switch(old: *mut Context, new: *const Context);
+    pub unsafe fn thread_trampoline() -> !;
 }

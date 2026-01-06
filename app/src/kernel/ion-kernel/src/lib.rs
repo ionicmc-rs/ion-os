@@ -38,10 +38,11 @@
 )]
 
 use cfg_if::cfg_if;
+use x86_64::registers::model_specific::{GsBase, KernelGsBase};
 
 extern crate alloc;
 
-use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, io::Error, log::{trace, warn}, thread::JoinHandle};
+use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, io::Error, log::{info, trace, warn}, thread::JoinHandle};
 
 
 pub mod panic;
@@ -166,6 +167,9 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
     }
 }
 
+#[thread_local]
+static mut COUNTER_TEST: usize = 0;
+
 /// The entry to the kernel
 /// 
 /// Do Not call - at all.
@@ -175,7 +179,6 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
 #[unsafe(no_mangle)]
 #[cfg_attr(feature = "test", expect(unreachable_code, reason = "panics always occur at end of tests"))]
 pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
-
     serial_println!("\nWelcome User of QEMU! Thank you for using Ion OS");
 
     // Read the pointer
@@ -192,7 +195,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
         libc::set_errno(6);
         panic!("Invalid Boot Info: {err}")
     }).into_rust();
-
+    
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
     
     // FIXME(asm): this tag is currently always corrupt
@@ -201,7 +204,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     
     match init::init(boot_info) {
         Ok(()) => {
-            // don't print from here on out, only in threads.
+            info!("Initialized Ion OS basics");
         },
         Err(e) => {
             x86_64::instructions::interrupts::without_interrupts(|| {
@@ -213,16 +216,11 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
         }
     }
     
-    
-    // TODO: load boot data here into global var
-
-    serial_println!("Initialized");
-
     cfg_if! {
         if #[cfg(feature = "test")] {
             run_tests(&[
                 // all tests go here
-
+                
                 // control, test for tests
                 &trivial_assertion,
                 // interrupts
@@ -239,29 +237,45 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
             panic!("End of tests; you can now exit.");
         }
     }
-
+    thread::init();
     // from this point onwards - execution is passed to interrupt handlers and whatever threads we have now (and whatever threads we make.)
-    
     #[allow(unused)]
     {
         // this is the main thread.
         let _: JoinHandle<!> = thread::spawn(|| {
-            let thread = thread::spawn(|| {
-                serial_println!("Hello from the other thread!");
-                42
-            }, 4 * 1024);
-            serial_println!("we actually did it.");
-            thread::yield_now(); // allow the other thread to print, and return 42.
-            let result = thread.join();
-            serial_println!("the number is {result}!");
+            serial_println!("main thread");
+            
+            let counter_1 = thread::spawn(|| {
+                unsafe {
+                    serial_println!("GsBase: {:?}", GsBase::read());
+                    serial_println!("KernelGsBase: {:?}", KernelGsBase::read());
+                    serial_println!("ptr to counter: {:p}", &raw const COUNTER_TEST);
+                    serial_println!("[A] counter is {}", COUNTER_TEST);
+                    COUNTER_TEST += 1;
+                    thread::yield_now();
+                    serial_println!("[A] counter is {}", COUNTER_TEST);
+                }
+            }, 16 * 1024);
+
+            let counter_2 = thread::spawn(|| {
+                unsafe {
+                    serial_println!("[B] counter is {}", COUNTER_TEST);
+                    COUNTER_TEST += 1;
+                    thread::yield_now();
+                    serial_println!("[B] counter is {}", COUNTER_TEST);
+                }
+            }, 16 * 1024);
+            while counter_1.try_join().is_none() && counter_2.try_join().is_none() {
+                thread::yield_now();
+            }
             hlt_loop() // this thread should never exit.
-        }, 16 * 1024);
+        }, 32 * 1024);
     }
     
     // this passes execution to the scheduler.
-    thread::yield_now();
-    // in case we ever accidentally come back
-    hlt_loop()
+    loop {
+        thread::yield_now();
+    }
 }
 
 /// Halts the CPU forever.
