@@ -1,6 +1,8 @@
 //! Contains tools for Allocation
 //! 
 //! Typically, you dont use this module, you use [`alloc`]
+use core::{alloc::GlobalAlloc, fmt};
+
 use linked_list_allocator::LockedHeap;
 // Heap Defs.
 
@@ -8,7 +10,7 @@ use linked_list_allocator::LockedHeap;
 pub const HEAP_START: usize = 0x_4444_4444_0000;
 
 /// The Heap's Size
-pub const HEAP_SIZE: usize = 1000 * 1024; // 1 MiB by default.
+pub const HEAP_SIZE: usize = 1500 * 1024; // 1 MiB by default.
 
 /// The Heap's End.
 /// 
@@ -26,6 +28,8 @@ use x86_64::{
     },
     VirtAddr,
 };
+
+use crate::thread;
 
 /// Initialize the Heap.
 pub fn init_heap(
@@ -51,10 +55,62 @@ pub fn init_heap(
     }
 
     unsafe {
-        GLOBAL_ALLOC.lock().init(HEAP_START as *mut u8, HEAP_SIZE);
+        GLOBAL_ALLOC.0.lock().init(HEAP_START as *mut u8, HEAP_SIZE);
     }
 
     Ok(())
+}
+
+/// An allocator that reschedules if needed
+pub struct RescheduleAlloc(LockedHeap);
+
+impl fmt::Debug for RescheduleAlloc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f
+            .debug_struct("RescheduleAlloc")
+            .finish_non_exhaustive()
+    }
+}
+
+impl RescheduleAlloc {
+    /// Creates an empty heap
+    pub const fn empty() -> Self {
+        RescheduleAlloc(LockedHeap::empty())
+    }
+}
+
+unsafe impl GlobalAlloc for RescheduleAlloc {
+    #[inline]
+    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
+        thread::critical_moment(
+            || { 
+                unsafe { self.0.alloc(layout) } 
+            }
+        ) // reschedules after
+    }
+
+    #[inline]
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
+        thread::critical_moment(|| {
+            unsafe { self.0.dealloc(ptr, layout); }
+        })
+    }
+
+    #[inline]
+    unsafe fn alloc_zeroed(&self, layout: core::alloc::Layout) -> *mut u8 {
+        thread::critical_moment(|| {
+            unsafe { self.0.alloc_zeroed(layout) }
+        })
+    }
+
+    #[inline]
+    unsafe fn realloc(&self, ptr: *mut u8, layout: core::alloc::Layout, new_size: usize) -> *mut u8 {
+        thread::critical_moment(|| {
+            unsafe {
+                self.0.realloc(ptr, layout, new_size)    
+            }
+        })
+    }
 }
 
 // Global Allocator
@@ -63,7 +119,7 @@ pub fn init_heap(
 /// This static the global allocator.
 /// 
 /// This should be used through [`Box`](alloc::boxed::Box), and other alloc types.
-pub static GLOBAL_ALLOC: LockedHeap = LockedHeap::empty();
+pub static GLOBAL_ALLOC: RescheduleAlloc = RescheduleAlloc::empty();
 
 #[cfg(feature = "test")]
 /// Tests
