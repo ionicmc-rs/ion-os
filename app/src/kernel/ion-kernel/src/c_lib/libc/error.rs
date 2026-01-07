@@ -1,14 +1,23 @@
 //! Module for Kernel Errors.
+use x86_64::registers::model_specific::FsBase;
+
 use crate::serial_println;
 
+#[thread_local]
 /// Represents the last KERNEL Error.
 static mut ERRNO: i32 = 0;
+
+static mut GLOBAL_ERRNO: i32 = 0;
 
 /// Returns a pointer to the Err Number
 #[unsafe(no_mangle)]
 #[allow(static_mut_refs)]
 pub extern "C" fn __errno_location() -> *mut i32 {
-   &raw mut ERRNO 
+    if FsBase::read().as_u64() != 0 {
+        &raw mut ERRNO
+    } else {
+        &raw mut GLOBAL_ERRNO
+    }
 }
 
 use core::{ffi::{CStr, c_char}, ops::Deref};
@@ -41,14 +50,13 @@ pub extern "C" fn perror(text: *mut c_char) {
 // Helper for Rust side
 #[allow(static_mut_refs)]
 pub fn set_errno(e: i32) {
-    serial_println!("Setting Error Code: {} to {:?}", e, unsafe { &ERRNO as *const i32 });
-    unsafe { ERRNO = e };
+    unsafe { *__errno_location() = e };
 }
 
 /// Get Errno
 #[allow(static_mut_refs)]
 pub fn get_errno() -> ErrCode {
-    ErrCode(unsafe { ERRNO })
+    ErrCode(unsafe { *__errno_location() })
 }
 
 // typing

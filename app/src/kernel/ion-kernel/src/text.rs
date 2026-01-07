@@ -220,6 +220,11 @@ impl Writer {
             self.buffer.chars[row][col].write(blank);
         }
     }
+
+    /// Sets the print color.
+    pub fn set_color(&mut self, fore: Color, back: Color) {
+        self.color_code = ColorCode::new(fore, back);
+    }
 }
 
 use core::{fmt, mem};

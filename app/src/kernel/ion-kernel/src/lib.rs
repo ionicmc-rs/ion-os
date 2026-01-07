@@ -36,13 +36,11 @@
     const_convert,
     never_type
 )]
-
 use cfg_if::cfg_if;
-use x86_64::registers::model_specific::{GsBase, KernelGsBase};
 
 extern crate alloc;
 
-use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, io::Error, log::{info, trace, warn}, thread::JoinHandle};
+use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, entry::kernel_main, io::Error, log::{info, trace, warn}, text::println, thread::ThreadBuilder};
 
 
 pub mod panic;
@@ -58,6 +56,7 @@ pub mod lib_alloc;
 pub mod io;
 pub mod thread;
 pub mod scheduler;
+pub mod entry;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {
@@ -167,9 +166,6 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
     }
 }
 
-#[thread_local]
-static mut COUNTER_TEST: usize = 0;
-
 /// The entry to the kernel
 /// 
 /// Do Not call - at all.
@@ -237,45 +233,20 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
             panic!("End of tests; you can now exit.");
         }
     }
-    thread::init();
-    // from this point onwards - execution is passed to interrupt handlers and whatever threads we have now (and whatever threads we make.)
     #[allow(unused)]
     {
         // this is the main thread.
-        let _: JoinHandle<!> = thread::spawn(|| {
-            serial_println!("main thread");
-            
-            let counter_1 = thread::spawn(|| {
-                unsafe {
-                    serial_println!("GsBase: {:?}", GsBase::read());
-                    serial_println!("KernelGsBase: {:?}", KernelGsBase::read());
-                    serial_println!("ptr to counter: {:p}", &raw const COUNTER_TEST);
-                    serial_println!("[A] counter is {}", COUNTER_TEST);
-                    COUNTER_TEST += 1;
-                    thread::yield_now();
-                    serial_println!("[A] counter is {}", COUNTER_TEST);
-                }
-            }, 16 * 1024);
-
-            let counter_2 = thread::spawn(|| {
-                unsafe {
-                    serial_println!("[B] counter is {}", COUNTER_TEST);
-                    COUNTER_TEST += 1;
-                    thread::yield_now();
-                    serial_println!("[B] counter is {}", COUNTER_TEST);
-                }
-            }, 16 * 1024);
-            while counter_1.try_join().is_none() && counter_2.try_join().is_none() {
-                thread::yield_now();
-            }
-            hlt_loop() // this thread should never exit.
-        }, 32 * 1024);
+        thread::init();
+        ThreadBuilder::new()
+            .with_entry(|| {kernel_main()})
+            .with_name("main")
+            .with_safety(true)
+            .build();
     }
-    
-    // this passes execution to the scheduler.
-    loop {
-        thread::yield_now();
-    }
+    // from this point onwards - execution is passed to interrupt handlers and whatever threads we have now (and whatever threads we make.)
+    thread::yield_now();
+    println!("return to the boot stack is prohibited");
+    hlt_loop();
 }
 
 /// Halts the CPU forever.

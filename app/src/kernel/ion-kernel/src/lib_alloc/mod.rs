@@ -6,27 +6,28 @@ use core::{alloc::GlobalAlloc, fmt};
 use linked_list_allocator::LockedHeap;
 // Heap Defs.
 
-/// The Beginning of the Heap.
-pub const HEAP_START: usize = 0x_4444_4444_0000;
+fn heap_start() -> usize {
+    // in the future, we have the heap right after the OS.
+    pub const HEAP_START: usize = 0x_4444_4444_0000;
+    align_up(HEAP_START as u64, 16) as usize
+}
+
+fn heap_end() -> usize {
+    heap_start() + HEAP_SIZE
+}
 
 /// The Heap's Size
-pub const HEAP_SIZE: usize = 1500 * 1024; // 1 MiB by default.
-
-/// The Heap's End.
-/// 
-/// Equals [`HEAP_START`] + [`HEAP_SIZE`].
-pub const HEAP_END: usize = HEAP_START + HEAP_SIZE;
+pub const HEAP_SIZE: usize = 2 * 1024 * 1024; // 2 MiB by default.
 
 /// Returns wether addr is inside of the heap.
-pub const fn is_heap_addr(addr: usize) -> bool {
-    (HEAP_START..=HEAP_END).contains(&addr)
+pub fn is_heap_addr(addr: usize) -> bool {
+    (heap_start()..=heap_end()).contains(&addr)
 }
 
 use x86_64::{
-    structures::paging::{
-        mapper::MapToError, FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB,
-    },
-    VirtAddr,
+    VirtAddr, align_up, structures::paging::{
+        FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB, mapper::MapToError
+    }
 };
 
 use crate::thread;
@@ -37,7 +38,7 @@ pub fn init_heap(
     frame_allocator: &mut impl FrameAllocator<Size4KiB>,
 ) -> Result<(), MapToError<Size4KiB>> {
     let page_range = {
-        let heap_start = VirtAddr::new(HEAP_START as u64);
+        let heap_start = VirtAddr::new(heap_start() as u64);
         let heap_end = heap_start + HEAP_SIZE as u64 - 1u64;
         let heap_start_page = Page::containing_address(heap_start);
         let heap_end_page = Page::containing_address(heap_end);
@@ -55,7 +56,7 @@ pub fn init_heap(
     }
 
     unsafe {
-        GLOBAL_ALLOC.0.lock().init(HEAP_START as *mut u8, HEAP_SIZE);
+        GLOBAL_ALLOC.0.lock().init(heap_start() as *mut u8, HEAP_SIZE);
     }
 
     Ok(())

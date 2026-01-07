@@ -46,13 +46,15 @@ build/x86_64/kernel/ion_kernel_test.a:
 .PHONY: build-x86_64 build-x86_64-test run-qemu run-qemu-tests clean clean-build clean-test
 build-x86_64: $(x86_64_obj_files)
 	mkdir -p dist/x86_64
-	$(LD) -n -o dist/x86_64/kernel.bin -T app/targets/x86_64/linker.ld $(x86_64_obj_files)
-	cp dist/x86_64/kernel.bin app/targets/x86_64/iso/boot/kernel.bin
+	$(LD) --gc-sections -n -o dist/x86_64/kernel.elf -T app/targets/x86_64/linker.ld $(x86_64_obj_files)
+	objcopy -O binary dist/x86_64/kernel.elf dist/x86_64/kernel.bin
+	cp dist/x86_64/kernel.elf app/targets/x86_64/iso/boot/kernel.elf
 	grub-mkrescue /usr/lib/grub/i386-pc -o dist/x86_64/kernel.iso app/targets/x86_64/iso
 build-x86_64-test: $(x86_64_asm_obj_files) $(x86_64_c_obj_files) build/x86_64/kernel/ion_kernel_test.a
 	mkdir -p dist/x86_64/test
-	$(LD) -n -o dist/x86_64/test/kernel.bin -T app/targets/x86_64/linker.ld $(x86_64_asm_obj_files) $(x86_64_c_obj_files) build/x86_64/kernel/ion_kernel_test.a
-	cp dist/x86_64/test/kernel.bin app/targets/x86_64/iso/boot/kernel.bin
+	$(LD) -n -o dist/x86_64/test/kernel.elf -T app/targets/x86_64/linker.ld $(x86_64_asm_obj_files) $(x86_64_c_obj_files) build/x86_64/kernel/ion_kernel_test.a
+	objcopy -O binary dist/x86_64/test/kernel.elf dist/x86_64/test/kernel.bin
+	cp dist/x86_64/test/kernel.elf app/targets/x86_64/iso/boot/kernel.elf
 	grub-mkrescue /usr/lib/grub/i386-pc -o dist/x86_64/test/kernel.iso app/targets/x86_64/iso
 
 run-qemu:
