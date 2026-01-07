@@ -1,30 +1,48 @@
+use core::fmt::Display;
+
 use alloc::boxed::Box;
-use x86_64::instructions;
 
 use crate::{
-    hlt_loop, scheduler::{self, SCHEDULER}, serial_println, thread::Thread
+    hlt_loop, scheduler::{self, SCHEDULER}, serial_println, thread::{self, Thread, ThreadID}
 };
 
 /// Handle used to retrieve the result of a spawned thread.
 pub struct JoinHandle<T: Send + 'static> {
     result: *mut Option<T>,
+    id: ThreadID
+}
+
+
+/// empty, but this will be changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PanicError(ThreadID);
+
+impl Display for PanicError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Attempted to join thread id {}, but it panicked", self.0.0)
+    }
 }
 
 impl<T: Send + 'static> JoinHandle<T> {
     /// Blocks until the thread finishes.
-    pub fn join(self) -> T {
+    pub fn join(self) -> Result<T, PanicError> {
         loop {
             let res = unsafe { &*self.result };
             if res.is_some() {
                 break;
             }
-            instructions::hlt();
+
+            if scheduler::has_panicked(self.id) {
+                return Err(PanicError(self.id));
+            }
+
+            thread::yield_now();
         }
 
         unsafe {
             // take result and free storage
             let boxed = Box::from_raw(self.result);
-            boxed.expect("thread finished but result missing")
+            Ok(boxed.expect("thread finished but result missing"))
         }
     }
 
@@ -62,6 +80,7 @@ pub fn spawn<
 
     let meta_ptr = Box::into_raw(meta) as usize;
 
+    #[allow(unused, dead_code)]
     extern "C" fn thread_entry<T: Send + 'static>(arg: usize) -> ! {
         // Take ownership of Meta
         let mut meta = unsafe { Box::from_raw(arg as *mut Meta<T>) };
@@ -85,11 +104,13 @@ pub fn spawn<
     }
     serial_println!("creating thread.");
     let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size);
+    let id = thread.id();
     serial_println!("queuing");
     SCHEDULER.queue(thread);
     serial_println!("queued!");
     
     JoinHandle {
         result: result_ptr,
+        id
     }
 }

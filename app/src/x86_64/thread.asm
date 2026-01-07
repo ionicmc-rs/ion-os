@@ -40,6 +40,7 @@ context_switch:
 ;
 ; no args - is no return
 thread_trampoline:
+    sti
     mov al, 'T'
     out 0xE9, al
 

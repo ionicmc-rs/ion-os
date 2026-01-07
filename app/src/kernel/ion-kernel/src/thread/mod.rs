@@ -5,7 +5,7 @@ use core::{sync::atomic::{AtomicU64, Ordering}};
 
 #[cfg(debug_assertions)]
 use crate::scheduler::idle_entry;
-use crate::{interrupts, scheduler::{self, SCHEDULER}, serial_println, thread::{context::Context, stack::ThreadStack}};
+use crate::{interrupts, scheduler::{self, SCHEDULER}, serial_println, thread::{context::Context, stack::ThreadStack, tls::{TlsAllocation, alloc_thread_self}}};
 
 pub mod stack;
 pub mod context;
@@ -13,7 +13,7 @@ mod join;
 
 pub use join::{JoinHandle, spawn};
 
-pub use crate::scheduler::{exit_current, current, yield_now, critical_moment, critical_moment_raw};
+pub use crate::scheduler::{exit_current, current, yield_now, critical_moment, critical_moment_raw, block_until, has_panicked, request_reschedule, reschedule_if_needed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThreadID(pub u64);
@@ -26,6 +26,8 @@ pub struct Thread {
     ctx: context::Context,
     state: State,
     tls: usize,
+    // guards against forgetting to drop the allocation.
+    _tls_guard: TlsAllocation
     // No metadata storage here, we do that with thread local storage.
 }
 
@@ -47,16 +49,18 @@ impl Thread {
                 stack.should_not_drop();
             }
             
+            let (raw_ptr, guard) = unsafe { alloc_thread_self(stack.ptr(), stack.size()) };
+
             Self { 
                 ctx: Context::new(entry, arg, (stack.ptr() as usize) + stack.size()),
                 id,
-                tls: unsafe { tls::alloc_thread_self(stack.ptr(), stack.size()) as usize },
+                tls: raw_ptr as usize,
                 _stack: stack,
                 state: State::Ready,
+                _tls_guard: guard
             }
         })
     }
-
     pub fn tls_block(&self) -> usize {
         self.tls
     }
@@ -127,8 +131,15 @@ pub fn sleep(ms: u64) {
     scheduler::sleep_current(ms);
 }
 
+pub fn id() -> ThreadID {
+    current().expect("cannot retrieve thread id before initialization.").id()
+}
+
 pub fn init() {
     SCHEDULER.init();
 }
 
 pub mod tls;
+pub mod build;
+
+pub use build::{name, panicking, preemption_safe, set_name, ThreadBuilder};

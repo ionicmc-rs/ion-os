@@ -1,7 +1,7 @@
 #![allow(missing_docs, clippy::missing_safety_doc, missing_debug_implementations)]
 use core::{cell::UnsafeCell, mem::MaybeUninit, sync::atomic::{AtomicBool, Ordering}};
 
-use alloc::collections::vec_deque::VecDeque;
+use alloc::{collections::vec_deque::VecDeque, vec::Vec};
 
 use crate::thread::{State, Thread, ThreadID, tls::{ThreadSelf, install_tls}};
 
@@ -111,7 +111,10 @@ struct Queues {
     /// here to prevent having to create a new one each time it is needed.
     /// 
     /// this should never be dropped.
-    idle: Option<Thread>
+    idle: Option<Thread>,
+
+    /// List of threads that have panicked.
+    panicked: Vec<ThreadID>
 }
 
 pub extern "C" fn idle_entry(_: usize) -> ! {
@@ -144,7 +147,8 @@ impl Queues {
             med: ReadyQueue::new(), 
             low: ReadyQueue::new(), 
             non_running: NonRunning::new() ,
-            idle: None
+            idle: None,
+            panicked: Vec::new()
         }
     }
 
@@ -190,6 +194,14 @@ impl Queues {
 
         self.idle = Some(idle);
         self.idle.as_mut().unwrap()
+    }
+
+    pub fn set_panic(&mut self, id: ThreadID) {
+        self.panicked.push(id);
+    }
+
+    pub fn has_panicked(&self, id: ThreadID) -> bool {
+        self.panicked.contains(&id)
     }
 
     // waking sleeping/blocked threads
@@ -367,6 +379,11 @@ impl Scheduler {
                 old.set_state(State::Terminated);
                 queues.queue_norun_ref(Priority::None, old)
             }
+            ScheduleReason::Panicked => {
+                old.set_state(State::Terminated);
+                queues.set_panic(old.id());
+                queues.queue_norun_ref(Priority::None, old)
+            }
         };
         
         let old_ctx = old_ref.ctx_mut();
@@ -382,6 +399,9 @@ impl Scheduler {
         unsafe { old_ctx.switch_to(new_ctx) };
     }
 
+    pub fn has_panicked(&self, id: ThreadID) -> bool {
+        unsafe_cell_ref!(self.queues).has_panicked(id)
+    }
     
     pub fn reschedule_if_needed(&self) {
         if unsafe_cell_ref!(self.current).is_none() {
@@ -455,13 +475,18 @@ pub fn critical_moment_raw<R>(f: impl Fn() -> R) -> R {
     unsafe { buf.assume_init() }
 }
 
+pub fn has_panicked(id: ThreadID) -> bool {
+    SCHEDULER.has_panicked(id)
+}
+
 #[allow(unused)]
 enum ScheduleReason {
     Yield,
     Preempt,
     Exit,
     Block(*const bool),
-    Sleep(u64) // wake tick
+    Sleep(u64), // wake tick
+    Panicked
 }
 
 // ASM linkage.

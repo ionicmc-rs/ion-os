@@ -1,20 +1,62 @@
 //! panicking.
-use core::{panic::PanicInfo, sync::atomic::{AtomicBool, Ordering}};
+use core::panic::PanicInfo;
 
-use crate::{c_lib::libc::{get_errno, perror}, hlt_loop, serial_println, text::WRITER};
+use x86_64::registers::model_specific::FsBase;
 
-static PANICKING: AtomicBool = AtomicBool::new(false);
+use crate::{c_lib::libc::{get_errno, perror}, hlt_loop, io::Error, serial_println, text::{Color, WRITER}, thread};
+
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    if PANICKING.swap(true, Ordering::SeqCst) {
-        // Second panic → halt immediately
-        loop {
-            x86_64::instructions::hlt();
-        }
+    if FsBase::read().as_u64() == 0 { // panic before thread init - unsafe to use panic thread
+        panic_raw(info);
     }
 
-    panic_raw(info);
+    panic_thread(info);
+}
+
+/// panics the current thread.
+pub fn panic_thread(info: &PanicInfo) -> ! {
+    let loc = info.location().unwrap();
+    let message = info.message();
+    let tname = thread::name();
+    match info.can_unwind() {
+        true => serial_println!("(unwind) thread `{tname}` panicked at {loc}"),
+        false => serial_println!("(abort) thread `{tname}` panicked at {loc}"),
+    }
+
+    serial_println!("{message}");
+
+    let c = c"=> Last THREAD Error";
+    perror(c.as_ptr().cast_mut());
+
+    let mut lock = match WRITER.try_lock() {
+        Some(v) => v,
+        None => hlt_loop()
+    };
+
+    use core::fmt::Write;
+    lock.set_color(Color::LightCyan, Color::Black);
+    let _ = match info.can_unwind() {
+        true => writeln!(lock, "(unwind) thread `{tname}` panicked at {loc}"),
+        false => writeln!(lock, "(abort) thread `{tname}` panicked at {loc}"),
+    };
+    lock.set_color(Color::White, Color::Black);
+
+    let _ = writeln!(lock, "{message}");
+
+    lock.set_color(Color::LightCyan, Color::Black);
+    let err = Error::last_os_err();
+    let _ = writeln!(lock, "=> Last THREAD Error: {err}");
+
+    unsafe { thread::build::set_panic() };
+
+    if tname.as_str() == "main" {
+        hlt_loop()
+    }
+
+    thread::exit_current();
+    hlt_loop()
 }
 
 
@@ -35,12 +77,12 @@ pub fn panic_raw(info: &PanicInfo) -> ! {
     let unwind = info.can_unwind();
     if let Some(loc) = loc {
         if unwind {
-            serial_println!("Unwinding panic caused at {}: ", loc);
+            serial_println!("unwinding panic caused at {}: ", loc);
         } else {
             serial_println!("abort: panic caused at {}: ", loc);
         }
     } else if unwind {
-        serial_println!("Unwinding panic caused at unknown location: ");
+        serial_println!("unwinding panic caused at unknown location: ");
     } else {
         serial_println!("abort: panic caused at unknown location: ");
     }
@@ -51,6 +93,7 @@ pub fn panic_raw(info: &PanicInfo) -> ! {
 
 
     if let Some(mut wlock) = WRITER.try_lock() {
+        wlock.set_color(Color::LightCyan, Color::Black);
         let message = info.message();
         let loc = info.location();
         let unwind = info.can_unwind();
@@ -65,7 +108,9 @@ pub fn panic_raw(info: &PanicInfo) -> ! {
         } else {
             writeln!(wlock, "abort: panic caused at unknown location: ");
         }
+        wlock.set_color(Color::White, Color::Black);
         writeln!(wlock, "{message}");
+        wlock.set_color(Color::LightCyan, Color::Black);
         let err_code = get_errno();
         if let Some(meaning) = err_code.meaning() {
             let err_code = *err_code;

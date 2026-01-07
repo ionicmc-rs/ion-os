@@ -52,6 +52,38 @@ impl Context {
         }
     }
 
+    pub fn current() -> Self {
+        let rsp: usize;
+        let r15: u64;
+        let r14: u64;
+        let r13: u64;
+        let r12: u64;
+        let rbx: u64;
+        let rbp: u64;
+
+        unsafe {
+            core::arch::asm!(
+                "mov {0}, rsp",
+                "mov {1}, r15",
+                "mov {2}, r14",
+                "mov {3}, r13",
+                "mov {4}, r12",
+                "mov {5}, rbx",
+                "mov {6}, rbp",
+                out(reg) rsp,
+                out(reg) r15,
+                out(reg) r14,
+                out(reg) r13,
+                out(reg) r12,
+                out(reg) rbx,
+                out(reg) rbp,
+                options(nomem, nostack)
+            )
+        }
+
+        Self { rsp, r15, r14, r13, r12, rbx, rbp }
+    }
+
     /// Switch from this context to `next`
     ///
     /// # Safety

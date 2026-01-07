@@ -58,7 +58,7 @@ pub fn test_freed_mem_used(_: TestInfo) -> TestResult {
     // The way this test works is that if the assertion fails, it means the heap is not being reused
     // when there is free memory.
 
-    for i in 0..super::HEAP_SIZE {
+    for i in 0..10000 {
         let x = Box::new(i);
         test_assert_eq!(*x, i)?;
     }

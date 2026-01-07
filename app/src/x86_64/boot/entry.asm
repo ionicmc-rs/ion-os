@@ -231,7 +231,6 @@ check_multiboot2_mmap:
     ret
 
 check_multiboot:
-    ; Accept MB2 or MB1, depending on your loader
     cmp     eax, 0x36d76289              ; Multiboot2
     je      .ok
     cmp     eax, 0x2BADB002              ; Multiboot1
