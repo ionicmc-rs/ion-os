@@ -1,6 +1,13 @@
-use alloc::{boxed::Box, collections::{LinkedList, VecDeque}, rc::Rc, string::String, vec, vec::Vec};
+use alloc::{
+    boxed::Box,
+    collections::{LinkedList, VecDeque},
+    rc::Rc,
+    string::String,
+    vec,
+    vec::Vec,
+};
 
-use crate::test::{TestInfo, TestResult, test_assert_eq};
+use crate::test::{test_assert_eq, TestInfo, TestResult};
 
 /// Tests allocation Tools.
 pub fn test_alloc_tools(inf: TestInfo) -> TestResult {

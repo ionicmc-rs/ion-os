@@ -1,12 +1,27 @@
-#![allow(missing_docs, clippy::missing_safety_doc, missing_debug_implementations)]
-use core::{cell::UnsafeCell, mem::MaybeUninit, sync::atomic::{AtomicBool, Ordering}};
+#![allow(
+    missing_docs,
+    clippy::missing_safety_doc,
+    missing_debug_implementations
+)]
+use core::{
+    cell::UnsafeCell,
+    mem::MaybeUninit,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use alloc::{collections::vec_deque::VecDeque, vec::Vec};
 
-use crate::thread::{State, Thread, ThreadID, tls::{ThreadSelf, install_tls}};
+use crate::{
+    hlt_loop,
+    thread::{
+        self,
+        tls::{install_tls, ThreadSelf},
+        State, Thread, ThreadID,
+    },
+};
 
 /// The global Scheduler
-/// 
+///
 /// this static handles all the running threads for this CPU (only CPU for now).
 /// # Using this static
 /// mostly, you will use the safe apis in [`thread`](crate::thread) rather than this static, as threads are currently very unstable.
@@ -45,7 +60,7 @@ enum Priority {
     Med,
     Low,
     // used for idle and terminated threads
-    None
+    None,
 }
 
 #[derive(Debug)]
@@ -60,7 +75,10 @@ impl NonRunning {
     }
 
     pub fn queue(&mut self, thread: Thread, priority: Priority) {
-        if !matches!(thread.state(), State::Sleeping(..) | State::Blocked(..) | State::Terminated) {
+        if !matches!(
+            thread.state(),
+            State::Sleeping(..) | State::Blocked(..) | State::Terminated
+        ) {
             panic!("Safety invariant violated: `NonRunning::queue` must never be called with a thread that is not sleeping, blocked or terminated.")
         }
         self.0.push_back(NonRunningThread(priority, thread));
@@ -76,48 +94,48 @@ impl NonRunning {
 struct Queues {
     // running queues
     // all threads in this category must have `State::Running`
-
     /// High priority threads
-    /// 
+    ///
     /// this queue very unsafe to use - it starves all other (lower priority) threads until they are finished. so this should only
     /// really be used for one time `throw-away` threads that handle user-related operations (input, output, etc.)
     high: ReadyQueue,
     /// Medium priority threads
-    /// 
+    ///
     /// this queue should only handle internal kernel operations, similar to the high priority queue, but for things users wont use.
-    /// 
+    ///
     /// assuming the low priority queue is only for background work that is not always needed, this queue can safely have threads that loop
     /// for long period of time.
     med: ReadyQueue,
     /// Low priority threads
-    /// 
+    ///
     /// this queue handles only background work - it runs very rarely and is almost always taken over my medium priority threads.
-    /// 
+    ///
     /// this should never handle user operations.
     low: ReadyQueue,
 
     /// Non running threads
-    /// 
+    ///
     /// these threads are not running, they are sleeping or blocking.
-    /// 
+    ///
     /// this queue is reserved for threads that are currently awaiting something such as I/O operations, or user input.
     /// # Non running threads VS. Yielding threads
     /// some threads call [`yield_now`] in a loop, because they are awaiting a thread local operation - which we can't stop.
-    /// 
+    ///
     /// this prevents optimization - but is necessary.
     non_running: NonRunning,
     /// Idle thread.
-    /// 
+    ///
     /// here to prevent having to create a new one each time it is needed.
-    /// 
+    ///
     /// this should never be dropped.
     idle: Option<Thread>,
 
     /// List of threads that have panicked.
-    panicked: Vec<ThreadID>
+    panicked: Vec<Thread>,
 }
 
 pub extern "C" fn idle_entry(_: usize) -> ! {
+    thread::set_name("idle");
     loop {
         yield_now();
     }
@@ -129,7 +147,7 @@ macro_rules! queue_fn {
             fn $name(&mut self, thread: Thread) {
                 self.$q.queue(thread);
             }
-    
+
             fn $name_ref(&mut self, thread: Thread) -> &mut Thread {
                 self.$q.queue_ref(thread)
             }
@@ -137,28 +155,27 @@ macro_rules! queue_fn {
     };
 }
 fn idle_thread() -> Thread {
-    Thread::new(idle_entry, 0, 4096)
+    Thread::new(idle_entry, 0, 16 * 1024)
 }
 
 impl Queues {
     pub const fn new() -> Self {
-        Self { 
-            high: ReadyQueue::new(), 
-            med: ReadyQueue::new(), 
-            low: ReadyQueue::new(), 
-            non_running: NonRunning::new() ,
+        Self {
+            high: ReadyQueue::new(),
+            med: ReadyQueue::new(),
+            low: ReadyQueue::new(),
+            non_running: NonRunning::new(),
             idle: None,
-            panicked: Vec::new()
+            panicked: Vec::new(),
         }
     }
-
 
     pub fn init(&mut self) {
         self.idle = Some(idle_thread());
     }
 
     // queueing
-   
+
     queue_fn! {
         queue_high, queue_high_ref = high,
         queue_med, queue_med_ref = med,
@@ -179,7 +196,7 @@ impl Queues {
             Priority::High => self.queue_high(thread),
             Priority::Med => self.queue_med(thread),
             Priority::Low => self.queue_low(thread),
-            Priority::None => () // let thread drop
+            Priority::None => (), // let thread drop
         }
     }
 
@@ -187,28 +204,41 @@ impl Queues {
         if idle.state() != State::Ready && idle.id() != ThreadID(0) {
             panic!("Safety invariant violation: `Queues::place_idle` should only receive ready, 0 ID threads (idle)");
         }
-        
+
         if self.idle.is_some() {
-            panic!("Idle thread already exists, but the thread was already asserted to be the idle one. this likely indicates data being sent between CPUs"); // better error message for when we get CPUs
+            panic!("Idle thread already exists, but the thread was already asserted to be the idle one. this likely indicates data being sent between CPUs");
+            // better error message for when we get CPUs
         }
 
         self.idle = Some(idle);
         self.idle.as_mut().unwrap()
     }
 
-    pub fn set_panic(&mut self, id: ThreadID) {
-        self.panicked.push(id);
+    pub fn set_panic(&mut self, thread: Thread) -> &mut Thread {
+        self.panicked.push(thread);
+        self.panicked.last_mut().unwrap()
+    }
+
+    pub fn remove_panic(&mut self, id: ThreadID) {
+        let i = self
+            .panicked
+            .iter()
+            .enumerate()
+            .find_map(|(i, v)| (v.id() == id).then_some(i));
+        if let Some(i) = i {
+            self.panicked.remove(i);
+        }
     }
 
     pub fn has_panicked(&self, id: ThreadID) -> bool {
-        self.panicked.contains(&id)
+        self.panicked.iter().any(|v| v.id() == id)
     }
 
     // waking sleeping/blocked threads
 
     pub fn restore_done(&mut self) {
         let len = self.non_running.0.len();
-        
+
         for _ in 0..len {
             let NonRunningThread(priority, mut thread) = self.non_running.0.pop_front().unwrap();
 
@@ -223,10 +253,46 @@ impl Queues {
             if thread.should_wake() {
                 thread.wake();
                 self.queue(priority, thread);
-            } else if let State::Blocked(ptr) = thread.state() {
-                if unsafe { *ptr } {
-                    self.queue(priority, thread);
-                } 
+            } else if let State::Blocked(ev) = thread.state() {
+                match ev {
+                    WakeEvent::EndOf(id) => {
+                        if id.0 == 0 {
+                            panic!(
+                                "threads must not wait on thread id 0 (idle), as it never exits."
+                            )
+                        }
+                        for x in self
+                            .high
+                            .0
+                            .iter()
+                            .chain(self.med.0.iter())
+                            .chain(self.low.0.iter())
+                            .chain(self.non_running.0.iter().map(|v| &v.1))
+                        {
+                            if x.id() == id {
+                                self.non_running.queue(thread, priority);
+                                return;
+                            }
+                        }
+                        thread.set_state(State::Ready);
+                        // id is not in scheduler - we can queue it.
+                        self.queue(priority, thread);
+                    }
+                    WakeEvent::KeyInput => {
+                        // only awoken by wake_kbd.
+
+                        self.non_running.queue(thread, priority);
+                    }
+                    WakeEvent::Raw(ptr) => {
+                        if unsafe { *ptr } {
+                            thread.set_state(State::Ready);
+                            self.queue(priority, thread);
+                        } else {
+                            self.non_running.queue(thread, priority);
+                        }
+                    }
+                    WakeEvent::UnlockOf(()) => {}
+                }
             } else {
                 self.non_running.queue(thread, priority);
             }
@@ -239,7 +305,7 @@ impl Queues {
         macro_rules! check_queue {
             ($q:expr_2021, $p:expr_2021) => {
                 if let Some(t) = $q.next() {
-                    return Some((t, $p))
+                    return Some((t, $p));
                 }
             };
         }
@@ -260,7 +326,7 @@ macro_rules! unsafe_cell_ref {
     };
     (mut $cell:expr_2021) => {
         unsafe { $cell.get().as_mut().unwrap() }
-    }
+    };
 }
 
 #[derive(Debug, Default)]
@@ -279,14 +345,19 @@ impl Scheduler {
             queues: Queues::new().into(),
             needs_resched: AtomicBool::new(false),
             can_reschedule: AtomicBool::new(false),
-            current: None.into()
+            current: None.into(),
         }
     }
 
     pub fn init(&self) {
         let queues = unsafe_cell_ref!(mut self.queues);
         queues.init();
-        *unsafe_cell_ref!(mut self.current) = Some((queues.take_idle().expect("queues should be initialized"), Priority::None));
+        let idle = queues
+            .take_idle()
+            .expect("queues uninit after explicit init - likely a memory error");
+        idle.dump_stack();
+        *unsafe_cell_ref!(mut self.current) = Some((idle, Priority::None));
+
         self.can_reschedule.store(true, Ordering::Relaxed);
     }
 
@@ -311,21 +382,34 @@ impl Scheduler {
 
         self.can_reschedule.store(cr, Ordering::Release);
         self.needs_resched.store(nr, Ordering::Release);
-
     }
-    
+
     pub fn critical_moment<R>(&self, f: impl FnOnce() -> R, result_buf: &mut MaybeUninit<R>) {
         self.critical_moment_raw(f, result_buf);
         // here is a good place to check if we can reschedule, we know threads cant be used from interrupts.
         self.reschedule_if_needed();
     }
 
-    pub fn tick(&self) {
-        self.request_rescheduling();
+    pub fn wake_kbd(&self) {
+        let queues = unsafe_cell_ref!(mut self.queues);
+        let len = queues.non_running.0.len();
+        for _ in 0..len {
+            let NonRunningThread(priority, mut thread) = queues.non_running.0.pop_front().unwrap();
+            match thread.state() {
+                st @ (State::Ready | State::Running) => panic!(
+                    "Safety invariant violated: detected a {st:?} thread in the non running queue"
+                ),
+                State::Blocked(WakeEvent::KeyInput) => {
+                    thread.set_state(State::Ready);
+                    queues.queue(priority, thread);
+                }
+                _ => queues.queue_norun(priority, thread),
+            }
+        }
     }
 
     /// Switches contexts
-    /// 
+    ///
     /// interrupts are always enabled after this function is called.
     fn schedule(&self, reason: ScheduleReason) {
         let mut _buf = MaybeUninit::new(());
@@ -342,25 +426,34 @@ impl Scheduler {
         // restore ready to run threads before checking anything, just in-case the timer missed anything
         queues.restore_done();
 
-        let (next, next_priority) = match queues.next() { Some(t_and_p) => {
-            (t_and_p.0, t_and_p.1)
-        } _ => {
-            match queues.take_idle() { Some(idle) => {
-                (idle, Priority::None)
-            } _ => {
-                // we are already in the idle thread - we can simply return after re-enabling interrupts
-                x86_64::instructions::interrupts::enable();
-                return;
-            }}
-        }};
-
+        let (next, next_priority) = match queues.next() {
+            Some(t_and_p) => (t_and_p.0, t_and_p.1),
+            _ => {
+                match reason {
+                    ScheduleReason::Yield | ScheduleReason::Preempt => {
+                        return; // no other threads - safely continue
+                    }
+                    ScheduleReason::Exit
+                    | ScheduleReason::Block(_)
+                    | ScheduleReason::Sleep(_)
+                    | ScheduleReason::Panicked => match queues.take_idle() {
+                        Some(idle) => (idle, Priority::None),
+                        None => panic!("idle thread must never exit."),
+                    },
+                    ScheduleReason::Start => {
+                        panic!("Started scheduler with no available threads");
+                    }
+                }
+            }
+        };
+        let mut no_store = false;
         let (mut old, old_priority) = current.replace((next, next_priority)).unwrap();
         let old_ref = match reason {
             ScheduleReason::Yield | ScheduleReason::Preempt => {
                 match old_priority {
                     Priority::High => queues.queue_high_ref(old),
-                    Priority::Med  => queues.queue_med_ref(old),
-                    Priority::Low  => queues.queue_low_ref(old),
+                    Priority::Med => queues.queue_med_ref(old),
+                    Priority::Low => queues.queue_low_ref(old),
                     Priority::None => {
                         // it is an idle thread - we give it back to the queue list
                         queues.place_idle(old)
@@ -381,35 +474,52 @@ impl Scheduler {
             }
             ScheduleReason::Panicked => {
                 old.set_state(State::Terminated);
-                queues.set_panic(old.id());
-                queues.queue_norun_ref(Priority::None, old)
+                no_store = true;
+                queues.set_panic(old)
+            }
+            ScheduleReason::Start => {
+                if old_priority != Priority::None {
+                    panic!("threads must only start when the current thread is the idle thread.")
+                }
+                no_store = true;
+                // this ref should not actually be used.
+                queues.place_idle(old)
             }
         };
-        
+
         let old_ctx = old_ref.ctx_mut();
         let new_ctx = current.as_ref().unwrap().0.ctx();
         let new_tls = current.as_ref().unwrap().0.tls_block();
 
         self.needs_resched.store(false, Ordering::Release);
-        
+
         unsafe { install_tls(new_tls as *mut ThreadSelf) };
 
         // interrupts enabled here.
         x86_64::instructions::interrupts::enable();
-        unsafe { old_ctx.switch_to(new_ctx) };
+        current.as_ref().unwrap().0.dump_stack();
+        if no_store {
+            unsafe { new_ctx.load() };
+        } else {
+            unsafe { old_ctx.switch_to(new_ctx) };
+        }
     }
 
     pub fn has_panicked(&self, id: ThreadID) -> bool {
         unsafe_cell_ref!(self.queues).has_panicked(id)
     }
-    
+
+    pub fn remove_panic(&self, id: ThreadID) {
+        unsafe_cell_ref!(mut self.queues).remove_panic(id);
+    }
+
     pub fn reschedule_if_needed(&self) {
         if unsafe_cell_ref!(self.current).is_none() {
             // Many places call this function before initialization having this return prevents countless checks
             return;
         }
 
-        if self.needs_resched.swap(false, Ordering::Relaxed) {
+        if self.needs_resched.swap(false, Ordering::Release) {
             self.schedule(ScheduleReason::Preempt);
         }
     }
@@ -440,7 +550,15 @@ pub fn sleep_current(ticks: u64) {
 }
 
 pub fn block_until(ptr: *const bool) {
-    SCHEDULER.schedule(ScheduleReason::Block(ptr));
+    SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::Raw(ptr)));
+}
+
+pub fn block_until_end_of(id: ThreadID) {
+    SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::EndOf(id)));
+}
+
+pub fn block_until_key_input() {
+    SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::KeyInput));
 }
 
 pub fn yield_now() {
@@ -479,15 +597,39 @@ pub fn has_panicked(id: ThreadID) -> bool {
     SCHEDULER.has_panicked(id)
 }
 
+pub unsafe fn start() {
+    SCHEDULER.schedule(ScheduleReason::Start);
+}
+
+pub unsafe fn remove_panic_id(id: ThreadID) {
+    SCHEDULER.remove_panic(id);
+}
+
+pub unsafe fn panic_current() -> ! {
+    SCHEDULER.schedule(ScheduleReason::Panicked);
+    hlt_loop()
+}
+
+pub unsafe fn wake_kbd() {
+    SCHEDULER.wake_kbd();
+}
 #[allow(unused)]
 enum ScheduleReason {
     Yield,
     Preempt,
     Exit,
-    Block(*const bool),
+    Block(WakeEvent),
     Sleep(u64), // wake tick
-    Panicked
+    Panicked,
+    Start,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WakeEvent {
+    Raw(*const bool),
+    EndOf(ThreadID),
+    UnlockOf(()),
+    KeyInput,
 }
 
 // ASM linkage.
-

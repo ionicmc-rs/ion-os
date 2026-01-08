@@ -5,7 +5,7 @@ use alloc::{string::String, vec::Vec};
 use crate::io::{BufRead, Error, IoSlice, IoSliceMut, Read, Seek, Write};
 
 /// An empty stream.
-/// 
+///
 /// This means all read operations return `Ok(0)`, and some fail due to lack of data.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default, Hash)]
 pub struct Empty;
@@ -70,7 +70,7 @@ impl BufRead for Empty {
 }
 
 /// Emulates writing, but discards the value.
-/// 
+///
 /// this does not implement [`Read`]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub struct Sink;
@@ -129,16 +129,14 @@ impl<R: Read + ?Sized> Read for &mut R {
     fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
         (**self).read_exact(buf)
     }
-    
-    
-    
+
     fn is_endless(&self) -> bool {
         (**self).is_endless()
     }
-    
+
     fn size_hint(&self) -> Option<usize> {
         (**self).size_hint()
-    }    
+    }
 }
 impl<W: Write + ?Sized> Write for &mut W {
     #[inline]
@@ -198,7 +196,7 @@ impl<S: Seek + ?Sized> Seek for &mut S {
 /// Repeats the same byte.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default, Hash)]
 pub struct Repeat {
-    byte: u8
+    byte: u8,
 }
 
 impl Repeat {
@@ -230,4 +228,3 @@ impl Seek for Repeat {
         Ok(0) // this is fine as the reader is identical everywhere.
     }
 }
-

@@ -1,23 +1,27 @@
-
 use core::fmt::Debug;
 
-use alloc::{boxed::Box, format, string::{String, ToString as _}};
+use alloc::{
+    boxed::Box,
+    format,
+    string::{String, ToString as _},
+};
 
-use crate::{hlt_loop, thread::{self, JoinHandle, Thread}};
-
-
+use crate::{
+    hlt_loop,
+    thread::{self, JoinHandle, Thread},
+};
 
 struct ThreadMetadata {
     name: String,
     panicking: bool,
-    safe: bool
+    safe: bool,
 }
 
 #[thread_local]
 static mut THREAD_DATA: ThreadMetadata = ThreadMetadata {
     name: String::new(),
     panicking: false,
-    safe: true
+    safe: true,
 };
 
 #[derive(Default)]
@@ -25,7 +29,7 @@ pub struct ThreadBuilder<T: Send + 'static> {
     name: Option<String>,
     func: Option<Box<dyn FnOnce() -> T + Send + 'static>>,
     safe: bool,
-    stack: usize
+    stack: usize,
 }
 
 impl<T: Send + 'static> Debug for ThreadBuilder<T> {
@@ -39,7 +43,12 @@ impl<T: Send + 'static> Debug for ThreadBuilder<T> {
 
 impl<T: Send + 'static> ThreadBuilder<T> {
     pub const fn new() -> Self {
-        Self { name: None, func: None, safe: true, stack: 16 * 4096 }
+        Self {
+            name: None,
+            func: None,
+            safe: true,
+            stack: 16 * 4096,
+        }
     }
 
     pub const fn with_safety(mut self, safe: bool) -> Self {
@@ -48,7 +57,7 @@ impl<T: Send + 'static> ThreadBuilder<T> {
     }
 
     pub const fn set_safety(&mut self, safe: bool) -> &mut Self {
-        self.safe =  safe;
+        self.safe = safe;
         self
     }
 
@@ -100,7 +109,6 @@ impl<T: Send + 'static> ThreadBuilder<T> {
             hlt_loop()
         }
 
-        
         let meta = Meta {
             func: self.func.expect("function should be provided"),
             name: self.name.unwrap_or("<unnamed>".to_string()),
@@ -113,19 +121,22 @@ impl<T: Send + 'static> ThreadBuilder<T> {
 
     #[must_use = "if you do not need the return value, use `build` instead."]
     pub fn spawn(self) -> JoinHandle<T> {
-        super::spawn(move || {
-            let id = thread::current().unwrap().id().0;
-            unsafe {
-                THREAD_DATA.name = self.name.unwrap_or(format!("<id {id}>"));
-                THREAD_DATA.safe = self.safe;
-            }
+        super::spawn(
+            move || {
+                let id = thread::current().unwrap().id().0;
+                unsafe {
+                    THREAD_DATA.name = self.name.unwrap_or(format!("<id {id}>"));
+                    THREAD_DATA.safe = self.safe;
+                }
 
-            if let Some(func) = self.func {
-                func()
-            } else {
-                panic!("ThreadBuilder received no function to run.");
-            }
-        }, self.stack)
+                if let Some(func) = self.func {
+                    func()
+                } else {
+                    panic!("ThreadBuilder received no function to run.");
+                }
+            },
+            self.stack,
+        )
     }
 }
 

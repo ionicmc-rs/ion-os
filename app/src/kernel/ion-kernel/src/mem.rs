@@ -1,21 +1,23 @@
 //! Tools for handling memory
-//! 
+//!
 //! This module is a low level API for allocation, and other related ops.
 use core::ptr::NonNull;
 
 use x86_64::{
-    PhysAddr, VirtAddr, structures::paging::{OffsetPageTable, PageTable}
+    structures::paging::{OffsetPageTable, PageTable},
+    PhysAddr, VirtAddr,
 };
 
-use crate::{c_lib::{PHYSICAL_MEMORY_OFFSET, USABLE_ENTRY, libc}, serial_println};
+use crate::{
+    c_lib::{libc, PHYSICAL_MEMORY_OFFSET, USABLE_ENTRY},
+    serial_println,
+};
 
 /// Returns a mutable reference to the active level 4 table.
 ///
 /// # Safety
 /// this function must be only called once to avoid aliasing `&mut` references (which is undefined behavior).
-pub unsafe fn active_level_4_table()
-    -> &'static mut PageTable
-{
+pub unsafe fn active_level_4_table() -> &'static mut PageTable {
     let physical_memory_offset = VirtAddr::new(PHYSICAL_MEMORY_OFFSET as u64);
 
     use x86_64::registers::control::Cr3;
@@ -33,9 +35,7 @@ pub unsafe fn active_level_4_table()
 /// `None` if the address is not mapped.
 #[deprecated(since = "0.0.1", note = "No Longer needed")]
 #[allow(deprecated)]
-pub fn translate_addr(addr: VirtAddr)
-    -> Option<PhysAddr>
-{
+pub fn translate_addr(addr: VirtAddr) -> Option<PhysAddr> {
     translate_addr_inner(addr, VirtAddr::new(PHYSICAL_MEMORY_OFFSET as u64))
 }
 
@@ -45,14 +45,17 @@ pub fn translate_addr(addr: VirtAddr)
 /// the whole body of unsafe functions as an unsafe block. This function must
 /// only be reachable through `unsafe fn` from outside of this module.
 #[deprecated(since = "0.0.1", note = "No Longer needed")]
-fn translate_addr_inner(addr: VirtAddr, physical_memory_offset: VirtAddr)
-    -> Option<PhysAddr>
-{
+fn translate_addr_inner(addr: VirtAddr, physical_memory_offset: VirtAddr) -> Option<PhysAddr> {
     use x86_64::registers::control::Cr3;
     use x86_64::structures::paging::PageTable;
 
     let (level_4_table_frame, _) = Cr3::read();
-    let table_indexes = [addr.p4_index(), addr.p3_index(), addr.p2_index(), addr.p1_index()];
+    let table_indexes = [
+        addr.p4_index(),
+        addr.p3_index(),
+        addr.p2_index(),
+        addr.p1_index(),
+    ];
     let frame = level_4_table_frame;
 
     for (level, &index) in table_indexes.iter().enumerate() {
@@ -83,7 +86,7 @@ pub unsafe fn init() -> OffsetPageTable<'static> {
     }
 }
 
-use x86_64::structures::paging::{PhysFrame, Size4KiB, FrameAllocator};
+use x86_64::structures::paging::{FrameAllocator, PhysFrame, Size4KiB};
 
 /// A FrameAllocator that always returns `None`.
 #[derive(Debug)]
@@ -99,7 +102,7 @@ pub struct EmptyFrameAllocator;
 use crate::c_lib::MultibootMemory;
 
 /// A FrameAllocator that returns usable frames from the bootloader's memory map.
-/// 
+///
 /// Ideally, only the init function uses this.
 #[derive(Debug)]
 pub struct BootInfoFrameAllocator {
@@ -114,7 +117,7 @@ impl BootInfoFrameAllocator {
     /// This function is unsafe because the caller must guarantee that the passed
     /// memory map is valid. The main requirement is that all frames that are marked
     /// as `USABLE` in it are really unused.
-    /// 
+    ///
     /// Also, The pointer Must point to a valid [`MultibootMemory`] map
     pub unsafe fn init(memory_map: NonNull<MultibootMemory>) -> Self {
         BootInfoFrameAllocator {
@@ -133,11 +136,9 @@ impl BootInfoFrameAllocator {
 
         // get usable regions from memory map
         let regions = (mem_ref.entries).iter();
-        let usable_regions = regions
-            .filter(|r| r.entry_type == USABLE_ENTRY);
+        let usable_regions = regions.filter(|r| r.entry_type == USABLE_ENTRY);
         // map each region to its address range
-        let addr_ranges = usable_regions
-            .map(|r| r.start_addr()..r.end_addr());
+        let addr_ranges = usable_regions.map(|r| r.start_addr()..r.end_addr());
         // transform to an iterator of frame start addresses
         let frame_addresses = addr_ranges.flat_map(|r| r.step_by(4096));
         // create `PhysFrame` types from the start addresses
@@ -147,14 +148,14 @@ impl BootInfoFrameAllocator {
 
 unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
     /// Allocate a frame of the appropriate size and return it if possible.
-    /// 
+    ///
     /// # Panics
     /// panics if the next frame is outside of usize range
     fn allocate_frame(&mut self) -> Option<PhysFrame> {
         let frame = self.usable_frames().nth(self.next);
         self.next = self.next.checked_add(1).unwrap_or_else(|| {
             libc::set_errno(5);
-            panic!("Out of memory") 
+            panic!("Out of memory")
         });
         frame
     }

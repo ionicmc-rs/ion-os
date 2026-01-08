@@ -2,8 +2,8 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::io::{Error, ErrorKind, Result};
 use crate::io::Read;
+use crate::io::{Error, ErrorKind, Result};
 
 /// Ion OS equivalent of `std::io::BufRead`.
 pub trait BufRead: Read {
@@ -107,7 +107,7 @@ pub struct Split<B: BufRead> {
 }
 impl<B: BufRead> Iterator for Split<B> {
     type Item = Result<Vec<u8>>;
-    
+
     fn next(&mut self) -> Option<Self::Item> {
         let mut v = Vec::new();
         match self.buf.read_until(self.delim, &mut v) {

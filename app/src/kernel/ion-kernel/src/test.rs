@@ -1,14 +1,14 @@
 //! This module is not for tests, but instead the test frame-work
-//! 
+//!
 //! It includes the test runner, and other related items.
-//! 
+//!
 //! # Writing your Tests
 //! See CONTRIBUTING.md for better documentation
 //! # Example
 //! ```
 //! use crate::test::{TestInfo, TestResult, test_assert_eq};
 //! use core::any::type_id_of_val;
-//! 
+//!
 //! fn test_info(inf: TestInfo) -> TestResult {
 //!     test_assert_eq!(inf.ord, 0, "Make Me First!")?; // implements `Try`
 //!     test_assert_eq!(inf.type_id, type_id_of_val(&test_info))?;
@@ -16,29 +16,33 @@
 //! }
 //! ```
 #![cfg_attr(not(feature = "test"), allow(dead_code))]
-use core::{any::{Any, TypeId, type_name}, convert::Infallible, ops::{FromResidual, Try}};
+use core::{
+    any::{type_name, Any, TypeId},
+    convert::Infallible,
+    ops::{FromResidual, Try},
+};
 
 use crate::{serial_print, serial_println};
 
 /// Info Passed to Tests
-/// 
+///
 /// contains the index at which a test is executed, and the type ID.
-/// 
+///
 /// this is subject to change in the future, plan accordingly!
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TestInfo {
     /// The index at which the test is ran
     pub ord: usize,
     /// TypeID of the Test.
-    /// 
+    ///
     /// Usually a function's
-    pub type_id: TypeId
+    pub type_id: TypeId,
 }
 
 /// A Testable Object
-/// 
+///
 /// This allows for any type to be a test.
-/// 
+///
 /// by default, implemented for `T: Fn(TestInfo) -> TestResult`
 pub trait Testable: Any {
     /// # To Implementors
@@ -54,8 +58,8 @@ impl<T: Fn(TestInfo) -> TestResult + Any> Testable for T {
 }
 
 /// The result of a test
-/// 
-/// A test can: 
+///
+/// A test can:
 /// - pass (Ok)
 /// - fail: (Failure(/* err */))
 /// - be ignored (Ignored)
@@ -70,7 +74,7 @@ pub enum TestResult {
     /// The Test Has Passed
     Ok,
     /// The Test has Failed
-    /// 
+    ///
     /// The inner value is a description of why
     Failure(&'static str),
     /// This test was ignored, for whatever reason.
@@ -79,7 +83,7 @@ pub enum TestResult {
 
 impl TestResult {
     /// Returns a fail
-    /// 
+    ///
     /// useful for map functions
     pub fn fail(err: &'static str) -> Self {
         Self::Failure(err)
@@ -114,7 +118,7 @@ impl Try for TestResult {
     fn branch(self) -> core::ops::ControlFlow<Self::Residual, Self::Output> {
         match self {
             Self::Failure(e) => core::ops::ControlFlow::Break(e),
-            _ => core::ops::ControlFlow::Continue(())
+            _ => core::ops::ControlFlow::Continue(()),
         }
     }
 
@@ -124,9 +128,9 @@ impl Try for TestResult {
 }
 
 /// Runs tests
-/// 
+///
 /// do not call - this function is called automatically in lib.rs
-/// 
+///
 /// however, you may be able to find alternative uses elsewhere
 pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
     serial_println!("Now Running {} Tests.", tests.len());
@@ -137,18 +141,18 @@ pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
         serial_print!("[{}] ", i + 1); // run should print test name
         match test.run(TestInfo {
             ord: i,
-            type_id: test.type_id()
+            type_id: test.type_id(),
         }) {
-            TestResult::Ok => { 
+            TestResult::Ok => {
                 serial_println!("[OK]");
                 pass_count += 1;
-            },
+            }
             TestResult::Failure(e) => {
                 serial_println!("[FAIL]");
                 serial_println!(" => {}", e);
                 fail_count += 1;
-            },
-            TestResult::Ignored => { 
+            }
+            TestResult::Ignored => {
                 serial_println!("[IGNORED]");
                 ignore_count += 1;
             }
@@ -200,7 +204,6 @@ pub macro test_assert_ne {
     }
 }
 
-
 /// Asserts the passed in value matches the pattern, with an optional, Statically set message
 pub macro test_assert_matches {
     ($a:expr_2021, $pat:pat $(,)?) => {
@@ -214,14 +217,14 @@ pub macro test_assert_matches {
 // QEMU exiting.
 
 /// Represents a Qemu Exit Code
-/// 
+///
 /// This is used when ending tests, which is why prints must be serial.
-/// 
+///
 /// # Example
 /// in run_tests...
 /// ```rust,no_run
 /// use crate::test::{QemuExitCode, exit};
-/// 
+///
 /// exit(QemuExitCode::Passed);
 /// ```
 #[derive(Debug, Clone, Copy)]
@@ -229,16 +232,19 @@ pub enum QemuExitCode {
     /// Tests Passed
     Passed = 0x10,
     /// Tests Failed
-    Failed = 0x11
+    Failed = 0x11,
 }
 
 /// Exits QEMU using the code
-/// 
+///
 /// see [`QemuExitCode`] for more info
 pub fn exit(code: QemuExitCode) -> ! {
     exit_raw(code);
 
-    panic!("Attempted to write `{code:?}` ({:#x}) to port `0xf4`, but it did not exit.", code as u32);
+    panic!(
+        "Attempted to write `{code:?}` ({:#x}) to port `0xf4`, but it did not exit.",
+        code as u32
+    );
 }
 
 /// exits without a panic.

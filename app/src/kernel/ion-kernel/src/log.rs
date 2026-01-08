@@ -1,14 +1,14 @@
 //! Tools for logging to VGA buffer.
-//! 
+//!
 //! These are meant for users, but we plan to add a `serial_log`
 use core::fmt;
 
 use x86_64::instructions::interrupts;
 
-use crate::text::{Color, print, println, query_print_color, set_print_color};
+use crate::text::{print, println, query_print_color, set_print_color, Color};
 
 /// Log levels
-/// 
+///
 /// Ideally, you would use the logging macros [`info`], [`trace`], [`debug`], [`error`], and [`warn`]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Level {
@@ -40,12 +40,12 @@ pub fn log(level: Level, args: fmt::Arguments) {
             Level::Error => Color::LightRed,
             Level::Trace => Color::Magenta,
             Level::Info => Color::LightCyan,
-            Level::Warn => Color::Yellow
+            Level::Warn => Color::Yellow,
         };
         set_print_color(col, Color::Black);
-    
+
         print!("{level:?}");
-    
+
         set_print_color(fore, back);
         println!(" {}] {}", loc, args);
     })

@@ -10,9 +10,9 @@ pub enum SeekFrom {
     /// From the current cursor position.
     Current(i64),
     /// From the end.
-    /// 
+    ///
     /// note if a [`Seek`]er is endless it may return [`Error::UNSEEKABLE_INFINITE`](super::Error::UNSEEKABLE_INFINITE)
-    End(i64)
+    End(i64),
 }
 
 /// The seek trait

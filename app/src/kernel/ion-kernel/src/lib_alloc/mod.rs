@@ -1,5 +1,5 @@
 //! Contains tools for Allocation
-//! 
+//!
 //! Typically, you dont use this module, you use [`alloc`]
 use core::{alloc::GlobalAlloc, fmt};
 
@@ -17,7 +17,7 @@ fn heap_end() -> usize {
 }
 
 /// The Heap's Size
-pub const HEAP_SIZE: usize = 2 * 1024 * 1024; // 2 MiB by default.
+pub const HEAP_SIZE: usize = 4 * 1024 * 1024; // 2 MiB by default.
 
 /// Returns wether addr is inside of the heap.
 pub fn is_heap_addr(addr: usize) -> bool {
@@ -25,9 +25,11 @@ pub fn is_heap_addr(addr: usize) -> bool {
 }
 
 use x86_64::{
-    VirtAddr, align_up, structures::paging::{
-        FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB, mapper::MapToError
-    }
+    align_up,
+    structures::paging::{
+        mapper::MapToError, FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB,
+    },
+    VirtAddr,
 };
 
 use crate::thread;
@@ -50,13 +52,14 @@ pub fn init_heap(
             .allocate_frame()
             .ok_or(MapToError::FrameAllocationFailed)?;
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
-        unsafe {
-            mapper.map_to(page, frame, flags, frame_allocator)?.flush()
-        };
+        unsafe { mapper.map_to(page, frame, flags, frame_allocator)?.flush() };
     }
 
     unsafe {
-        GLOBAL_ALLOC.0.lock().init(heap_start() as *mut u8, HEAP_SIZE);
+        GLOBAL_ALLOC
+            .0
+            .lock()
+            .init(heap_start() as *mut u8, HEAP_SIZE);
     }
 
     Ok(())
@@ -67,9 +70,7 @@ pub struct RescheduleAlloc(LockedHeap);
 
 impl fmt::Debug for RescheduleAlloc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f
-            .debug_struct("RescheduleAlloc")
-            .finish_non_exhaustive()
+        f.debug_struct("RescheduleAlloc").finish_non_exhaustive()
     }
 }
 
@@ -83,34 +84,29 @@ impl RescheduleAlloc {
 unsafe impl GlobalAlloc for RescheduleAlloc {
     #[inline]
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        thread::critical_moment(
-            || { 
-                unsafe { self.0.alloc(layout) } 
-            }
-        ) // reschedules after
+        thread::critical_moment(|| unsafe { self.0.alloc(layout) }) // reschedules after
     }
 
     #[inline]
     unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
-        thread::critical_moment(|| {
-            unsafe { self.0.dealloc(ptr, layout); }
+        thread::critical_moment(|| unsafe {
+            self.0.dealloc(ptr, layout);
         })
     }
 
     #[inline]
     unsafe fn alloc_zeroed(&self, layout: core::alloc::Layout) -> *mut u8 {
-        thread::critical_moment(|| {
-            unsafe { self.0.alloc_zeroed(layout) }
-        })
+        thread::critical_moment(|| unsafe { self.0.alloc_zeroed(layout) })
     }
 
     #[inline]
-    unsafe fn realloc(&self, ptr: *mut u8, layout: core::alloc::Layout, new_size: usize) -> *mut u8 {
-        thread::critical_moment(|| {
-            unsafe {
-                self.0.realloc(ptr, layout, new_size)    
-            }
-        })
+    unsafe fn realloc(
+        &self,
+        ptr: *mut u8,
+        layout: core::alloc::Layout,
+        new_size: usize,
+    ) -> *mut u8 {
+        thread::critical_moment(|| unsafe { self.0.realloc(ptr, layout, new_size) })
     }
 }
 
@@ -118,7 +114,7 @@ unsafe impl GlobalAlloc for RescheduleAlloc {
 
 #[global_allocator]
 /// This static the global allocator.
-/// 
+///
 /// This should be used through [`Box`](alloc::boxed::Box), and other alloc types.
 pub static GLOBAL_ALLOC: RescheduleAlloc = RescheduleAlloc::empty();
 

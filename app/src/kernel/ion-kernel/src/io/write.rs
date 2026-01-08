@@ -1,7 +1,7 @@
 //! Module for [`Write`]ing  data
 
-use core::fmt;
 use crate::io::{Error, Result};
+use core::fmt;
 
 /// Ion OS equivalent of `std::io::Write`.
 pub trait Write {
@@ -10,23 +10,31 @@ pub trait Write {
     fn write(&mut self, buf: &[u8]) -> Result<usize>;
 
     /// Flush buffered data. For non-buffered writers, this is a no-op.
-    fn flush(&mut self) -> Result<()> { Ok(()) }
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
 
     /// Vectored write. Default loops over slices and calls `write`.
     fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> Result<usize> {
         let mut total = 0usize;
         for b in bufs {
             let slice = b.as_slice();
-            if slice.is_empty() { continue; }
+            if slice.is_empty() {
+                continue;
+            }
             let n = self.write(slice)?;
             total += n;
-            if n < slice.len() { break; }
+            if n < slice.len() {
+                break;
+            }
         }
         Ok(total)
     }
 
     /// Indicates whether `write_vectored` is specialized.
-    fn is_write_vectored(&self) -> bool { false }
+    fn is_write_vectored(&self) -> bool {
+        false
+    }
 
     /// Write the entire buffer or return an error if unable.
     fn write_all(&mut self, mut buf: &[u8]) -> Result<()> {
@@ -69,7 +77,10 @@ pub trait Write {
             }
         }
 
-        let mut output = Adapter { inner: self, error: Ok(()) };
+        let mut output = Adapter {
+            inner: self,
+            error: Ok(()),
+        };
         match fmt::write(&mut output, args) {
             Ok(()) => Ok(()),
             Err(..) => {
@@ -95,7 +106,11 @@ pub struct IoSlice<'a> {
 }
 impl<'a> IoSlice<'a> {
     /// Creates a new IO slice
-    pub fn new(buf: &'a [u8]) -> Self { Self { inner: buf } }
+    pub fn new(buf: &'a [u8]) -> Self {
+        Self { inner: buf }
+    }
     /// gets a mutable reference to the IO slice
-    pub fn as_slice(&self) -> &[u8] { self.inner }
+    pub fn as_slice(&self) -> &[u8] {
+        self.inner
+    }
 }
