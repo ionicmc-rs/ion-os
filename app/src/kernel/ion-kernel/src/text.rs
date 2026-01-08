@@ -1,44 +1,44 @@
 //! Tools for handling On Screen Text
-//! 
+//!
 //! # Safety
 //! In general, the functions of this module are always safe to call, as if you print to VGA while video memory is being used in graphics mode,
 //! it works perfectly fine, with the only problem being that it is covered by the video rendering.
-//! 
+//!
 //! In-fact, "background logs", as we call them, are encouraged! As when we crash, logs appear for a few moments, which may help in some capacity.
-//! 
+//!
 //! Note that we have not implement Video Rendering yet.
 //! # Features
 //! This module supports VGA printing with a foreground and background [`Color`]
-//! 
+//!
 //! The following operations are allowed for colors:
 //! - [`set_print_color(fore, back)`](set_print_color): Set the current print color
 //! - [`query_print_color()`]: Get the current print color
 //! - [`reset_print_color()`]: Resets the Print Color to White On Black.
-//! 
+//!
 //! Additionally, this module exports [`WRITER`] (static), which lives at 0xb8000 (the VGA buffer), and allows for I/O Operations on the VGA
 //! buffer. [`WRITER`] implements [`Write`](core::fmt::Write), which allows you to write to the VGA buffer.
-//! 
+//!
 //! However, the most common use case for this module, is [`print`] and [`println`], the printing macros.
-//! 
+//!
 //! # Example
 //! Set color and print
 //! ```
 //! use crate::text::{set_print_color, reset_print_color, println, Color};
-//! 
+//!
 //! set_print_color(Color::LightCyan, Color::Black);
 //! println!("Highlighted Text: {}", "Important!");
-//! 
+//!
 //! // ensure the print color is safe for logs
-//! 
+//!
 //! reset_print_color();
 //! ```
 //! Query the print color and print it.
 //! ```
 //! use crate::text::{query_print_color, WRITER};
 //! use x86_64::instructions::interrupts;
-//! 
+//!
 //! let color = query_print_color().tupled();
-//! 
+//!
 //! // prevent deadlocks
 //! interrupts::without_interrupts(|| {
 //!     let lock = WRITER.lock();
@@ -50,12 +50,12 @@
 //! ```
 
 /// A Color Used for the VGA Buffer.
-/// 
+///
 /// Used in tandem with [`set_print_color`] to color the VGA output.
 /// # Example
 /// ```
 /// use crate::test::{set_print_color, Color};
-/// 
+///
 /// set_print_color(Color::White, Color::Black);
 /// ```
 #[allow(dead_code)]
@@ -82,7 +82,7 @@ pub enum Color {
 }
 
 /// Colors (Foreground/Background) Used in the VGA Buffer
-/// 
+///
 /// Internal API, not to be created.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -128,7 +128,7 @@ struct Buffer {
 }
 
 /// Writer used to add text to the VGA Buffer
-/// 
+///
 /// Internal API, only use in [`WRITER`]
 #[derive(Debug)]
 pub struct Writer {
@@ -139,7 +139,7 @@ pub struct Writer {
 
 impl Writer {
     /// write a byte to the VGA Buffer
-    /// 
+    ///
     /// use [`write_char`] to write a char instead
     pub fn write_byte(&mut self, byte: u8) {
         match byte {
@@ -165,7 +165,7 @@ impl Writer {
     /// Removes the most recent character.
     pub fn backspace(&mut self) {
         self.column_position = self.column_position.saturating_sub(1);
-        
+
         let row = BUFFER_HEIGHT - 1;
         let col = self.column_position;
 
@@ -196,7 +196,6 @@ impl Writer {
                 // not part of printable ASCII range
                 _ => self.write_byte(0xfe),
             }
-
         }
     }
 
@@ -246,9 +245,9 @@ use crate::test::{TestInfo, TestResult};
 
 lazy_static! {
     /// The Global Writer
-    /// 
+    ///
     /// Typically, you wouldn't use this, instead, you would use the [`println`] or [`print`] macros.
-    /// 
+    ///
     /// But if those don't suffice, you can use this instead.
     /// # Example
     /// minimal example with no deadlock guard
@@ -270,7 +269,7 @@ pub macro print($($arg:tt)*) {
 }
 
 /// Prints the passed in text, with a newline at the end
-/// 
+///
 /// you can call this without arguments to simply add a newline to the VGA buffer
 pub macro println {
     () => ($crate::text::print!("\n")),
@@ -294,7 +293,7 @@ cfg_if::cfg_if! {
         pub macro debug_print($($arg:tt)*) {
             // do nothing
         }
-        
+
         /// prints only in debug assertions
         pub macro debug_println($($arg:tt)*) {
             // do nothing
@@ -328,20 +327,17 @@ pub fn _print(args: fmt::Arguments) {
     // panicking.
     //
     // this also must run without interrupts, as some of our interrupt handlers may print to the VGA
-    // buffer, which could cause a deadlock if we are already printing. see 
+    // buffer, which could cause a deadlock if we are already printing. see
     // https://os.phil-opp.com/hardware-interrupts/#provoking-a-deadlock
-    let _ = interrupts::without_interrupts(|| {
-        WRITER.lock().write_fmt(args)
-    });
+    let _ = interrupts::without_interrupts(|| WRITER.lock().write_fmt(args));
 }
 
 // test
 
-
 #[cfg(feature = "test")]
 /// Tests println output is valid
 pub fn test_println_output(_: TestInfo) -> TestResult {
-    use crate::test::{TestResult};
+    use crate::test::TestResult;
     use core::fmt::Write;
     use x86_64::instructions::interrupts;
 

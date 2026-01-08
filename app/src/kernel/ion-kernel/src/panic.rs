@@ -1,14 +1,21 @@
 //! panicking.
-use core::panic::PanicInfo;
+use core::{panic::PanicInfo, sync::atomic::compiler_fence};
 
 use x86_64::registers::model_specific::FsBase;
 
-use crate::{c_lib::libc::{get_errno, perror}, hlt_loop, io::Error, serial_println, text::{Color, WRITER}, thread};
-
+use crate::{
+    c_lib::libc::{get_errno, perror},
+    hlt_loop,
+    io::Error,
+    scheduler, serial_println,
+    text::{Color, WRITER},
+    thread,
+};
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    if FsBase::read().as_u64() == 0 { // panic before thread init - unsafe to use panic thread
+    if FsBase::read().as_u64() == 0 {
+        // panic before thread init - unsafe to use panic thread
         panic_raw(info);
     }
 
@@ -17,6 +24,7 @@ fn panic(info: &PanicInfo) -> ! {
 
 /// panics the current thread.
 pub fn panic_thread(info: &PanicInfo) -> ! {
+    unsafe { thread::build::set_panic() };
     let loc = info.location().unwrap();
     let message = info.message();
     let tname = thread::name();
@@ -32,7 +40,7 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
 
     let mut lock = match WRITER.try_lock() {
         Some(v) => v,
-        None => hlt_loop()
+        None => hlt_loop(),
     };
 
     use core::fmt::Write;
@@ -49,19 +57,18 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
     let err = Error::last_os_err();
     let _ = writeln!(lock, "=> Last THREAD Error: {err}");
 
-    unsafe { thread::build::set_panic() };
+    // everything before must stay before, and everything after must stay after.
+    compiler_fence(core::sync::atomic::Ordering::SeqCst);
 
     if tname.as_str() == "main" {
         hlt_loop()
     }
 
-    thread::exit_current();
-    hlt_loop()
+    unsafe { scheduler::panic_current() };
 }
 
-
 /// This function is called on panic.
-/// 
+///
 /// Ideally, you never call this function directly - in fact, you cannot; as a type of [`PanicInfo`] can never be created by users.
 /// # Example
 /// using the panic macro
@@ -91,7 +98,6 @@ pub fn panic_raw(info: &PanicInfo) -> ! {
     let c = c"=> Last OS Error";
     perror(c.as_ptr().cast_mut());
 
-
     if let Some(mut wlock) = WRITER.try_lock() {
         wlock.set_color(Color::LightCyan, Color::Black);
         let message = info.message();
@@ -114,12 +120,16 @@ pub fn panic_raw(info: &PanicInfo) -> ! {
         let err_code = get_errno();
         if let Some(meaning) = err_code.meaning() {
             let err_code = *err_code;
-            writeln!(wlock, "=> Last OS Error: {} (os error {})", meaning, err_code);
+            writeln!(
+                wlock,
+                "=> Last OS Error: {} (os error {})",
+                meaning, err_code
+            );
         } else {
             let err_code = *err_code;
             writeln!(wlock, "=> Last OS Error: {}", err_code);
         }
-    
+
         drop(wlock);
     }
     hlt_loop()

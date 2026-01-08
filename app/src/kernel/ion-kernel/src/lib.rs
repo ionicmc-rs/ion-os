@@ -1,29 +1,24 @@
 //! The Ion Kernel
-//! 
+//!
 //! This library contains the entirety of the Ion OS Kernel, which includes Rust Lang Items, such as
-//! the `#[panic_handler]` (found in [`panic`]), and os operations such as printing using 
+//! the `#[panic_handler]` (found in [`panic`]), and os operations such as printing using
 //! [`text`]_mode
 
 #![no_std]
 // required for tests
 #![no_main]
 #![allow(internal_features)]
-#![deny(
-    warnings,
-    missing_docs,
-    missing_abi,
-    missing_debug_implementations
-)]
+#![deny(warnings, missing_docs, missing_abi, missing_debug_implementations)]
 #![deny(rust_2024_compatibility)]
 #![allow(incomplete_features)]
 #![feature(
-    lang_items, 
-    decl_macro, 
-    panic_can_unwind, 
-    custom_test_frameworks, 
-    try_trait_v2, 
-    const_trait_impl, 
-    const_range, 
+    lang_items,
+    decl_macro,
+    panic_can_unwind,
+    custom_test_frameworks,
+    try_trait_v2,
+    const_trait_impl,
+    const_range,
     const_destruct,
     abi_x86_interrupt,
     debug_closure_helpers,
@@ -40,23 +35,29 @@ use cfg_if::cfg_if;
 
 extern crate alloc;
 
-use crate::{c_lib::{BootInfoC, bit_flags::BitFlags, libc}, entry::kernel_main, io::Error, log::{info, trace, warn}, text::println, thread::ThreadBuilder};
+use crate::{
+    c_lib::{bit_flags::BitFlags, libc, BootInfoC},
+    entry::kernel_main,
+    io::Error,
+    log::{info, trace, warn},
+    text::println,
+    thread::ThreadBuilder,
+};
 
-
-pub mod panic;
 pub mod c_lib;
-pub mod text;
-pub mod test;
+pub mod entry;
 pub mod init;
 pub mod interrupts;
-pub mod log;
-pub mod serial;
-pub mod mem;
-pub mod lib_alloc;
 pub mod io;
-pub mod thread;
+pub mod lib_alloc;
+pub mod log;
+pub mod mem;
+pub mod panic;
 pub mod scheduler;
-pub mod entry;
+pub mod serial;
+pub mod test;
+pub mod text;
+pub mod thread;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {
@@ -84,7 +85,7 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
     if !edx.read_flag(0) {
         feature_missing!(FPU);
     }
-    
+
     if !edx.read_flag(5) {
         feature_missing!(MSR);
     }
@@ -105,15 +106,14 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
         feature_missing!(CMOV);
     }
 
-    
     if !edx.read_flag(24) {
         feature_missing!(FXSR);
     }
-    
+
     // optionals
     if !edx.read_flag(3) {
         feature_missing!(PSE, optional);
-    }    
+    }
 
     if !edx.read_flag(4) {
         feature_missing!(TSC, optional);
@@ -124,12 +124,11 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
     }
 
     // ecx
-    
+
     if !ecx.read_flag(13) {
         feature_missing!(CX16);
     }
-    
-    
+
     // optionals
     if !ecx.read_flag(23) {
         feature_missing!(POPCNT, optional);
@@ -143,7 +142,6 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
         warn!("Your Virtual Machine does not support VMX, It is recommended to switch over to one that does.");
     }
 
-
     if !ecx.read_flag(17) {
         feature_missing!(PCID, optional);
     }
@@ -152,7 +150,6 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
         feature_missing!(x2APIC, optional);
     }
 
-
     if !ecx.read_flag(26) {
         feature_missing!(XSAVE, optional);
     }
@@ -160,20 +157,23 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
     if !ecx.read_flag(28) {
         feature_missing!(AVX, optional);
     }
-    
+
     if !ecx.read_flag(0) || !ecx.read_flag(19) || !ecx.read_flag(20) || !ecx.read_flag(9) {
         feature_missing!(SSE_ADDITIONAL, optional);
     }
 }
 
 /// The entry to the kernel
-/// 
+///
 /// Do Not call - at all.
 /// # Safety
 /// The boot_info ptr must point to valid data.
 #[allow(static_mut_refs, unreachable_code)]
 #[unsafe(no_mangle)]
-#[cfg_attr(feature = "test", expect(unreachable_code, reason = "panics always occur at end of tests"))]
+#[cfg_attr(
+    feature = "test",
+    expect(unreachable_code, reason = "panics always occur at end of tests")
+)]
 pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     serial_println!("\nWelcome User of QEMU! Thank you for using Ion OS");
 
@@ -183,40 +183,39 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     let boot_info = unsafe { boot_info.read() };
 
     let boot_info = boot_info.into_inner();
-    
+
     serial_println!("{:?}", boot_info);
 
-    let boot_info = boot_info.unwrap_or_else(|_| {
-        let err = Error::last_os_err();
-        libc::set_errno(6);
-        panic!("Invalid Boot Info: {err}")
-    }).into_rust();
-    
+    let boot_info = boot_info
+        .unwrap_or_else(|_| {
+            let err = Error::last_os_err();
+            libc::set_errno(6);
+            panic!("Invalid Boot Info: {err}")
+        })
+        .into_rust();
+
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
-    
+
     // FIXME(asm): this tag is currently always corrupt
     let _ptr = unsafe { boot_info.multiboot_info.into_inner().as_ref().unwrap() };
 
-    
     match init::init(boot_info) {
         Ok(()) => {
             info!("Initialized Ion OS basics");
-        },
-        Err(e) => {
-            x86_64::instructions::interrupts::without_interrupts(|| {
-                trace!("Handling Init Err: {e}");
-                if e.is_fatal() {
-                    panic!("Error while initializing Ion OS: {e}")
-                }
-            })
         }
+        Err(e) => x86_64::instructions::interrupts::without_interrupts(|| {
+            trace!("Handling Init Err: {e}");
+            if e.is_fatal() {
+                panic!("Error while initializing Ion OS: {e}")
+            }
+        }),
     }
-    
+
     cfg_if! {
         if #[cfg(feature = "test")] {
             run_tests(&[
                 // all tests go here
-                
+
                 // control, test for tests
                 &trivial_assertion,
                 // interrupts
@@ -233,24 +232,22 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
             panic!("End of tests; you can now exit.");
         }
     }
-    #[allow(unused)]
-    {
-        // this is the main thread.
-        thread::init();
-        ThreadBuilder::new()
-            .with_entry(|| {kernel_main()})
-            .with_name("main")
-            .with_safety(true)
-            .build();
-    }
+
+    // this is the main thread.
+    thread::init();
+    ThreadBuilder::new()
+        .with_name("main")
+        .with_entry(|| kernel_main())
+        .build();
+
     // from this point onwards - execution is passed to interrupt handlers and whatever threads we have now (and whatever threads we make.)
-    thread::yield_now();
+    unsafe { thread::start() };
     println!("return to the boot stack is prohibited");
     hlt_loop();
 }
 
 /// Halts the CPU forever.
-/// 
+///
 /// Only used in panics, and the Rust Kernel Entry.
 pub fn hlt_loop() -> ! {
     loop {

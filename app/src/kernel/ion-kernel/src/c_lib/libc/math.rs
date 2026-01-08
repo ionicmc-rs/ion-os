@@ -1,7 +1,7 @@
 //! Ion OS libc-like math module
 
 /// Result for a Division
-/// 
+///
 /// 32-bit integers used.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -13,7 +13,7 @@ pub struct DivT {
 }
 
 /// Result for a Division
-/// 
+///
 /// 64-bit integers used.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -25,19 +25,27 @@ pub struct LDivT {
 }
 
 /// Absolute value of x
-/// 
+///
 /// will return the value as +ve if it is -ve.
 #[unsafe(no_mangle)]
 pub extern "C" fn abs(x: i32) -> i32 {
-    if x < 0 { -x } else { x }
+    if x < 0 {
+        -x
+    } else {
+        x
+    }
 }
 
 /// Absolute value of x
-/// 
+///
 /// will return the value as +ve if it is -ve.
 #[unsafe(no_mangle)]
 pub extern "C" fn labs(x: i64) -> i64 {
-    if x < 0 { -x } else { x }
+    if x < 0 {
+        -x
+    } else {
+        x
+    }
 }
 
 /// Division returning struct
@@ -62,7 +70,7 @@ pub extern "C" fn ldiv(num: i64, denom: i64) -> LDivT {
 static mut NEXT: u32 = 1;
 
 /// Random number using set value as seed.
-/// 
+///
 /// This means these values are not to be trusted for safety.
 #[unsafe(no_mangle)]
 pub extern "C" fn rand() -> i32 {

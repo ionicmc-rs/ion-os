@@ -1,21 +1,30 @@
 //! Type wrappers for the [`malloc`] allocator
 
-use core::{ptr::NonNull};
+use core::ptr::NonNull;
 
-use alloc::{alloc::{AllocError, Allocator}, boxed::Box, collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque}, rc::Rc, sync::Arc, vec::Vec};
+use alloc::{
+    alloc::{AllocError, Allocator},
+    boxed::Box,
+    collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque},
+    rc::Rc,
+    sync::Arc,
+    vec::Vec,
+};
 
 use crate::c_lib::libc::mem::{free, malloc};
 
-
 /// Allocator which uses malloc.
-/// 
+///
 /// This implementation is unsafe and unrecommended, and eventually maps to the global allocator, so
 /// it is recommended you use that instead.
 #[derive(Debug, Clone, Copy)]
 pub struct MallocAllocator;
 
 unsafe impl Allocator for MallocAllocator {
-    fn allocate(&self, layout: core::alloc::Layout) -> Result<core::ptr::NonNull<[u8]>, alloc::alloc::AllocError> {
+    fn allocate(
+        &self,
+        layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, alloc::alloc::AllocError> {
         let ptr = unsafe { malloc(layout.size()) };
         let nn = NonNull::new(ptr).ok_or(AllocError)?;
         // Construct slice pointer with correct length
@@ -33,7 +42,6 @@ unsafe impl Allocator for MallocAllocator {
         unsafe { free(ptr.as_ptr()) };
     }
 }
-
 
 macro malloc_tool(
     $( $T:ident < $( $Generic:ident$(: $Bound:ident)? ),* > = $Eq:ident ),*

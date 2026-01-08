@@ -20,7 +20,10 @@ pub extern "C" fn __errno_location() -> *mut i32 {
     }
 }
 
-use core::{ffi::{CStr, c_char}, ops::Deref};
+use core::{
+    ffi::{c_char, CStr},
+    ops::Deref,
+};
 
 fn read_prefix<'a>(prefix: *const c_char) -> &'a str {
     if prefix.is_null() {
@@ -33,7 +36,7 @@ fn read_prefix<'a>(prefix: *const c_char) -> &'a str {
 }
 
 /// Prints the error with the given message.
-/// 
+///
 /// prints: {msg}: {error meaning if found} (os error {code})
 #[unsafe(no_mangle)]
 pub extern "C" fn perror(text: *mut c_char) {
@@ -78,7 +81,7 @@ impl ErrCode {
             5 => Some("Allocation Failure"),
             6 => Some("Invalid Input"),
             7 => Some("Unsupported"),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -86,6 +89,6 @@ impl ErrCode {
 impl Deref for ErrCode {
     type Target = i32;
     fn deref(&self) -> &Self::Target {
-        &self.0 
+        &self.0
     }
 }

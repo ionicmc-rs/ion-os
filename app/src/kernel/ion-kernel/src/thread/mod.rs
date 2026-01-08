@@ -1,19 +1,36 @@
-#![allow(missing_docs, clippy::missing_safety_doc, missing_debug_implementations)]
+#![allow(
+    missing_docs,
+    clippy::missing_safety_doc,
+    missing_debug_implementations
+)]
 #[cfg(debug_assertions)]
 use core::ptr::fn_addr_eq;
-use core::{sync::atomic::{AtomicU64, Ordering}};
+use core::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(debug_assertions)]
 use crate::scheduler::idle_entry;
-use crate::{interrupts, scheduler::{self, SCHEDULER}, serial_println, thread::{context::Context, stack::ThreadStack, tls::{TlsAllocation, alloc_thread_self}}};
+use crate::{
+    interrupts,
+    scheduler::{self, WakeEvent, SCHEDULER},
+    serial_println,
+    thread::{
+        context::Context,
+        stack::ThreadStack,
+        tls::{alloc_thread_self, TlsAllocation},
+    },
+};
 
-pub mod stack;
 pub mod context;
 mod join;
+pub mod stack;
 
-pub use join::{JoinHandle, spawn};
+pub use join::{spawn, JoinError, JoinErrorKind, JoinHandle};
 
-pub use crate::scheduler::{exit_current, current, yield_now, critical_moment, critical_moment_raw, block_until, has_panicked, request_reschedule, reschedule_if_needed};
+pub use crate::scheduler::{
+    block_until, block_until_end_of, block_until_key_input, critical_moment, critical_moment_raw,
+    current, exit_current, has_panicked, remove_panic_id, request_reschedule, reschedule_if_needed,
+    start, yield_now,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThreadID(pub u64);
@@ -27,16 +44,17 @@ pub struct Thread {
     state: State,
     tls: usize,
     // guards against forgetting to drop the allocation.
-    _tls_guard: TlsAllocation
-    // No metadata storage here, we do that with thread local storage.
+    _tls_guard: TlsAllocation, // No metadata storage here, we do that with thread local storage.
+}
+
+impl Drop for Thread {
+    fn drop(&mut self) {
+        serial_println!("Thread <id {}> dropped here", self.id.0)
+    }
 }
 
 impl Thread {
-    pub fn new(
-        entry: extern "C" fn(usize) -> !,
-        arg: usize,
-        stack: usize
-    ) -> Self {
+    pub fn new(entry: extern "C" fn(usize) -> !, arg: usize, stack: usize) -> Self {
         // use critical moment to prevent alloc from rescheduling.
         self::critical_moment_raw(|| {
             serial_println!("creating stack.");
@@ -48,16 +66,16 @@ impl Thread {
             if fn_addr_eq(entry, idle_entry as extern "C" fn(usize) -> !) {
                 stack.should_not_drop();
             }
-            
+
             let (raw_ptr, guard) = unsafe { alloc_thread_self(stack.ptr(), stack.size()) };
 
-            Self { 
+            Self {
                 ctx: Context::new(entry, arg, (stack.ptr() as usize) + stack.size()),
                 id,
                 tls: raw_ptr as usize,
                 _stack: stack,
                 state: State::Ready,
-                _tls_guard: guard
+                _tls_guard: guard,
             }
         })
     }
@@ -80,7 +98,11 @@ impl Thread {
 
     pub fn wake(&mut self) {
         if let State::Sleeping(tick) = self.state {
-            serial_println!("[thread ({})] thread has awoken on tick {}.", self.id.0, tick);
+            serial_println!(
+                "[thread ({})] thread has awoken on tick {}.",
+                self.id.0,
+                tick
+            );
             self.state = State::Ready;
         }
     }
@@ -104,6 +126,15 @@ impl Thread {
     pub fn ctx_mut(&mut self) -> &mut Context {
         &mut self.ctx
     }
+
+    pub fn dump_stack(&self) {
+        serial_println!(
+            "thread <id {:?}> stack ranges from {:p}->{:p}",
+            self.id,
+            self._stack.ptr(),
+            self._stack.ptr().wrapping_add(self._stack.size())
+        );
+    }
 }
 
 /// The next available ID
@@ -115,9 +146,9 @@ pub enum State {
     #[default]
     Ready,
     Terminated,
-    Blocked(*const bool),
+    Blocked(WakeEvent),
     Running,
-    Sleeping(u64)
+    Sleeping(u64),
 }
 
 // TOOLS
@@ -125,21 +156,26 @@ pub enum State {
 #[track_caller] // for panics.
 pub fn sleep(ms: u64) {
     serial_println!("sleep was called");
-    let id = current().expect("sleep should be called after thread initialization.").id().0;
+    let id = current()
+        .expect("sleep should be called after thread initialization.")
+        .id()
+        .0;
     serial_println!("[thread ({id})] now sleeping for <{ms}> milliseconds");
 
     scheduler::sleep_current(ms);
 }
 
 pub fn id() -> ThreadID {
-    current().expect("cannot retrieve thread id before initialization.").id()
+    current()
+        .expect("cannot retrieve thread id before initialization.")
+        .id()
 }
 
 pub fn init() {
     SCHEDULER.init();
 }
 
-pub mod tls;
 pub mod build;
+pub mod tls;
 
 pub use build::{name, panicking, preemption_safe, set_name, ThreadBuilder};

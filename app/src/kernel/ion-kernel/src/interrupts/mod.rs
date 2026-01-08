@@ -1,7 +1,7 @@
 //! Tools for both Software and Hardware Interrupts.
-//! 
+//!
 //! We use this module for setting the IDT, GDT and TSS tables, and handling keyboard inputs.
-//! 
+//!
 //! These things are handled in Ion OS's initialization, so you wouldn't typically have to see them.
 
 use crate::{c_lib::libc, interrupts::pic8259::InterruptIndex, serial_println, text::println};
@@ -29,7 +29,7 @@ lazy_static! {
         }
         idt.general_protection_fault.set_handler_fn(gp::protection_fault);
         // Hardware Interrupts.
-        
+
         idt[0xF0].set_handler_fn(timer::resched_isr);
 
         set_index!(
@@ -59,7 +59,10 @@ extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
 #[cfg(feature = "test")]
 /// Tests
 pub mod test {
-    use crate::{c_lib::libc, test::{TestInfo, TestResult, test_assert_eq}};
+    use crate::{
+        c_lib::libc,
+        test::{test_assert_eq, TestInfo, TestResult},
+    };
 
     /// breakpoint test
     pub fn test_breakpoint(_inf: TestInfo) -> TestResult {
@@ -70,13 +73,13 @@ pub mod test {
     }
 }
 
+mod double_fault;
 /// GDT
 pub mod gdt;
-pub mod pic8259;
 /// Keyboard Interrupt Handling.
 pub mod keyboard;
-mod double_fault;
 mod page_fault;
+pub mod pic8259;
 mod timer;
 pub use timer::ticks;
 mod gp;

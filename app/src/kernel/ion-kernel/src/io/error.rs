@@ -1,20 +1,20 @@
 //! I/O Errors
-//! 
+//!
 //! IO errors are very complex, as `I/O` isn't one thing used in a small amount of places - I/O is everything.
-//! 
+//!
 //! So, that means we need to support a large range of errors - how can we do that?
 //! # The [`Error`] type
 //! The error type is adapted from `std::io` to fit our kernel, it is truly a beautiful API, and [this blog](https://matklad.github.io/2020/10/15/study-of-std-io-error.html) shows off the true brilliance of `std::io::Error`.
-//! 
+//!
 //! These [`Error`]s can either be predefined errors ([`ErrorKind`]), a simple message (string literals), OS Error Codes ([`libc::get_errno`](crate::c_lib::libc::get_errno)), or custom Errors that implement [`core::error::Error`]
 //! # The Importance of [`Error`]
 //! Without [`Error`], we would not have a stable API for I/O error handling. Unfortunately, in the modern era of OSDev, many widely used OSes,
 //! (like Windows and MacOS) do not have stable APIs for basic things.
-//! 
+//!
 //! if we want Ion OS to become big - stabilization is key.
 //! # Custom VS. Os errors.
 //! In reality, you should not compare the two - in this case, we are the OS; we create the errors and get to decide what to use.
-//! 
+//!
 //! OS Errors are used for low-level error-management that can be accessed by processes, while custom errors are for internal OS errors.
 //! # Example
 //! ```
@@ -37,16 +37,16 @@ use alloc::boxed::Box;
 use crate::c_lib::libc;
 
 /// The Result type for I/O errors
-/// 
+///
 /// note that this may allocate.
 pub type Result<T = ()> = core::result::Result<T, Error>;
 
 /// An I/O Error.
-/// 
+///
 /// see the [`module level documentation`](self)
 #[derive(Debug)]
 pub struct Error {
-    data: ErrorData
+    data: ErrorData,
 }
 
 /// An I/O error, evaluated at compile type
@@ -56,7 +56,7 @@ pub macro const_err($kind:ident, $msg:literal) {
 
 impl Error {
     /// Creates a new Error with the given [`ErrorKind`].
-    /// 
+    ///
     /// # Warning to callers
     /// This function allocates to the heap, so it cannot be used for allocation errors.
     /// # Example
@@ -64,14 +64,20 @@ impl Error {
     /// let error = Error::new(ErrorKind::NotFound, "Could not find the required resource.");
     /// ```
     #[inline]
-    pub fn new<E: Into<Box<dyn error::Error + Send + Sync + 'static>>>(kind: ErrorKind, error: E) -> Self {
+    pub fn new<E: Into<Box<dyn error::Error + Send + Sync + 'static>>>(
+        kind: ErrorKind,
+        error: E,
+    ) -> Self {
         Error {
-            data: ErrorData::Custom(Custom  { kind, error: error.into() })
+            data: ErrorData::Custom(Custom {
+                kind,
+                error: error.into(),
+            }),
         }
     }
 
     /// Creates a new error with the [`Other`](ErrorKind::Other) [`ErrorKind`]
-    /// 
+    ///
     /// see [`new`](Self::new) for more info and examples.
     #[inline]
     pub fn other<E: Into<Box<dyn error::Error + Send + Sync + 'static>>>(error: E) -> Self {
@@ -79,7 +85,7 @@ impl Error {
     }
 
     /// Creates an error from a string literal.
-    /// 
+    ///
     /// used in [`const_err`]
     /// # Example
     /// example using [`const_err`]
@@ -88,11 +94,13 @@ impl Error {
     /// ```
     #[inline]
     pub const fn from_static_msg(kind: ErrorKind, msg: &'static str) -> Self {
-        Self { data: ErrorData::SimpleMessage(kind, msg) }
+        Self {
+            data: ErrorData::SimpleMessage(kind, msg),
+        }
     }
 
     /// Gets the last OS error as an [`Error`]
-    /// 
+    ///
     /// if you're trying to retrieve an error from a function called, call it immediately after the function to minimize the risk of
     /// interrupt handlers setting error codes.
     /// # Example
@@ -105,11 +113,13 @@ impl Error {
     #[doc(alias = "GetLastError")]
     #[doc(alias = "errno")]
     pub fn last_os_err() -> Self {
-        Self { data: ErrorData::Os(*libc::get_errno()) }
+        Self {
+            data: ErrorData::Os(*libc::get_errno()),
+        }
     }
 
     /// Returns the OS code if available.
-    /// 
+    ///
     /// Only returns [`Some`] if this [`Error`] was created using [`last_os_err`](Error::last_os_err).
     ///
     /// # Examples
@@ -125,7 +135,7 @@ impl Error {
     pub fn os_code(&self) -> Option<i32> {
         match self.data {
             ErrorData::Os(v) => Some(v),
-            _ => None
+            _ => None,
         }
     }
 
@@ -144,12 +154,12 @@ impl Error {
             ErrorData::Custom(Custom { kind, .. }) => Some(kind),
             ErrorData::Os(code) => decode_os_code(code),
             ErrorData::Simple(kind) => Some(kind),
-            ErrorData::SimpleMessage(..) => None
+            ErrorData::SimpleMessage(..) => None,
         }
     }
 
     /// Returns a reference to the inner error.
-    /// 
+    ///
     /// This calls [`Box::as_ref`](core::convert::AsRef::as_ref).
     ///
     /// # Examples
@@ -168,7 +178,7 @@ impl Error {
     }
 
     /// Returns a mutable reference to the inner error.
-    /// 
+    ///
     /// This calls [`Box::as_mut`](core::convert::AsMut::as_mut).
     /// # Examples
     ///
@@ -196,7 +206,7 @@ impl Error {
     /// # Example
     /// ```
     /// let error = Error::other("It failed!");
-    /// 
+    ///
     /// let original = error.into_inner();
     /// assert_eq!(original.downcast_ref().unwrap(), "It failed!");
     /// ```
@@ -212,7 +222,7 @@ impl Error {
     }
 
     /// attempts to downcast the [`Error`] into `E`, consuming the [`Error`].
-    /// 
+    ///
     /// This is useful if you know the type of the error
     /// # Example
     /// ```
@@ -228,17 +238,23 @@ impl Error {
                     Some(*downcast)
                 }
             }
-            _ => None
+            _ => None,
         }
     }
 
     // CONSTS
 
     /// An Error for Seekers that do not have ends, which are called with `SeekFrom::End`.
-    pub const UNSEEKABLE_INFINITE: Self = const_err!(NotSeekable, "cannot `SeekFrom::End` because the reader/writer is endless.");
+    pub const UNSEEKABLE_INFINITE: Self = const_err!(
+        NotSeekable,
+        "cannot `SeekFrom::End` because the reader/writer is endless."
+    );
 
     /// An error for [`Read`](super::Read)ers that do not have ends, but are required to be fully read.
-    pub const UNREADABLE_INFINITE: Self = const_err!(WouldBlock, "cannot read the reader because it would block infinitely.");
+    pub const UNREADABLE_INFINITE: Self = const_err!(
+        WouldBlock,
+        "cannot read the reader because it would block infinitely."
+    );
 
     /// An General errors for resources that are missing.
     pub const NOT_FOUND: Self = const_err!(NotFound, "the resource was not found.");
@@ -258,7 +274,10 @@ impl Error {
     pub const EARLY_EOF: Self = const_err!(UnexpectedEof, "early EOF");
 
     /// Error for requiring a non-empty reader to write, but read returns [`Ok(0)`](Ok)
-    pub const WRITE_TO_EMPTY: Self = const_err!(WriteZero, "needed a non-empty reader, but `read` returned EOF");
+    pub const WRITE_TO_EMPTY: Self = const_err!(
+        WriteZero,
+        "needed a non-empty reader, but `read` returned EOF"
+    );
 }
 
 fn decode_os_code(code: i32) -> Option<ErrorKind> {
@@ -271,14 +290,14 @@ fn decode_os_code(code: i32) -> Option<ErrorKind> {
         5 => Some(ErrorKind::MemoryError),
         6 => Some(ErrorKind::InvalidInput),
         7 => Some(ErrorKind::Unsupported),
-        _ => Some(ErrorKind::Other)
+        _ => Some(ErrorKind::Other),
     }
 }
 
 impl From<ErrorKind> for Error {
     fn from(value: ErrorKind) -> Self {
         Error {
-            data: ErrorData::Simple(value)
+            data: ErrorData::Simple(value),
         }
     }
 }
@@ -293,7 +312,11 @@ impl Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match &self.data {
             ErrorData::Custom(Custom { kind, error }) => write!(f, "{}: {error}", kind.as_str()),
-            ErrorData::Os(v) => write!(f, "{} (os error {v})", decode_os_code(*v).unwrap_or_default().as_str()),
+            ErrorData::Os(v) => write!(
+                f,
+                "{} (os error {v})",
+                decode_os_code(*v).unwrap_or_default().as_str()
+            ),
             ErrorData::Simple(v) => write!(f, "{}", v.as_str()),
             ErrorData::SimpleMessage(kind, msg) => write!(f, "{}: {msg}", kind.as_str()),
         }
@@ -304,7 +327,7 @@ impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self.data {
             ErrorData::Custom(Custom { ref error, .. }) => Some(error.as_ref()),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -312,7 +335,7 @@ impl error::Error for Error {
 #[derive(Debug)]
 struct Custom {
     kind: ErrorKind,
-    error: Box<dyn error::Error + Sync + Send>
+    error: Box<dyn error::Error + Sync + Send>,
 }
 
 #[derive(Debug)]
@@ -320,11 +343,11 @@ enum ErrorData {
     Os(i32),
     Simple(ErrorKind),
     SimpleMessage(ErrorKind, &'static str),
-    Custom(Custom)
+    Custom(Custom),
 }
 
 /// A Kind of Error
-/// 
+///
 /// see the [`module level docs`](self) for more info
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ErrorKind {
@@ -347,7 +370,7 @@ pub enum ErrorKind {
     InvalidInput,
 
     /// Data is invalid
-    /// 
+    ///
     /// more general form of [`InvalidInput`](ErrorKind::InvalidInput)
     InvalidData,
 
@@ -390,20 +413,17 @@ pub enum ErrorKind {
     MemoryError,
 
     // Errors to be posted in `ERRNO` are to be put above this comment
-
     /// EOF, but it was unexpected.
     UnexpectedEof,
 
     /// The operation was partially successful and needs to be checked
     /// later on due to not blocking.
     InProgress,
-        
 
     // OS Errors not to be posted in ERRNO are to be put above this comment
-
     /// Represents errors that do not fall into any other category.
     #[default]
-    Other
+    Other,
 }
 
 impl ErrorKind {
@@ -430,7 +450,7 @@ impl ErrorKind {
             Unsupported => "unsupported operation",
             WouldBlock => "non blocking operation must block",
             WriteZero => "write to zeroed reader",
-            Other => "unknown error"
+            Other => "unknown error",
         }
     }
 }
@@ -440,10 +460,13 @@ impl ErrorKind {
 // alloc
 impl From<core::alloc::LayoutError> for Error {
     /// Converts to this type from the input type.
-    /// 
+    ///
     /// (Note that the LayoutError cannot be retrieved from the error due to us not being able to allocate)
     fn from(_: core::alloc::LayoutError) -> Self {
-        const_err!(InvalidInput, "invalid size and/or align for `Layout::from_size_align`")
+        const_err!(
+            InvalidInput,
+            "invalid size and/or align for `Layout::from_size_align`"
+        )
     }
 }
 

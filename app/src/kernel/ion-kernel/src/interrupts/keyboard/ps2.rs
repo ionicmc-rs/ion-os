@@ -1,9 +1,9 @@
 //! Minimal PS/2 keyboard scancode-set control (0xF0).
 //! - Set: send 0xF0, then 1/2/3; expect ACK (0xFA) or RESEND (0xFE).
 //! - Get: send 0xF0, then 0; expect ACK, then a value indicating set.
-//! 
+//!
 //! Handles both "raw" (1/2/3) and "translated" (0x43/0x41/0x3F) returns.
-//! 
+//!
 //! currently unused, but subject to change!
 #![allow(unused)]
 
@@ -16,25 +16,26 @@ pub enum Ps2Resp {
     Resend, // 0xFE
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScancodeSet {
     Set1,
     Set2,
     Set3,
-    None
+    None,
 }
 
 impl pc_keyboard::ScancodeSet for ScancodeSet {
-    fn advance_state(&mut self, code: u8) -> Result<Option<pc_keyboard::KeyEvent>, pc_keyboard::Error> {
+    fn advance_state(
+        &mut self,
+        code: u8,
+    ) -> Result<Option<pc_keyboard::KeyEvent>, pc_keyboard::Error> {
         match self {
             // if we have not set, use set 1
             // if the set is 3, we do not support that (yet), use 1 instead.
-            ScancodeSet::None  |
-             ScancodeSet::Set1 |
-             ScancodeSet::Set3
-                => ScancodeSet1::new().advance_state(code),
-            ScancodeSet::Set2 => ScancodeSet2::new().advance_state(code)
+            ScancodeSet::None | ScancodeSet::Set1 | ScancodeSet::Set3 => {
+                ScancodeSet1::new().advance_state(code)
+            }
+            ScancodeSet::Set2 => ScancodeSet2::new().advance_state(code),
         }
     }
 }
@@ -187,5 +188,3 @@ pub fn get_scancode_set<I: Ps2Io>(io: &mut I) -> Result<ScancodeSet, Ps2Error> {
         None => Err(Ps2Error::InvalidScancodeId(id)),
     }
 }
-
-

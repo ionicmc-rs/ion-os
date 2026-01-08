@@ -1,11 +1,11 @@
 //! Serial Printing to STDOUT (Terminal)
-//! 
+//!
 //! This module is only for debugging purposes and its functionality is disabled in release mode.
 //! # Implementation Details
 //! This module writes to port `0xE9` (Mapped to rust in [`SERIAL1`]), which prints to the standard output (terminal).
-//! 
+//!
 //! We support 2 forms of this.
-//! 
+//!
 //! - basic form
 //!   - almost never fails
 //!   - basic - does not support [`fmt::Arguments`](core::fmt::Arguments)
@@ -20,14 +20,14 @@
 //! serial::dbg::str("An it did not crash!\n");
 //! ```
 
-use uart_16550::SerialPort;
-use spin::Mutex;
 use lazy_static::lazy_static;
+use spin::Mutex;
+use uart_16550::SerialPort;
 use x86_64::instructions::interrupts;
 
 lazy_static! {
     /// Serial Port for Standard Output
-    /// 
+    ///
     /// Use the safe abstractions [`serial_println`], [`serial_print`], [`serial::dbg::*`](dbg),
     /// which support actual strings.
     pub static ref SERIAL1: Mutex<SerialPort> = {
@@ -37,14 +37,13 @@ lazy_static! {
     };
 }
 
-
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
     // Even though `write_fmt` always returns `Ok(())`, we are better off ignoring the value instead of
     // panicking.
     //
-    // this also must run without interrupts, as some of our interrupt handlers print to Serial, 
-    // which could cause a deadlock if we are already printing. see 
+    // this also must run without interrupts, as some of our interrupt handlers print to Serial,
+    // which could cause a deadlock if we are already printing. see
     // https://os.phil-opp.com/hardware-interrupts/#provoking-a-deadlock
     // note: we now use another api.
 
@@ -88,24 +87,27 @@ pub mod dbg {
     use core::fmt::Write as _;
 
     /// print a single byte using asm
-    /// 
+    ///
     /// always works
     #[inline(always)]
     pub fn byte(b: u8) {
-        unsafe { core::arch::asm!("out dx, al", in("dx") 0xE9u16, in("al") b); }
+        unsafe {
+            core::arch::asm!("out dx, al", in("dx") 0xE9u16, in("al") b);
+        }
     }
     /// print a str using asm
-    /// 
+    ///
     /// always works
     pub fn str(s: &str) {
-        for &b in s.as_bytes() { byte(b); }
+        for &b in s.as_bytes() {
+            byte(b);
+        }
     }
 
     /// Writes arguments to serial
-    /// 
+    ///
     /// always works
     pub fn fmt(fmt: core::fmt::Arguments) {
         let _ = super::BasicSerial.write_fmt(fmt);
     }
 }
-

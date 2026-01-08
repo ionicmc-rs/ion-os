@@ -1,8 +1,8 @@
 //! C-style Memory Operations
-//! 
+//!
 //! everything provided by this module can be done elsewhere with Rust APIs, but this module provides
 //! the basic form
-//! 
+//!
 //! note: we do not use exactly the same API as C, we use a safer api to prevent memory leaks, and incorrect allocations
 
 use core::{alloc::Layout, mem::size_of_val_raw, ptr};
@@ -15,12 +15,12 @@ use crate::test::{TestInfo, TestResult};
 // SAFE API
 
 /// Allocates memory suitable for holding `T`
-/// 
+///
 /// despite the function's name, this function is marked unsafe
 /// # Safety
 /// The caller must ensure `T` is not zero sized, and the the call follows the Safety requirements of
 /// [`buddy_system_allocator::LockedHeap`]
-/// 
+///
 /// Additionally, the allocation must be deallocated, before the halt loop at the end of our kernel,
 /// using [`free_safe`]
 /// # `malloc_safe` for unsized values.
@@ -30,7 +30,7 @@ pub unsafe fn malloc_safe<T>() -> *mut T {
 }
 
 /// Allocates using malloc, and writes the argument into it.
-/// 
+///
 /// despite the function's name, this function is marked unsafe
 /// # Safety
 /// See [`malloc_safe`]
@@ -41,9 +41,9 @@ pub unsafe fn malloc_safe_val<T>(val: T) -> *mut T {
 }
 
 /// Allocates memory suitable for holding `val`
-/// 
+///
 /// **THIS DOES NOT PLACE `val` INTO THE ALLOCATION.**
-/// 
+///
 /// despite the function's name, this function is marked unsafe
 /// # Safety
 /// See [`malloc_safe`]
@@ -63,11 +63,9 @@ pub unsafe fn malloc_unsized_safe_val<T: ?Sized>(val: &T) -> *mut u8 {
     raw
 }
 
-
-
-/// Deallocates Memory pointing to `T`, with the assumption it was allocated using [`malloc_safe`] 
+/// Deallocates Memory pointing to `T`, with the assumption it was allocated using [`malloc_safe`]
 /// (or at least the GlobalAllocator, safely).
-/// 
+///
 /// despite the function's name, this function is marked unsafe.
 /// # Safety
 /// The caller must ensure `ptr` was allocated properly, and the the call follows the Safety requirements of
@@ -81,7 +79,7 @@ pub unsafe fn free_safe<T: ?Sized>(ptr: *mut T) {
 }
 
 /// Reallocates Memory in `ptr` suitable for holding values of type `T`
-/// 
+///
 /// # Safety
 /// The caller must ensure:
 /// - The pointer was already a validly allocated pointer to `T`, using the Global Allocator.
@@ -99,7 +97,7 @@ pub unsafe fn realloc_safe<T: ?Sized>(ptr: *mut T) -> *mut u8 {
 }
 
 /// Allocs a slice of size `nmemb`, suitable to hold `[T]`
-/// 
+///
 /// # Safety
 /// The caller must ensure:
 /// - `T` is not zero-sized.
@@ -111,15 +109,14 @@ pub unsafe fn calloc_safe<T>(nmemb: usize) -> *mut T {
     }
 
     // Compute total size
-    let total_size = nmemb.checked_mul(size_of::<T>())
-        .unwrap_or_else(|| {
-            super::error::set_errno(5);
-            panic!("calloc_safe: size too big")
-        });
+    let total_size = nmemb.checked_mul(size_of::<T>()).unwrap_or_else(|| {
+        super::error::set_errno(5);
+        panic!("calloc_safe: size too big")
+    });
 
     // Create layout for the array
-    let layout = Layout::from_size_align(total_size, core::mem::align_of::<T>())
-        .unwrap_or_else(|e| {
+    let layout =
+        Layout::from_size_align(total_size, core::mem::align_of::<T>()).unwrap_or_else(|e| {
             super::error::set_errno(5);
             panic!("calloc_safe: invalid layout: {e}");
         });
@@ -140,14 +137,14 @@ pub unsafe fn calloc_safe<T>(nmemb: usize) -> *mut T {
 // RAW API
 
 /// Allocates memory with a size of `size`
-/// 
+///
 /// This function is extremely unsafe, and if you know the type of the allocation, [`malloc_safe`] is
-/// preferred. 
-/// 
+/// preferred.
+///
 /// Even better, use [`Box`](alloc::boxed) or [`Vec`](alloc::vec) to ensure the value is always dropped
 /// # Safety
 /// The following must be ensured:
-/// - `size`, when rounded up to the nearest multiple of align, must not overflow isize (i.e., the 
+/// - `size`, when rounded up to the nearest multiple of align, must not overflow isize (i.e., the
 ///   rounded value must be less than or equal to isize::MAX).
 /// - The allocation must be freed eventually.
 /// - the the call follows the Safety requirements of
@@ -163,8 +160,11 @@ pub unsafe extern "C" fn malloc(size: usize) -> *mut u8 {
     }
 
     // Reserve extra space to store size
-    let layout = Layout::from_size_align(size + core::mem::size_of::<usize>(), core::mem::align_of::<usize>())
-        .unwrap();
+    let layout = Layout::from_size_align(
+        size + core::mem::size_of::<usize>(),
+        core::mem::align_of::<usize>(),
+    )
+    .unwrap();
 
     let raw = unsafe { alloc(layout) };
     if raw.is_null() {
@@ -180,7 +180,7 @@ pub unsafe extern "C" fn malloc(size: usize) -> *mut u8 {
 }
 
 /// Frees the Allocation.
-/// 
+///
 /// # Safety
 /// The caller must ensure this pointer was allocated using [`malloc`], and the the call follows the Safety requirements of
 /// [`buddy_system_allocator::LockedHeap`]
@@ -195,14 +195,17 @@ pub unsafe extern "C" fn free(ptr: *mut u8) {
     let meta_ptr = unsafe { ptr.sub(core::mem::size_of::<usize>()) };
     let size = unsafe { *(meta_ptr as *mut usize) };
 
-    let layout = Layout::from_size_align(size + core::mem::size_of::<usize>(), core::mem::align_of::<usize>())
-        .unwrap();
+    let layout = Layout::from_size_align(
+        size + core::mem::size_of::<usize>(),
+        core::mem::align_of::<usize>(),
+    )
+    .unwrap();
 
     unsafe { dealloc(meta_ptr, layout) };
 }
 
 /// Allocates `nmemb` elements, of size `size`, all zeroed.
-/// 
+///
 /// This is useful for slices.
 /// # Safety
 /// The caller must ensure:
@@ -219,8 +222,11 @@ pub unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut u8 {
     }
 
     // Reserve space for metadata
-    let layout = Layout::from_size_align(total + core::mem::size_of::<usize>(), core::mem::align_of::<usize>())
-        .unwrap();
+    let layout = Layout::from_size_align(
+        total + core::mem::size_of::<usize>(),
+        core::mem::align_of::<usize>(),
+    )
+    .unwrap();
 
     let raw = unsafe { alloc(layout) };
     if raw.is_null() {
@@ -283,11 +289,14 @@ pub fn test_malloc(inf: TestInfo) -> TestResult {
 
     // variable data for better testing.
 
-    use crate::{c_lib::libc::malloc_wraps::{MallocAllocator, MallocBox}, test::test_assert_eq};
-    unsafe { 
+    use crate::{
+        c_lib::libc::malloc_wraps::{MallocAllocator, MallocBox},
+        test::test_assert_eq,
+    };
+    unsafe {
         let safe_ptr = malloc_safe_val(inf.ord);
         test_assert_eq!(*safe_ptr, inf.ord)?;
-        free_safe(safe_ptr); 
+        free_safe(safe_ptr);
     };
 
     // raw api
@@ -343,4 +352,4 @@ pub fn test_malloc(inf: TestInfo) -> TestResult {
     }
 
     TestResult::Ok
-} 
+}

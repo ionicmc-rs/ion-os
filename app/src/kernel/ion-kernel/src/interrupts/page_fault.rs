@@ -1,6 +1,5 @@
-use x86_64::structures::idt::{InterruptStackFrame, PageFaultErrorCode};
 use x86_64::registers::control::Cr2;
-
+use x86_64::structures::idt::{InterruptStackFrame, PageFaultErrorCode};
 
 pub(super) extern "x86-interrupt" fn page_fault(
     frame: InterruptStackFrame,

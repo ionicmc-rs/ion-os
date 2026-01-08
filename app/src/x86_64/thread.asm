@@ -1,6 +1,6 @@
 global context_switch
 global thread_trampoline
-global interrupt_entry_32
+global context_load
 extern timer_isr
 
 section .text
@@ -33,6 +33,17 @@ context_switch:
     mov     r12, [rsi + 0x20]
     mov     rbx, [rsi + 0x28]
     mov     rbp, [rsi + 0x30]
+
+    ret
+
+context_load:
+    mov     rsp, [rdi + 0x00]
+    mov     r15, [rdi + 0x08]
+    mov     r14, [rdi + 0x10]
+    mov     r13, [rdi + 0x18]
+    mov     r12, [rdi + 0x20]
+    mov     rbx, [rdi + 0x28]
+    mov     rbp, [rdi + 0x30]
 
     ret
 

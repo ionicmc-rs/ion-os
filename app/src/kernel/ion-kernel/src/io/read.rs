@@ -1,7 +1,7 @@
 //! [`Read`]ing data.
-//! 
+//!
 //! *for more info, see `std::io` (add link)*
-//! 
+//!
 //! Reads allow you to get the internal data in complex in structures, they can fail with IO Errors, or pass with the internal
 //! bytes.
 
@@ -9,7 +9,7 @@ use alloc::{string::String, vec::Vec};
 
 use crate::io::{Error, ErrorKind};
 
-use super::{Result};
+use super::Result;
 
 // IoSlice
 
@@ -45,7 +45,7 @@ impl<'a> IoSliceMut<'a> {
 // Read Trait
 
 /// Returns if the result of a [`read`](Read::read) is an EOF ([`Ok(0)`](Ok)).
-/// 
+///
 /// # Example
 /// ```
 /// if is_eof(reader.read()) {
@@ -60,7 +60,7 @@ pub fn is_eof(res: &Result<usize>) -> bool {
 #[derive(Debug, Clone)]
 pub struct Chain<R1: Read, R2: Read> {
     first: R1,
-    second: R2
+    second: R2,
 }
 
 impl<R1: Read, R2: Read> Read for Chain<R1, R2> {
@@ -176,17 +176,17 @@ impl<R: Read> Read for Take<R> {
     }
 }
 /// Readable data.
-/// 
+///
 /// The trait provides methods for reading data as bytes. with the one required method: [`read`](Read::read).
-/// 
+///
 /// note that [`read`](Read::read) may involve allocation.
-/// 
-/// note that for [`Seek`](super::Seek)ers, the same cursor (should) be used, so if you need contents twice, call `rewind()` 
+///
+/// note that for [`Seek`](super::Seek)ers, the same cursor (should) be used, so if you need contents twice, call `rewind()`
 pub trait Read {
     /// reads data into the buffer, returning the number of bytes read.
-    /// 
+    ///
     /// readers may have incomplete reads, in which case, [`ErrorKind::Interrupted`](super::ErrorKind::Interrupted) should be returned.
-    /// 
+    ///
     /// if this function returns `Ok(0)`, that means EOF has been reached, and that the reader is complete.
     fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
     /// Read into multiple buffers (scatter read).
@@ -206,7 +206,7 @@ pub trait Read {
     }
 
     /// Reads exactly the number of bytes required to fill `buf`, returning on error or EOF.
-    /// 
+    ///
     /// This function makes no assumptions on the reader or the buffer, call sparingly.
     fn read_exact(&mut self, mut buf: &mut [u8]) -> Result {
         while !buf.is_empty() {
@@ -219,7 +219,11 @@ pub trait Read {
                 Err(e) => return Err(e),
             }
         }
-        if !buf.is_empty() { Err(Error::EARLY_EOF) } else { Ok(()) }
+        if !buf.is_empty() {
+            Err(Error::EARLY_EOF)
+        } else {
+            Ok(())
+        }
     }
 
     /// Reads the until an EOF ([`Ok(0)`](Ok))
@@ -241,23 +245,24 @@ pub trait Read {
     }
 
     /// Reads the entire reader to the buffer, as a [`String`].
-    /// 
+    ///
     /// see [`read_to_end`](Read::read_to_end)
     fn read_to_string(&mut self, buf: &mut String) -> Result<usize> {
         let mut vec = alloc::vec![];
         let read = self.read_to_end(&mut vec)?;
-        *buf = String::from_utf8(vec).map_err(|e| {
-            Error::new(ErrorKind::InvalidData, e)
-        })?;
+        *buf = String::from_utf8(vec).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
         Ok(read)
     }
 
     /// chains the two readers
-    fn chain<R: Read>(self, next: R) -> Chain<Self, R> 
+    fn chain<R: Read>(self, next: R) -> Chain<Self, R>
     where
-        Self: Sized
+        Self: Sized,
     {
-        Chain { first: self, second: next }
+        Chain {
+            first: self,
+            second: next,
+        }
     }
 
     /// Wether or not this reader never returns EOF.
