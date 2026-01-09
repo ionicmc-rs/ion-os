@@ -9,15 +9,12 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use alloc::{collections::vec_deque::VecDeque, vec::Vec};
+use alloc::{boxed::Box, collections::vec_deque::VecDeque, vec::Vec};
 
 use crate::{
-    hlt_loop,
-    thread::{
-        self,
-        tls::{install_tls, ThreadSelf},
-        State, Thread, ThreadID,
-    },
+    hlt_loop, interrupts::InterruptGuard, serial_println, thread::{
+        self, State, Thread, ThreadID, build::TPriority, tls::{ThreadSelf, install_tls}
+    }
 };
 
 /// The global Scheduler
@@ -29,7 +26,7 @@ pub static SCHEDULER: Scheduler = Scheduler::new();
 
 type ThreadQueue = VecDeque<Thread>;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct ReadyQueue(ThreadQueue);
 
 impl ReadyQueue {
@@ -38,7 +35,7 @@ impl ReadyQueue {
     }
 
     pub fn queue(&mut self, thread: Thread) {
-        if thread.state() != State::Ready {
+        if let State::Ready = thread.state() {} else {
             panic!("Safety invariant violated: `ReadyQueue::queue` must not be called with a thread that is not ready.");
         }
         self.0.push_back(thread);
@@ -63,10 +60,9 @@ enum Priority {
     None,
 }
 
-#[derive(Debug)]
 struct NonRunningThread(Priority, Thread);
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct NonRunning(VecDeque<NonRunningThread>);
 
 impl NonRunning {
@@ -90,7 +86,7 @@ impl NonRunning {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct Queues {
     // running queues
     // all threads in this category must have `State::Running`
@@ -201,7 +197,7 @@ impl Queues {
     }
 
     pub fn place_idle(&mut self, idle: Thread) -> &mut Thread {
-        if idle.state() != State::Ready && idle.id() != ThreadID(0) {
+        if let State::Ready = idle.state() {} else if idle.id() != ThreadID(0) {
             panic!("Safety invariant violation: `Queues::place_idle` should only receive ready, 0 ID threads (idle)");
         }
 
@@ -242,41 +238,15 @@ impl Queues {
         for _ in 0..len {
             let NonRunningThread(priority, mut thread) = self.non_running.0.pop_front().unwrap();
 
-            if priority == Priority::None {
-                if thread.state() != State::Terminated {
-                    panic!("Safety invariant violated: `Queues::restore_done` detected a non-terminated thread of `None` Priority")
-                }
-                drop(thread);
-                continue; // the thread is terminated, we can drop and continue on.
-            }
-
             if thread.should_wake() {
                 thread.wake();
                 self.queue(priority, thread);
             } else if let State::Blocked(ev) = thread.state() {
                 match ev {
-                    WakeEvent::EndOf(id) => {
-                        if id.0 == 0 {
-                            panic!(
-                                "threads must not wait on thread id 0 (idle), as it never exits."
-                            )
-                        }
-                        for x in self
-                            .high
-                            .0
-                            .iter()
-                            .chain(self.med.0.iter())
-                            .chain(self.low.0.iter())
-                            .chain(self.non_running.0.iter().map(|v| &v.1))
-                        {
-                            if x.id() == id {
-                                self.non_running.queue(thread, priority);
-                                return;
-                            }
-                        }
-                        thread.set_state(State::Ready);
-                        // id is not in scheduler - we can queue it.
-                        self.queue(priority, thread);
+                    WakeEvent::EndOf(_) => {
+                        // only awoken by wake_waiters_of
+
+                        self.non_running.queue(thread, priority);
                     }
                     WakeEvent::KeyInput => {
                         // only awoken by wake_kbd.
@@ -284,15 +254,37 @@ impl Queues {
                         self.non_running.queue(thread, priority);
                     }
                     WakeEvent::Raw(ptr) => {
-                        if unsafe { *ptr } {
+                        if unsafe { **ptr } {
                             thread.set_state(State::Ready);
                             self.queue(priority, thread);
                         } else {
                             self.non_running.queue(thread, priority);
                         }
                     }
-                    WakeEvent::UnlockOf(()) => {}
+                    WakeEvent::FnYieldTrue(func) => {
+                        if func() {
+                            thread.set_state(State::Ready);
+                            self.queue(priority, thread);
+                        } else {
+                            self.non_running.queue(thread, priority);
+                        }
+                    },
+                    WakeEvent::Atomic(locked) => {
+                        let is_locked = locked.load(Ordering::Relaxed);
+                        if !is_locked {
+                            thread.set_state(State::Ready);
+                            self.queue(priority, thread);
+                        } else {
+                            self.non_running.queue(thread, priority);
+                        }
+                    }
                 }
+            } else if priority == Priority::None {
+                if let State::Terminated = thread.state() {} else {
+                    panic!("Safety invariant violated: `Queues::restore_done` detected a non-terminated thread of `None` Priority")
+                }
+                drop(thread);
+                continue; // the thread is terminated, we can drop and continue on.
             } else {
                 self.non_running.queue(thread, priority);
             }
@@ -367,6 +359,15 @@ impl Scheduler {
         unsafe_cell_ref!(mut self.queues).queue_med(thread);
     }
 
+    pub fn queue_at(&self, prio: TPriority, thread: Thread) {
+        let prio = match prio {
+            TPriority::High => Priority::High,
+            TPriority::Low => Priority::Low,
+            TPriority::Med => Priority::Med,
+        };
+        unsafe_cell_ref!(mut self.queues).queue(prio, thread);
+    }
+
     pub fn request_rescheduling(&self) {
         if self.can_reschedule.load(Ordering::Relaxed) {
             self.needs_resched.store(true, Ordering::Relaxed);
@@ -396,10 +397,28 @@ impl Scheduler {
         for _ in 0..len {
             let NonRunningThread(priority, mut thread) = queues.non_running.0.pop_front().unwrap();
             match thread.state() {
-                st @ (State::Ready | State::Running) => panic!(
-                    "Safety invariant violated: detected a {st:?} thread in the non running queue"
+                State::Ready | State::Running => panic!(
+                    "Safety invariant violated: detected a ready/running thread in the non running queue"
                 ),
                 State::Blocked(WakeEvent::KeyInput) => {
+                    thread.set_state(State::Ready);
+                    queues.queue(priority, thread);
+                }
+                _ => queues.queue_norun(priority, thread),
+            }
+        }
+    }
+
+    pub fn wake_waiters_of(&self, id: ThreadID) {
+        let queues = unsafe_cell_ref!(mut self.queues);
+        let len = queues.non_running.0.len();
+        for _ in 0..len {
+            let NonRunningThread(priority, mut thread) = queues.non_running.0.pop_front().unwrap();
+            match thread.state() {
+                State::Ready | State::Running => panic!(
+                    "Safety invariant violated: detected a thread in the non running queue"
+                ),
+                State::Blocked(WakeEvent::EndOf(waited)) if *waited == id => {
                     thread.set_state(State::Ready);
                     queues.queue(priority, thread);
                 }
@@ -416,7 +435,7 @@ impl Scheduler {
         if !self.can_reschedule.load(Ordering::Acquire) {
             return;
         }
-        x86_64::instructions::interrupts::disable();
+        let _guard = InterruptGuard::new();
         let queues = unsafe_cell_ref!(mut self.queues);
 
         let current = unsafe_cell_ref!(mut self.current);
@@ -460,8 +479,8 @@ impl Scheduler {
                     }
                 }
             }
-            ScheduleReason::Block(ptr) => {
-                old.set_state(State::Blocked(ptr));
+            ScheduleReason::Block(ev) => {
+                old.set_state(State::Blocked(ev));
                 queues.queue_norun_ref(old_priority, old)
             }
             ScheduleReason::Sleep(ticks) => {
@@ -495,9 +514,11 @@ impl Scheduler {
 
         unsafe { install_tls(new_tls as *mut ThreadSelf) };
 
-        // interrupts enabled here.
-        x86_64::instructions::interrupts::enable();
         current.as_ref().unwrap().0.dump_stack();
+
+        // interrupts enabled here.
+        drop(_guard);
+
         if no_store {
             unsafe { new_ctx.load() };
         } else {
@@ -542,6 +563,7 @@ pub fn exit_current() {
     if let Some(v) = SCHEDULER.current_mut() {
         v.set_state(State::Terminated)
     }
+    wake_waiters_of(thread::id());
     SCHEDULER.schedule(ScheduleReason::Exit);
 }
 
@@ -559,6 +581,14 @@ pub fn block_until_end_of(id: ThreadID) {
 
 pub fn block_until_key_input() {
     SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::KeyInput));
+}
+
+pub fn block_until_true(f: impl Fn() -> bool + 'static) {
+    SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::FnYieldTrue(Box::new(f))));
+}
+
+pub fn atomic_block_until(atomic: &'static AtomicBool) {
+    SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::Atomic(atomic)));
 }
 
 pub fn yield_now() {
@@ -607,11 +637,17 @@ pub unsafe fn remove_panic_id(id: ThreadID) {
 
 pub unsafe fn panic_current() -> ! {
     SCHEDULER.schedule(ScheduleReason::Panicked);
+    wake_waiters_of(thread::id());
     hlt_loop()
 }
 
 pub unsafe fn wake_kbd() {
     SCHEDULER.wake_kbd();
+}
+
+fn wake_waiters_of(id: ThreadID) {
+    serial_println!("waking waiters of id {id:?}");
+    SCHEDULER.wake_waiters_of(id);
 }
 #[allow(unused)]
 enum ScheduleReason {
@@ -624,12 +660,13 @@ enum ScheduleReason {
     Start,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WakeEvent {
     Raw(*const bool),
     EndOf(ThreadID),
-    UnlockOf(()),
     KeyInput,
+    FnYieldTrue(Box<dyn Fn() -> bool>),
+    // only supports static lifetimes for now.
+    Atomic(&'static AtomicBool)
 }
 
 // ASM linkage.

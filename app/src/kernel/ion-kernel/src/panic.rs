@@ -1,6 +1,7 @@
 //! panicking.
-use core::{panic::PanicInfo, sync::atomic::compiler_fence};
+use core::{cell::Cell, panic::PanicInfo, sync::atomic::compiler_fence};
 
+use alloc::{boxed::Box, vec::Vec};
 use x86_64::registers::model_specific::FsBase;
 
 use crate::{
@@ -11,6 +12,31 @@ use crate::{
     text::{Color, WRITER},
     thread,
 };
+
+#[thread_local]
+static THREAD_HOOK: Cell<Vec<Box<dyn FnOnce()>>> = Cell::new(Vec::new());
+
+/// Sets the function run at the end of panics.
+/// 
+/// note: this does not replace the panic function, but it runs alongside it at the end.
+/// 
+/// this is usually useful to poison mutexes while we don't have unwinding.
+pub fn add_hook(f: impl FnOnce() + 'static) {
+    if thread::current().is_none() {
+        panic!("Attempted to set a panic hook from the boot stack.");
+    }
+    let mut old = THREAD_HOOK.take();
+    old.push(Box::new(f));
+    THREAD_HOOK.set(old);
+}
+
+/// takes the current hook, leaving nothing in its place.
+pub fn take_hooks() -> Vec<Box<dyn FnOnce()>> {
+    if thread::current().is_none() {
+        panic!("Attempted to take a panic hook from the boot stack.");
+    }
+    THREAD_HOOK.take()
+}
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -40,7 +66,12 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
 
     let mut lock = match WRITER.try_lock() {
         Some(v) => v,
-        None => hlt_loop(),
+        None => {
+            for hook in take_hooks() {
+                hook()
+            }
+            unsafe { scheduler::panic_current() };
+        },
     };
 
     use core::fmt::Write;
@@ -61,9 +92,12 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
     compiler_fence(core::sync::atomic::Ordering::SeqCst);
 
     if tname.as_str() == "main" {
-        hlt_loop()
+        hlt_loop(); // main thread having an error implies initialization error, which is fatal.
     }
-
+    for hook in take_hooks() {
+        hook()
+    }
+    drop(lock); // ensure other threads can still print.
     unsafe { scheduler::panic_current() };
 }
 

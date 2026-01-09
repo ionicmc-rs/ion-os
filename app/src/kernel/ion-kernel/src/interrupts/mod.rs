@@ -6,7 +6,10 @@
 
 use crate::{c_lib::libc, interrupts::pic8259::InterruptIndex, serial_println, text::println};
 use lazy_static::lazy_static;
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+use x86_64::{
+    instructions::interrupts,
+    structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
+};
 
 macro set_index($idt:expr_2021, $($index:ident$((unsafe $stack:literal))? => $handler:expr_2021),*) {
     $({
@@ -30,7 +33,6 @@ lazy_static! {
         idt.general_protection_fault.set_handler_fn(gp::protection_fault);
         // Hardware Interrupts.
 
-        idt[0xF0].set_handler_fn(timer::resched_isr);
 
         set_index!(
             idt,
@@ -70,6 +72,35 @@ pub mod test {
         // // always passes, which may be a problem...
         // now can check the error code number
         test_assert_eq!(libc::get_errno().0, 3)
+    }
+}
+
+/// Disables interrupts and reenables them upon drop
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct InterruptGuard(());
+
+impl Default for InterruptGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl InterruptGuard {
+    /// disables interrupts, reenabling them upon drop
+    pub fn new() -> Self {
+        interrupts::disable();
+        Self(())
+    }
+
+    /// disables this guard, keeping interrupts on.
+    pub fn disable(self) {
+        core::mem::forget(self);
+    }
+}
+
+impl Drop for InterruptGuard {
+    fn drop(&mut self) {
+        interrupts::enable();
     }
 }
 

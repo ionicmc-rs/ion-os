@@ -23,19 +23,20 @@ use crate::{
 pub mod context;
 mod join;
 pub mod stack;
+pub mod sync;
+pub mod pool;
 
-pub use join::{spawn, JoinError, JoinErrorKind, JoinHandle};
+pub use join::{spawn, spawn_at, JoinError, JoinErrorKind, JoinHandle};
 
 pub use crate::scheduler::{
-    block_until, block_until_end_of, block_until_key_input, critical_moment, critical_moment_raw,
+    block_until, block_until_end_of, block_until_key_input, block_until_true, atomic_block_until, critical_moment, critical_moment_raw,
     current, exit_current, has_panicked, remove_panic_id, request_reschedule, reschedule_if_needed,
-    start, yield_now,
+    start, yield_now
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThreadID(pub u64);
 
-#[derive(Debug)]
 pub struct Thread {
     id: ThreadID,
     /// owned memory to ensure [`Drop`] runs on the allocation
@@ -107,8 +108,8 @@ impl Thread {
         }
     }
 
-    pub fn state(&self) -> State {
-        self.state
+    pub fn state(&self) -> &State {
+        &self.state
     }
 
     pub fn set_state(&mut self, state: State) {
@@ -141,7 +142,7 @@ impl Thread {
 /// # Safety
 /// must never be mutated outside [`Thread::new`]
 pub static NEXT_ID: AtomicU64 = AtomicU64::new(0);
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Default)]
 pub enum State {
     #[default]
     Ready,

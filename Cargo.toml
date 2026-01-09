@@ -31,6 +31,3 @@ features = ["spin_no_std"]
 [features]
 default = ["test"]
 test = []
-
-[package.metadata.bootimage]
-test-args = ["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"]
