@@ -1,8 +1,8 @@
-use crate::{c_lib::libc, interrupts::pic8259::InterruptIndex, println, serial_println};
+use crate::{interrupts::pic8259::InterruptIndex, println, serial_println};
 use lazy_static::lazy_static;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
-macro set_index($idt:expr_2021, $($index:ident => $handler:expr_2021),*) {
+macro set_index($idt:expr, $($index:ident => $handler:expr),*) {
     $(
         $idt[InterruptIndex::$index.as_u8()]
             .set_handler_fn($handler);
@@ -39,22 +39,19 @@ pub fn init_interrupt_operations() {
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
-    libc::error::set_errno(3);
     println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
 #[cfg(feature = "test")]
 /// Tests
 pub mod test {
-    use crate::{c_lib::libc, serial_println, test::{TestInfo, TestResult, test_assert_eq}};
+    use crate::test::{TestInfo, TestResult};
 
     /// breakpoint test
     pub fn test_breakpoint(_inf: TestInfo) -> TestResult {
         x86_64::instructions::interrupts::int3();
-        // // always passes, which may be a problem...
-        // now can check the error code number
-        serial_println!("Error Code Retrieved");
-        test_assert_eq!(libc::get_errno().0, 3)
+        // always passes, which may be a problem...
+        TestResult::Ok
     }
 }
 

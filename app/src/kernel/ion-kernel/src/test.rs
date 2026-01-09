@@ -147,30 +147,30 @@ pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
 
 /// Asserts the passed in value, with an optional, Statically set message
 pub macro test_assert {
-    ($test:expr_2021 $(,)?) => {{
+    ($test:expr $(,)?) => {{
         $crate::test::TestResult::assertion($test, concat!("Assertion `", stringify!($test), "` Failed"))
     }},
-    ($test:expr_2021, $msg:literal) => {{
+    ($test:expr, $msg:literal) => {{
         $crate::test::TestResult::assertion($test, concat!("Assertion `", stringify!($test), "` Failed: ", $msg))
     }}
 }
 
 /// Asserts the passed in values are equal, with an optional, Statically set message
 pub macro test_assert_eq {
-    ($a:expr_2021, $b:expr_2021 $(,)?) => {
+    ($a:expr, $b:expr $(,)?) => {
         $crate::test::test_assert!($a == $b)
     },
-    ($a:expr_2021, $b:expr_2021, $msg:literal) => {
+    ($a:expr, $b:expr, $msg:literal) => {
         $crate::test::test_assert!($a == $b, $msg)
     }
 }
 
 /// Asserts the passed in values are not equal, with an optional, Statically set message
 pub macro test_assert_ne {
-    ($a:expr_2021, $b:expr_2021 $(,)?) => {
+    ($a:expr, $b:expr $(,)?) => {
         $crate::test::test_assert!($a != $b)
     },
-    ($a:expr_2021, $b:expr_2021, $msg:literal) => {
+    ($a:expr, $b:expr, $msg:literal) => {
         $crate::test::test_assert!($a != $b, $msg)
     }
 }
@@ -178,10 +178,10 @@ pub macro test_assert_ne {
 
 /// Asserts the passed in value matches the pattern, with an optional, Statically set message
 pub macro test_assert_matches {
-    ($a:expr_2021, $pat:pat $(,)?) => {
+    ($a:expr, $pat:pat $(,)?) => {
         $crate::test::test_assert!(matches!($a, $pat))
     },
-    ($a:expr_2021, $b:expr_2021, $msg:literal) => {
+    ($a:expr, $b:expr, $msg:literal) => {
         $crate::test::test_assert!(matches!($a, $pat), $msg)
     }
 }
