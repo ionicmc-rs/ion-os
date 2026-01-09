@@ -20,8 +20,9 @@ RUN apt-get install -y curl build-essential
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal \
     && export PATH="/root/.cargo/bin:${PATH}" \
-    && rustup default nightly \
-    && rustup component add rust-src
+    && rustup default nightly  \
+    && rustup component add rust-src  \
+    && rustup update 
 
 RUN apt-get install -y qemu-system
 
