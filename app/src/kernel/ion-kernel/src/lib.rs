@@ -177,6 +177,7 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
 pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     serial_println!("\nWelcome User of QEMU! Thank you for using Ion OS");
 
+
     // Read the pointer
     // Safety: the pointer is guaranteed always to be valid, as this is passed in from C. other calls
     // Violate the unsafe precondition.
