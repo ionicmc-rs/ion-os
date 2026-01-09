@@ -24,8 +24,5 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal \
     && rustup component add rust-src  \
     && rustup update 
 
-RUN apt-get install -y qemu-system
-
-
 VOLUME /root/env
 WORKDIR /root/env
