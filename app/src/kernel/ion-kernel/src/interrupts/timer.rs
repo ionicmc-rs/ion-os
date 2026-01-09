@@ -2,7 +2,10 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use x86_64::structures::idt::InterruptStackFrame;
 
-use crate::{interrupts::pic8259::handlers::notify /* scheduler, serial_println */};
+use crate::{
+    interrupts::pic8259::handlers::notify, scheduler,
+    serial_println, /* scheduler, serial_println */
+};
 
 // pub extern "x86-interrupt" fn timer_isr_entry(_: InterruptStackFrame) {
 //     // NOTE: for now, this simply requests rescheduling, but this may change in the future to actually reschedule here.
@@ -25,24 +28,15 @@ pub fn ticks() -> u64 {
 #[allow(unused)]
 #[unsafe(no_mangle)]
 pub extern "x86-interrupt" fn timer_isr(_stack_frame: InterruptStackFrame) {
-    // let t = TICKS.fetch_add(1, Ordering::Relaxed);
-    // if t.is_multiple_of(50) {
-    //     serial_println!("reached notable tick: {t}");
-    // }
-    // let gs = x86_64::registers::model_specific::GsBase::read();
+    let t = TICKS.fetch_add(1, Ordering::Relaxed);
+    if t.is_multiple_of(50) {
+        serial_println!("reached notable tick: {t}");
+    }
+    let gs = x86_64::registers::model_specific::GsBase::read();
     // serial_println!("INT ENTRY GS = {:#x}", gs);
 
-    // scheduler::request_reschedule();
-    // scheduler::wake_done();
-    // scheduler::wake_done();
-
-    // if scheduler::can_preempt() {
-    //     scheduler::schedule_from_interrupt();
-    // }
+    scheduler::request_reschedule();
+    scheduler::wake_done();
 
     notify!(unsafe Timer)
-}
-
-pub extern "x86-interrupt" fn resched_isr(_: InterruptStackFrame) {
-    // empty.
 }

@@ -1,12 +1,12 @@
 use core::fmt::Display;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, format};
 
 use crate::{
     hlt_loop,
     scheduler::{self, SCHEDULER},
     serial_println,
-    thread::{self, Thread, ThreadID},
+    thread::{self, Thread, ThreadID, build::TPriority},
 };
 
 /// Handle used to retrieve the result of a spawned thread.
@@ -18,6 +18,7 @@ pub struct JoinHandle<T: Send + 'static> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JoinErrorKind {
     Unfinished,
+    Unset,
     Panicked, // todo: add panic info here.
 }
 
@@ -30,6 +31,7 @@ impl Display for JoinError {
         let fmt = match self.1 {
             JoinErrorKind::Panicked => "but it panicked",
             JoinErrorKind::Unfinished => "but it did not finish yet",
+            JoinErrorKind::Unset => "but it prematurely exited",
         };
         write!(f, "Attempted to join thread id {}, {fmt}.", self.0 .0)
     }
@@ -44,18 +46,16 @@ impl JoinError {
 impl<T: Send + 'static> JoinHandle<T> {
     /// Blocks until the thread finishes.
     pub fn join(self) -> Result<T, JoinError> {
-        loop {
-            let res = unsafe { &*self.result };
-            if res.is_some() {
-                break;
-            }
+        thread::block_until_end_of(self.id);
 
-            if scheduler::has_panicked(self.id) {
-                unsafe { scheduler::remove_panic_id(self.id) };
-                return Err(JoinError(self.id, JoinErrorKind::Panicked));
-            }
+        if scheduler::has_panicked(self.id) {
+            unsafe { scheduler::remove_panic_id(self.id) };
+            return Err(JoinError(self.id, JoinErrorKind::Panicked));
+        }
 
-            thread::yield_now();
+        let res = unsafe { &*self.result };
+        if res.is_none() {
+            return Err(JoinError(self.id, JoinErrorKind::Unset));
         }
 
         unsafe {
@@ -102,10 +102,9 @@ pub fn spawn<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
 
     #[allow(unused, dead_code)]
     extern "C" fn thread_entry<T: Send + 'static>(arg: usize) -> ! {
-        thread::set_name("<joiner>");
-        serial_println!("name: {}", thread::name());
         // Take ownership of Meta
         let mut meta = unsafe { Box::from_raw(arg as *mut Meta<T>) };
+        thread::set_name(format!("<joiner {:?}>", meta.result));
 
         let func = meta.func.take().expect("thread entry called twice");
 
@@ -123,6 +122,60 @@ pub fn spawn<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
     let id = thread.id();
     serial_println!("queuing");
     SCHEDULER.queue(thread);
+    serial_println!("queued!");
+
+    JoinHandle {
+        result: result_ptr,
+        id,
+    }
+}
+
+pub fn spawn_at<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
+    f: F,
+    prio: TPriority,
+    stack_size: usize,
+) -> JoinHandle<T> {
+    /// Heap object shared between parent and thread.
+    struct Meta<T: Send + 'static> {
+        func: Option<Box<dyn FnOnce() -> T + Send + 'static>>,
+        result: *mut Option<T>,
+    }
+
+    serial_println!("allocating for the result");
+    // Heap-allocate result storage
+    let result_ptr = Box::into_raw(Box::new(None::<T>));
+    serial_println!("allocated");
+
+    // Heap-allocate metadata
+    let meta = Box::new(Meta {
+        func: Some(Box::new(f)),
+        result: result_ptr,
+    });
+
+    let meta_ptr = Box::into_raw(meta) as usize;
+
+    #[allow(unused, dead_code)]
+    extern "C" fn thread_entry<T: Send + 'static>(arg: usize) -> ! {
+        // Take ownership of Meta
+        let mut meta = unsafe { Box::from_raw(arg as *mut Meta<T>) };
+        thread::set_name(format!("<joiner {:?}>", meta.result));
+
+        let func = meta.func.take().expect("thread entry called twice");
+
+        let res = func();
+
+        unsafe {
+            *meta.result = Some(res);
+        }
+        // Thread must never return
+        scheduler::exit_current();
+        hlt_loop()
+    }
+    serial_println!("creating thread.");
+    let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size);
+    let id = thread.id();
+    serial_println!("queuing");
+    SCHEDULER.queue_at(prio, thread);
     serial_println!("queued!");
 
     JoinHandle {
