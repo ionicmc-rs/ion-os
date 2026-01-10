@@ -1,28 +1,18 @@
 FROM randomdude/gcc-cross-x86_64-elf
 
 # Ensuring everything is up to date
-RUN apt-get update
-RUN apt-get upgrade -y
+RUN apt-get update \
+    && apt-get install -y nasm \
+    && apt-get install -y xorriso  \
+    && apt-get install -y grub-pc-bin \
+    && apt-get install -y grub-common \
+    && apt-get install -y curl build-essential 
 
-# Tools
-# Assembly
-RUN apt-get install -y nasm
-RUN apt-get install -y xorriso 
-
-# grub
-RUN apt-get install -y grub-pc-bin
-RUN apt-get install -y grub-common
-
-# Rust
-RUN apt-get install -y rustc
-
-RUN apt-get install -y curl build-essential
-
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal \
-    && export PATH="/root/.cargo/bin:${PATH}" \
-    && rustup default nightly  \
-    && rustup component add rust-src  \
-    && rustup update 
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN rustup default nightly \
+    && rustup update \
+    && rustup component add rust-src
 
 VOLUME /root/env
 WORKDIR /root/env
