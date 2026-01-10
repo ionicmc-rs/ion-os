@@ -82,11 +82,7 @@ impl core::fmt::Write for BasicSerial {
         Ok(())
     }
 }
-    () => ($crate::serial_print!("\n"));
-    ($fmt:expr_2021) => ($crate::serial_print!(concat!($fmt, "\n")));
-    ($fmt:expr_2021, $($arg:tt)*) => ($crate::serial_print!(
-        concat!($fmt, "\n"), $($arg)*))
-}
+
 
 /// base form for serial prints
 pub mod dbg {

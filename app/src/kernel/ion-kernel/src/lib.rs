@@ -31,6 +31,10 @@
     const_convert,
     never_type
 )]
+
+#![test_runner(test::run_tests)]
+#![reexport_test_harness_main = "begin_testing"]
+
 use cfg_if::cfg_if;
 
 extern crate alloc;
