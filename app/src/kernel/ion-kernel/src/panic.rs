@@ -30,7 +30,7 @@ pub fn add_hook(f: impl FnOnce() + 'static) {
     THREAD_HOOK.set(old);
 }
 
-/// takes the current hook, leaving nothing in its place.
+/// takes the current hooks, leaving nothing in its place.
 pub fn take_hooks() -> Vec<Box<dyn FnOnce()>> {
     if thread::current().is_none() {
         panic!("Attempted to take a panic hook from the boot stack.");

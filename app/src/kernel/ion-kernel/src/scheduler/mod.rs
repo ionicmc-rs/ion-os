@@ -433,6 +433,7 @@ impl Scheduler {
     fn schedule(&self, reason: ScheduleReason) {
         let mut _buf = MaybeUninit::new(());
         if !self.can_reschedule.load(Ordering::Acquire) {
+            serial_println!("cannot reschedule");
             return;
         }
         let _guard = InterruptGuard::new();
@@ -636,8 +637,8 @@ pub unsafe fn remove_panic_id(id: ThreadID) {
 }
 
 pub unsafe fn panic_current() -> ! {
-    SCHEDULER.schedule(ScheduleReason::Panicked);
     wake_waiters_of(thread::id());
+    SCHEDULER.schedule(ScheduleReason::Panicked);
     hlt_loop()
 }
 

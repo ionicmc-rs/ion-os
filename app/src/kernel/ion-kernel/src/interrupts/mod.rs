@@ -54,7 +54,7 @@ pub fn init_interrupt_operations() {
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
-    libc::error::set_errno(3);
+    libc::error::set_errno(3); // note: reads TLS
     println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
@@ -63,15 +63,15 @@ extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
 pub mod test {
     use crate::{
         c_lib::libc,
-        test::{test_assert_eq, TestInfo, TestResult},
+        test::TestInfo
     };
 
     /// breakpoint test
-    pub fn test_breakpoint(_inf: TestInfo) -> TestResult {
+    pub fn test_breakpoint(_inf: TestInfo)  {
         x86_64::instructions::interrupts::int3();
         // // always passes, which may be a problem...
         // now can check the error code number
-        test_assert_eq!(libc::get_errno().0, 3)
+        assert_eq!(libc::get_errno().0, 3)
     }
 }
 
@@ -92,7 +92,7 @@ impl InterruptGuard {
         Self(())
     }
 
-    /// disables this guard, keeping interrupts on.
+    /// disables this guard, keeping interrupts off.
     pub fn disable(self) {
         core::mem::forget(self);
     }

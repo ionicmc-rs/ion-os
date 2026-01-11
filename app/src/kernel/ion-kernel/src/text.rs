@@ -241,7 +241,7 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 
 #[cfg(feature = "test")]
-use crate::test::{TestInfo, TestResult};
+use crate::test::{TestInfo};
 
 lazy_static! {
     /// The Global Writer
@@ -336,8 +336,7 @@ pub fn _print(args: fmt::Arguments) {
 
 #[cfg(feature = "test")]
 /// Tests println output is valid
-pub fn test_println_output(_: TestInfo) -> TestResult {
-    use crate::test::TestResult;
+pub fn test_println_output(_: TestInfo) {
     use core::fmt::Write;
     use x86_64::instructions::interrupts;
 
@@ -350,5 +349,4 @@ pub fn test_println_output(_: TestInfo) -> TestResult {
             assert_eq!(char::from(screen_char.ascii_character), c);
         }
     });
-    TestResult::Ok
 }

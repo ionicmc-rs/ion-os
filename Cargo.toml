@@ -5,8 +5,3 @@ members = [
 ]
 
 resolver = "3"
-
-[profile.dev]
-panic = "abort"
-[profile.release]
-panic = "abort"

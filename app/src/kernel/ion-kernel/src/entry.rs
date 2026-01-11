@@ -1,30 +1,33 @@
 //! Main entry point
 
+#[allow(unused)]
 use crate::{
-    hlt_loop, serial_println, thread::{self, ThreadBuilder, build::TPriority, sync::{Mutex, MutexGuard}}
+    c_lib, hlt_loop, interrupts, lib_alloc, serial_println, test::run_tests, text, thread::{self, ThreadBuilder, build::TPriority, sync::{Mutex, MutexGuard}}, trivial_assertion
 };
-
-static MUTEX: Mutex<u32> = Mutex::new(10);
 
 /// final init.
 pub extern "C" fn kernel_main() -> ! {
-    ThreadBuilder::new()
-        .with_name("need_kbd")
-        .with_entry(|| {
-            let lock = MUTEX.lock();
-            assert_eq!(lock, 10);
-            MutexGuard::add_hook_for(lock);
-            panic!("poison lock");
-        })
-        .with_priority(TPriority::High)
-        .build();
-    ThreadBuilder::new()
-        .with_name("waiting_mutex")
-        .with_entry(|| {
-            let x = MUTEX.lock();
-            serial_println!("lock: {x}"); // should not run!
-        })
-        .build();
-    thread::exit_current();
-    hlt_loop()
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "test")] {
+            run_tests(&[
+                // all tests go here
+
+                // control, test for tests
+                &trivial_assertion,
+                // interrupts
+                &interrupts::test::test_breakpoint,
+                // VGA
+                &text::test_println_output,
+                // Alloc
+                &lib_alloc::tests::test_large_alloc,
+                &lib_alloc::tests::test_freed_mem_used,
+                &lib_alloc::tests::test_alloc_tools,
+                // C Lib / LibC
+                &c_lib::libc::mem::test_malloc
+            ]);
+        } else {
+            thread::exit_current();
+            hlt_loop()
+        }
+    }
 }
