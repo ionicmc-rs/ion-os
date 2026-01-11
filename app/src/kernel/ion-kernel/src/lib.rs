@@ -31,11 +31,8 @@
     const_convert,
     never_type
 )]
+#![test_runner(test::run_tests)] // this is unused but silences errors.
 
-#![test_runner(test::run_tests)]
-#![reexport_test_harness_main = "begin_testing"]
-
-use cfg_if::cfg_if;
 
 extern crate alloc;
 
@@ -65,10 +62,12 @@ pub mod thread;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {
-        use crate::test::{TestInfo, TestResult, test_assert_eq, run_tests};
+        use crate::test::{TestInfo};
 
-        fn trivial_assertion(_: TestInfo) -> TestResult {
-            test_assert_eq!(1, 1, "Huh?")
+        fn trivial_assertion(mut inf: TestInfo) {
+            inf.should_panic();
+
+            assert_eq!(1, 2, "well, i expected this.")
         }
     }
 }
@@ -172,12 +171,7 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
 /// Do Not call - at all.
 /// # Safety
 /// The boot_info ptr must point to valid data.
-#[allow(static_mut_refs, unreachable_code)]
 #[unsafe(no_mangle)]
-#[cfg_attr(
-    feature = "test",
-    expect(unreachable_code, reason = "panics always occur at end of tests")
-)]
 pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     serial_println!("\nWelcome User of QEMU! Thank you for using Ion OS");
 
@@ -214,28 +208,6 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
                 panic!("Error while initializing Ion OS: {e}")
             }
         }),
-    }
-
-    cfg_if! {
-        if #[cfg(feature = "test")] {
-            run_tests(&[
-                // all tests go here
-
-                // control, test for tests
-                &trivial_assertion,
-                // interrupts
-                &interrupts::test::test_breakpoint,
-                // VGA
-                &text::test_println_output,
-                // Alloc
-                &lib_alloc::tests::test_large_alloc,
-                &lib_alloc::tests::test_freed_mem_used,
-                &lib_alloc::tests::test_alloc_tools,
-                // C Lib / LibC
-                &c_lib::libc::mem::test_malloc
-            ]);
-            panic!("End of tests; you can now exit.");
-        }
     }
 
     // this is the main thread.

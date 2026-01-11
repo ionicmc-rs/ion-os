@@ -128,14 +128,14 @@ fn main() -> Result<()> {
         Cmd::Test { vm } => {
             build(&cli, true, false)?;
             println!("build complete, you may need to change the permissions of kernel.iso before executing.");
-            run_vm(vm, cli.arch)
+            run_vm(vm, cli.arch, true)
         },
         Cmd::Run { no_build, vm, release } => {
             if !no_build {
                 build(&cli, false, release)?;
             }
             println!("build complete, you may need to change the permissions of kernel.iso before executing.");
-            run_vm(vm, cli.arch)
+            run_vm(vm, cli.arch, false)
         }
         Cmd::Doctor { minimal, vm, verbose } => {
             doctor(minimal, vm, verbose)
@@ -286,7 +286,7 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
     // --------------------------------------------------
     fs::copy(&elf, "app/targets/x86_64/iso/boot/kernel.elf")?;
 
-    let iso = if test { format!("{dist_root}/test/kernel.iso") } else {format!("{dist_root}/kernel.iso")};
+    let iso = if test { format!("{dist_root}/test/ion_os_{arch}_test.iso") } else {format!("{dist_root}/ion_os_{arch}.iso")};
 
     docker(&[
         "grub-mkrescue",
@@ -302,8 +302,14 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
 // ---------------- run ----------------
 //
 
-fn run_vm(vm: Vm, arch: String) -> Result<()> {
-    let iso = format!("dist/{}/kernel.iso", arch);
+fn run_vm(vm: Vm, arch: String, test: bool) -> Result<()> {
+    let mut iso = format!("dist/{}/", arch);
+
+    if test {
+        iso.push_str(&format!("test/ion_os_{arch}_test.iso"));
+    } else {
+        iso.push_str(&format!("ion_os_{arch}.iso"));
+    }
 
     match vm {
         Vm::Qemu => run_qemu(&iso),
