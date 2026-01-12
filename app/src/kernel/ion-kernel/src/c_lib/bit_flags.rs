@@ -1,3 +1,7 @@
+//! Tools for reading Bit Flags.
+//! 
+//! This is likely better places outside of c_lib, but we place it here for the boot info bit flags (CPUID(1), `edx` and `ecx`)
+
 #![allow(private_bounds)]
 use core::{fmt::{Binary, Debug, Display}, ops::{Bound, RangeBounds}};
 

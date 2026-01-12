@@ -8,5 +8,6 @@ pub(super) extern "x86-interrupt" fn double_fault(
     frame: InterruptStackFrame,
     err: u64
 ) -> ! {
+    // We handle by panicking, which means our panic impl must never fault.
     panic!("Reached a Double Fault: {err}\n{frame:#?}");
 }

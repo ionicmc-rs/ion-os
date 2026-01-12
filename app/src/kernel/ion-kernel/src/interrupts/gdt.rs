@@ -1,3 +1,4 @@
+/// Contains a private interface for the GDT and TSS tables.
 use x86_64::{VirtAddr, structures::gdt::Descriptor};
 use x86_64::structures::tss::TaskStateSegment;
 use lazy_static::lazy_static;

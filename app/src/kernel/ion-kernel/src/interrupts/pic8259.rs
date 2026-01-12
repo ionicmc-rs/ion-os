@@ -1,3 +1,9 @@
+//! Contains Definitions for a PIC8259 Controller
+//! 
+//! In reality, QEMU probably emulates an APIC controller, but backwards compatibility is supported, and a PIC controller is simpler to
+//! Set up.
+//! 
+//! Typically, you do not use this at all - interrupt handlers will handle everything.
 use pic8259::ChainedPics;
 use spin;
 
@@ -27,6 +33,8 @@ pub fn init() {
 #[repr(u8)]
 pub enum InterruptIndex {
     /// Index for a Timer Interrupt
+    /// 
+    /// The Timer Interrupt is used to detect the Intel 8253 hardware interrupt, which runs all the time at a fixed interval.
     /// 
     /// Equivalent to the [`PIC_1_OFFSET`]
     Timer = PIC_1_OFFSET,
@@ -68,7 +76,7 @@ pub mod handlers {
 
     /// Intel 8253 timer interrupt.
     /// 
-    /// simply notifies PIC that the interrupt was handled.
+    /// simply notifies PIC that the interrupt was handled, but this is subject to change!
     pub extern "x86-interrupt" fn timer(_frame: InterruptStackFrame) {
         notify!(unsafe Timer);
     }

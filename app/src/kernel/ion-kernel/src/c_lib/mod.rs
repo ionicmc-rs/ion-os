@@ -1,11 +1,15 @@
+//! This module contains tools for linking with C code.
+//! 
+//! currently, we only link with main.c, but other than that, thats the only file.
+//! 
+//! but this is subject to change in the future, so we built this module.
 use core::{ffi::CStr, fmt::Debug, marker::PhantomData, ptr::NonNull};
 
 use crate::{c_lib::bit_flags::BitFlags, serial_println};
 
-/// module containing tools for handling Bit Flags
 pub mod bit_flags;
-/// module for handling bits.
 pub mod bit;
+pub mod libc;
 
 /// The Actual BootInfo used, in raw numbers
 /// 
@@ -290,7 +294,7 @@ pub enum MultibootTagType {
     Efi32ImageHandle   = 19,
     Efi64ImageHandle   = 20,
     LoadBaseAddr       = 21,
-    // Catch‑all for unknown or future values
+    // /// Catch‑all for unknown or future values
     // Unfortunately, we must keep this enum Transmute Safe.
     // Tuple Variants fail to transmute.
     // Unknown(u32),

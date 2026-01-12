@@ -1,12 +1,17 @@
-#![allow(unused)]
-use core::{cell::OnceCell, ops::{Deref, DerefMut}};
+//! Handles Keyboard inputs
+//! 
+//! Currently: The following issues exist:
+//! - FIXME(sync): keyboard inputs are handle synchronously
+//! - FIXME(size): interrupt handler is too big and prone to errors.
+//! - FIXME(scset): Scancode Set is not being queried and set.
+//! 
+//! You do not use this module
+use x86_64::structures::idt::InterruptStackFrame;
 
-use x86_64::{instructions::port::{Port, PortGeneric, ReadWriteAccess}, structures::idt::InterruptStackFrame};
+use crate::{interrupts::pic8259::handlers::notify, serial_println, text::{WRITER, print}};
 
-use crate::{interrupts::{keyboard::ps2::{DefaultIO, set_scancode_set}, pic8259::handlers::notify}, serial_println, text::{WRITER, print}};
-
-use pc_keyboard::{DecodedKey, HandleControl, KeyCode, Keyboard, ScancodeSet, ScancodeSet1, ScancodeSet2, layouts::{self, Us104Key}};
-use spin::{Mutex, MutexGuard};
+use pc_keyboard::{DecodedKey, HandleControl, KeyCode, Keyboard, layouts::{self, Us104Key}};
+use spin::Mutex;
 
 lazy_static::lazy_static! {
     static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ps2::ScancodeSet>> = {
@@ -17,10 +22,13 @@ lazy_static::lazy_static! {
     };
 }
 
+
+#[allow(unused)]
 struct Once {
     init: *const ps2::ScancodeSet
 }
 
+#[allow(unused)]
 impl Once {
     pub const fn new(init: &ps2::ScancodeSet) -> Self {
         Self { init: init as *const ps2::ScancodeSet }
@@ -44,8 +52,12 @@ impl Once {
 
 unsafe impl Sync for Once {}
 
+// for now, allow unused.
+#[allow(unused)]
 static mut SCAN_CODE_SET_IS_SET: ps2::ScancodeSet = ps2::ScancodeSet::None;
-static SCAN_CODE_SET_QUERIED: Once = Once::new_ptr(unsafe { &raw const SCAN_CODE_SET_IS_SET });
+
+#[allow(unused)]
+static SCAN_CODE_SET_QUERIED: Once = Once::new_ptr(&raw const SCAN_CODE_SET_IS_SET);
 
 /// Handler Keyboard Input
 pub extern "x86-interrupt" fn keyboard_interrupt_handler(
@@ -91,7 +103,7 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler(
                                 use core::fmt::Write;
                                 x86_64::instructions::interrupts::without_interrupts(|| {
                                     let mut lock = WRITER.lock();
-                                    write!(lock, "    ");
+                                    write!(lock, "    ").unwrap();
                                     drop(lock);
                                 })
                             } else if character as u8 == 46 {
