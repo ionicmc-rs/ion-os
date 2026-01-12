@@ -59,6 +59,7 @@ pub mod serial;
 pub mod test;
 pub mod text;
 pub mod thread;
+pub mod asyncio;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {

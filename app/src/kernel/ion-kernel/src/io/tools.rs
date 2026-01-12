@@ -1,8 +1,10 @@
 //! Tools for [`Read`](super::Read)ing and [`Write`](super::Write)ing
 
+use core::cmp::min;
+
 use alloc::{string::String, vec::Vec};
 
-use crate::io::{BufRead, Error, IoSlice, IoSliceMut, Read, Seek, Write};
+use crate::io::{BufRead, Error, ErrorKind, IoSlice, IoSliceMut, Read, Seek, SeekFrom, Write, concurrent::{read::AsyncRead, seek::AsyncSeek, write::AsyncWrite}};
 
 /// An empty stream.
 ///
@@ -226,5 +228,134 @@ impl Read for Repeat {
 impl Seek for Repeat {
     fn seek(&mut self, _: super::SeekFrom) -> Result<u64> {
         Ok(0) // this is fine as the reader is identical everywhere.
+    }
+}
+
+// CURSOR
+
+/// A cursor over an in-memory buffer.
+///
+/// Behaves like `std::io::Cursor`.
+#[derive(Debug, Clone)]
+pub struct Cursor<T> {
+    inner: T,
+    pos: usize,
+}
+
+impl<T> Cursor<T> {
+    pub fn new(inner: T) -> Self {
+        Self { inner, pos: 0 }
+    }
+
+    pub fn position(&self) -> u64 {
+        self.pos as u64
+    }
+
+    pub fn set_position(&mut self, pos: u64) {
+        self.pos = pos as usize;
+    }
+
+    pub fn into_inner(self) -> T {
+        self.inner
+    }
+
+    pub fn get_ref(&self) -> &T {
+        &self.inner
+    }
+
+    pub fn get_mut(&mut self) -> &mut T {
+        &mut self.inner
+    }
+}
+
+impl Read for Cursor<&[u8]> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        if self.pos >= self.inner.len() {
+            return Ok(0); // EOF
+        }
+
+        let n = min(buf.len(), self.inner.len() - self.pos);
+        buf[..n].copy_from_slice(&self.inner[self.pos..self.pos + n]);
+        self.pos += n;
+        Ok(n)
+    }
+}
+
+impl Read for Cursor<Vec<u8>> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        if self.pos >= self.inner.len() {
+            return Ok(0); // EOF
+        }
+
+        let n = min(buf.len(), self.inner.len() - self.pos);
+        buf[..n].copy_from_slice(&self.inner[self.pos..self.pos + n]);
+        self.pos += n;
+        Ok(n)
+    }
+}
+
+impl Write for Cursor<Vec<u8>> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        let end = self.pos + buf.len();
+
+        if end > self.inner.len() {
+            self.inner.resize(end, 0);
+        }
+
+        self.inner[self.pos..end].copy_from_slice(buf);
+        self.pos = end;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl<T: AsRef<[u8]>> Seek for Cursor<T> {
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        let len = self.inner.as_ref().len() as i64;
+        let cur = self.pos as i64;
+
+        let new = match pos {
+            SeekFrom::Start(n) => n as i64,
+            SeekFrom::End(n) => len + n,
+            SeekFrom::Current(n) => cur + n,
+        };
+
+        if new < 0 {
+            return Err(Error::new(ErrorKind::InvalidInput, "seek is out of bounds"));
+        }
+
+        self.pos = new as usize;
+        Ok(self.pos as u64)
+    }
+}
+
+impl<T: AsRef<[u8]>> AsyncSeek for Cursor<T> {
+    async fn async_seek(&mut self, from: SeekFrom) -> Result<u64> {
+        self.seek(from)
+    }
+}
+
+impl AsyncRead for Cursor<Vec<u8>> {
+    async fn async_read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        self.read(buf)
+    }
+}
+
+impl AsyncWrite for Cursor<Vec<u8>> {
+    async fn async_write(&mut self, buf: &[u8]) -> Result<usize> {
+        self.write(buf)
+    }
+
+    async fn async_flush(&mut self) -> Result<()> {
+        self.flush()
+    }
+}
+
+impl AsyncRead for Cursor<&[u8]> {
+    async fn async_read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        self.read(buf)
     }
 }
