@@ -1,9 +1,9 @@
 //! Main entry point
 
-use crossbeam_queue::ArrayQueue;
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
+use crate::{asyncio, event::{self}, interrupts::keyboard::{KEYBOARD, SC_QUEUE}, log::error};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, interrupts, lib_alloc, serial_println,
@@ -15,67 +15,69 @@ use crate::{
         sync::{Mutex, MutexGuard},
     },
 };
-use crate::{
-    asyncio, event::{self, take_kbd_wakers}, interrupts::keyboard::{KEYBOARD, SC_QUEUE}, log::error, scheduler
-};
 
+#[allow(static_mut_refs)]
 fn handle_kbd() -> ! {
     {
+        let sc_q = unsafe { SC_QUEUE.assume_init_ref() };
         loop {
             thread::block_until_true(|| {
-                SC_QUEUE.lock().get_or_init(|| ArrayQueue::new(100)).len() > 0
+                !sc_q.is_empty()
             });
-            let lock = SC_QUEUE.lock();
+            serial_println!("scancode has new keys");
 
-            let val = lock.get_or_init(|| ArrayQueue::new(100));
+            let sc = if let Some(v) =  sc_q.pop() {
+                v
+            } else {
+                serial_println!("nothing");
+                thread::yield_now();
+                continue;
+            };
 
+            serial_println!("adding byte: ");
             let ev = match KEYBOARD
                 .lock()
-                .add_byte(val.pop().expect("array should have a value after wait"))
+                .add_byte(sc)
             {
                 Ok(Some(ev)) => ev,
                 Err(e) => {
                     error!("invalid keyboard input: {e:?}");
+                    thread::yield_now();
                     continue;
                 }
                 Ok(None) => {
                     error!("invalid keyboard input: failed to decode");
+                    thread::yield_now();
                     continue;
                 }
             };
 
-            for hook in event::take_kbd_once_hooks() {
-                hook(ev.clone()) // note: clone of 2 bytes is ok - it is actually ok to copy
-            }
+            serial_println!("running hooks");
+            event::run_kbd_hooks(ev.clone());
+            
+            serial_println!("running once hooks");
+            event::run_kbd_once_hooks(ev);
 
-            for waker in take_kbd_wakers() {
-                waker.wake();
-            }
+            serial_println!("running wakers");
+            event::wake_kbd_wakers();
 
-            unsafe { scheduler::wake_kbd() };
+            // serial_println!("waking keyboard waiters");
+            // unsafe { scheduler::wake_kbd() };
         }
     }
 }
 
 /// final init.
 pub fn kernel_main() {
-
     // keyboard input
     ThreadBuilder::<!>::new()
         .with_name("keyboard_handler")
         .with_priority(TPriority::High)
-        .with_stack(16 * 1024)
+        .with_stack(8 * 4096)
         .with_entry(handle_kbd)
         .build();
 
-    ThreadBuilder::new()
-        .with_name("keyboard_debugger")
-        .with_entry(|| {
-            loop {
-                let key = asyncio::run_future(asyncio::key_input());
-                serial_println!("Key Pressed: {key:?}");
-            }
-        });
+    serial_println!("{:?}", asyncio::run_future(asyncio::key_input()));
 
     cfg_if::cfg_if! {
         if #[cfg(feature = "test")] {
