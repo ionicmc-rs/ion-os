@@ -10,6 +10,7 @@ use core::{
 };
 
 use alloc::{boxed::Box, collections::vec_deque::VecDeque, vec::Vec};
+use x86_64::instructions::hlt;
 
 use crate::{
     hlt_loop, interrupts::InterruptGuard, serial_println, thread::{
@@ -133,7 +134,11 @@ struct Queues {
 pub extern "C" fn idle_entry(_: usize) -> ! {
     thread::set_name("idle");
     loop {
-        yield_now();
+        if unsafe { SCHEDULER.queues.get().as_ref().unwrap().has_targets() } {
+            yield_now();
+        }
+
+        hlt();
     }
 }
 
@@ -309,6 +314,12 @@ impl Queues {
 
     pub fn take_idle(&mut self) -> Option<Thread> {
         self.idle.take()
+    }
+
+    pub fn has_targets(&self) -> bool {
+        !self.high.0.is_empty()
+            && !self.med.0.is_empty()
+            && !self.low.0.is_empty()
     }
 }
 
