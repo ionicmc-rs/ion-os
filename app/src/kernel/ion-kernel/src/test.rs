@@ -16,11 +16,14 @@
 //! }
 //! ```
 #![cfg_attr(not(feature = "test"), allow(dead_code))]
-use core::any::{type_name, Any, TypeId};
+use core::any::{Any, TypeId, type_name};
 
 use alloc::{format, vec};
 
-use crate::{hlt_loop, serial_print, serial_println, thread::{self, JoinErrorKind, ThreadBuilder}};
+use crate::{
+    hlt_loop, serial_print, serial_println,
+    thread::{self, JoinErrorKind, ThreadBuilder},
+};
 
 /// Info Passed to Tests
 ///
@@ -50,10 +53,9 @@ impl TestInfo<'_> {
     }
 
     /// ignores this test
-    /// 
+    ///
     /// exits immediately
     pub fn ignore(&mut self) -> ! {
-
         self.options.ignored = true;
 
         thread::exit_current();
@@ -65,7 +67,7 @@ impl TestInfo<'_> {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct TestOptions {
     should_panic: bool,
-    ignored: bool
+    ignored: bool,
 }
 
 /// A Testable Object
@@ -101,10 +103,9 @@ pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
     let mut pass_count = 0;
     let mut ignore_count = 0;
     for (i, test) in tests.iter().enumerate() {
-
         let mut options = TestOptions {
             ignored: false,
-            should_panic: false
+            should_panic: false,
         };
 
         let name = test.name();
@@ -115,11 +116,14 @@ pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
         let thread = ThreadBuilder::new()
             .with_name(format!("test <{name}>"))
             .with_entry(move || {
+                test.run(TestInfo {
+                    ord: i,
+                    type_id: test.type_id(),
+                    options: options_ptr,
+                })
+            })
+            .spawn();
 
-                test.run(TestInfo { 
-                    ord: i, type_id: test.type_id(), options: options_ptr })
-            }).spawn();
-        
         match thread.join() {
             Ok(()) => {
                 if options.ignored {
@@ -135,33 +139,31 @@ pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
                 serial_println!("[OK]");
                 pass_count += 1;
             }
-            Err(e) => {
-                match e.kind() {
-                    JoinErrorKind::Panicked => {
-                        if options.ignored {
-                            ignore_count += 1;
-                            continue;
-                        }
-                        if options.should_panic {
-                            serial_println!("[OK]");
-                            pass_count += 1;
-                            continue;
-                        }
-                        serial_println!("[FAILED]");
-                        fail_names.push(name);
-                    }
-                    JoinErrorKind::Unfinished => {
-                        unreachable!("`join` should return `Unset`, not `Unfinished`")
-                    }
-                    JoinErrorKind::Unset => {
-                        if !options.ignored {
-                            panic!("internal error: thread exited prematurely.")
-                        }
-                        serial_println!("[IGNORED]");
+            Err(e) => match e.kind() {
+                JoinErrorKind::Panicked => {
+                    if options.ignored {
                         ignore_count += 1;
+                        continue;
                     }
+                    if options.should_panic {
+                        serial_println!("[OK]");
+                        pass_count += 1;
+                        continue;
+                    }
+                    serial_println!("[FAILED]");
+                    fail_names.push(name);
                 }
-            }
+                JoinErrorKind::Unfinished => {
+                    unreachable!("`join` should return `Unset`, not `Unfinished`")
+                }
+                JoinErrorKind::Unset => {
+                    if !options.ignored {
+                        panic!("internal error: thread exited prematurely.")
+                    }
+                    serial_println!("[IGNORED]");
+                    ignore_count += 1;
+                }
+            },
         }
     }
     serial_print!("Ran Tests: ");
@@ -182,7 +184,6 @@ pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
         exit(QemuExitCode::Passed)
     }
 }
-
 
 // QEMU exiting.
 

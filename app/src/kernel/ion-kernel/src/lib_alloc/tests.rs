@@ -7,7 +7,7 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::test::{TestInfo};
+use crate::test::TestInfo;
 
 /// Tests allocation Tools.
 pub fn test_alloc_tools(inf: TestInfo) {

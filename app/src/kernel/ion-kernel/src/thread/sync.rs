@@ -1,48 +1,53 @@
 //! Types and structures for concurrency.
-//! 
+//!
 //! The types in this module allow for safe **global**[^1] variables safely without data races
 //! # Mutexes
 //! a [`Mutex`] allows for obtaining a lock to a value, and using that lock to mutate and read that value.
 //! ```
 //! static mut GLOBAL_VAR: i32 = 10;
-//! 
+//!
 //! let first = thread::spawn(|| {
 //!     GLOBAL_VAR += 1;
-//! 
+//!
 //!     // context switch can occur here!
-//! 
+//!
 //!     assert_eq!(GLOBAL_VAR, 11)
 //! });
 //! let second = thread::spawn(|| {
 //!     println!("{GLOBAL_VAR}"); // this value cannot be predicted now, and this causes unsafety.
 //! });
-//! 
+//!
 //! first.join();
 //! second.join();
 //! ```
-//! 
+//!
 //! a [`Mutex`] prevents this.
-//! 
+//!
 //! ```
 //! // does not need `mut`
 //! static GLOBAL_VAR: Mutex<i32> = Mutex::new(10);
-//! 
+//!
 //! // ...
-//! 
+//!
 //! let locked = GLOBAL_VAR.lock();
 //! ```
 //! this ensure the current thread is the only one to be able to access the variable.
-//! 
+//!
 //! [^1]: using these structures on (thread) local variables has no effect.
 
-use core::{cell::UnsafeCell, fmt::Display, ops::{Deref, DerefMut}, sync::atomic::{AtomicBool, Ordering}};
+use core::{
+    cell::UnsafeCell,
+    fmt::Display,
+    ops::{Deref, DerefMut},
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use crate::{panic, thread};
 
 pub struct Mutex<T: ?Sized> {
     locked: AtomicBool,
     poisoned: AtomicBool,
-    value: UnsafeCell<T>
+    value: UnsafeCell<T>,
 }
 
 #[derive(Debug, Clone)]
@@ -78,9 +83,6 @@ impl<T: PartialEq + ?Sized> PartialEq for MutexGuard<'_, T> {
     }
 }
 
-
-
-
 impl<T: Eq> Eq for MutexGuard<'_, T> {}
 
 impl<T: PartialOrd> PartialOrd<T> for MutexGuard<'_, T> {
@@ -102,13 +104,21 @@ impl<T: Ord> Ord for MutexGuard<'_, T> {
 }
 
 impl<'mutex, T: ?Sized> MutexGuard<'mutex, T> {
-    fn new(lock: &'mutex AtomicBool, cell: &'mutex UnsafeCell<T>, poisoned: &'mutex AtomicBool) -> Self {
-        Self { lock, cell, poisoned }
+    fn new(
+        lock: &'mutex AtomicBool,
+        cell: &'mutex UnsafeCell<T>,
+        poisoned: &'mutex AtomicBool,
+    ) -> Self {
+        Self {
+            lock,
+            cell,
+            poisoned,
+        }
     }
 
-    pub fn add_hook_for(guard: Self) 
-    where 
-        'mutex: 'static // 'mutex = 'static
+    pub fn add_hook_for(guard: Self)
+    where
+        'mutex: 'static, // 'mutex = 'static
     {
         panic::add_hook(|| {
             drop(guard);
@@ -141,14 +151,14 @@ impl<'mutex, T: ?Sized> Drop for MutexGuard<'mutex, T> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TryLockError {
     Poisoned,
-    Locked
+    Locked,
 }
 
 impl Display for TryLockError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let fmt = match self {
             TryLockError::Locked => "held by another thread",
-            TryLockError::Poisoned => "poisoned by another thread"
+            TryLockError::Poisoned => "poisoned by another thread",
         };
         write!(f, "attempted to lock a mutex, but it was {fmt}.")
     }
@@ -158,10 +168,10 @@ impl core::error::Error for TryLockError {}
 
 impl<T> Mutex<T> {
     pub const fn new(val: T) -> Self {
-        Self { 
+        Self {
             locked: AtomicBool::new(false),
             poisoned: AtomicBool::new(false),
-            value: UnsafeCell::new(val)
+            value: UnsafeCell::new(val),
         }
     }
 

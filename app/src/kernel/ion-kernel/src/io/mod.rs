@@ -17,12 +17,12 @@
 #![allow(missing_docs)]
 
 pub mod buf_read;
+pub mod concurrent;
 pub mod error;
 pub mod read;
 pub mod seek;
 pub mod tools;
 pub mod write;
-pub mod concurrent;
 
 #[allow(unused)]
 pub use buf_read::*;

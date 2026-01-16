@@ -8,7 +8,7 @@ use core::{
     ops::{Bound, RangeBounds},
 };
 
-use crate::c_lib::bit::{read_bit, set_bit, IntoBit};
+use crate::c_lib::bit::{IntoBit, read_bit, set_bit};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]

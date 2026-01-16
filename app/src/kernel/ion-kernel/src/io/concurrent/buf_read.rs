@@ -1,6 +1,6 @@
 use alloc::{string::String, vec::Vec};
 
-use crate::io::{BufRead, Error, ErrorKind, concurrent::read::AsyncRead, Result};
+use crate::io::{BufRead, Error, ErrorKind, Result, concurrent::read::AsyncRead};
 
 pub trait AsyncBufRead: BufRead + AsyncRead {
     /// Returns the contents of the internal buffer.

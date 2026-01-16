@@ -241,7 +241,7 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 
 #[cfg(feature = "test")]
-use crate::test::{TestInfo};
+use crate::test::TestInfo;
 
 lazy_static! {
     /// The Global Writer

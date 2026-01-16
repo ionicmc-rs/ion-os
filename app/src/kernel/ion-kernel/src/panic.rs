@@ -17,9 +17,9 @@ use crate::{
 static THREAD_HOOK: Cell<Vec<Box<dyn FnOnce()>>> = Cell::new(Vec::new());
 
 /// Sets the function run at the end of panics.
-/// 
+///
 /// note: this does not replace the panic function, but it runs alongside it at the end.
-/// 
+///
 /// this is usually useful to poison mutexes while we don't have unwinding.
 pub fn add_hook(f: impl FnOnce() + 'static) {
     if thread::current().is_none() {
@@ -71,7 +71,7 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
                 hook()
             }
             unsafe { scheduler::panic_current() };
-        },
+        }
     };
 
     use core::fmt::Write;

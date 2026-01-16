@@ -11,27 +11,27 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use crate::scheduler::idle_entry;
 use crate::{
     interrupts,
-    scheduler::{self, WakeEvent, SCHEDULER},
+    scheduler::{self, SCHEDULER, WakeEvent},
     serial_println,
     thread::{
         context::Context,
         stack::ThreadStack,
-        tls::{alloc_thread_self, TlsAllocation},
+        tls::{TlsAllocation, alloc_thread_self},
     },
 };
 
 pub mod context;
 mod join;
+pub mod pool;
 pub mod stack;
 pub mod sync;
-pub mod pool;
 
-pub use join::{spawn, spawn_at, JoinError, JoinErrorKind, JoinHandle};
+pub use join::{JoinError, JoinErrorKind, JoinHandle, spawn, spawn_at};
 
 pub use crate::scheduler::{
-    block_until, block_until_end_of, block_until_key_input, block_until_true, atomic_block_until, critical_moment, critical_moment_raw,
-    current, exit_current, has_panicked, remove_panic_id, request_reschedule, reschedule_if_needed,
-    start, yield_now
+    atomic_block_until, block_until, block_until_end_of, block_until_key_input, block_until_true,
+    critical_moment, critical_moment_raw, current, exit_current, has_panicked, remove_panic_id,
+    request_reschedule, reschedule_if_needed, start, yield_now,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -179,4 +179,4 @@ pub fn init() {
 pub mod build;
 pub mod tls;
 
-pub use build::{name, panicking, preemption_safe, set_name, ThreadBuilder};
+pub use build::{ThreadBuilder, name, panicking, preemption_safe, set_name};

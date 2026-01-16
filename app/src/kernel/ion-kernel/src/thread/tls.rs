@@ -8,7 +8,7 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use core::{alloc::Layout, cmp};
-use x86_64::{align_up, registers::model_specific::FsBase, VirtAddr};
+use x86_64::{VirtAddr, align_up, registers::model_specific::FsBase};
 
 use crate::{serial_println, thread};
 

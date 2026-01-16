@@ -10,7 +10,7 @@ use core::{alloc::Layout, mem::size_of_val_raw, ptr};
 use alloc::alloc::{alloc, dealloc};
 
 #[cfg(feature = "test")]
-use crate::test::{TestInfo};
+use crate::test::TestInfo;
 
 // SAFE API
 
@@ -287,9 +287,7 @@ pub unsafe extern "C" fn realloc(ptr: *mut u8, new_size: usize) -> *mut u8 {
 pub fn test_malloc(inf: TestInfo) {
     // safe api.
 
-    use crate::{
-        c_lib::libc::malloc_wraps::{MallocAllocator, MallocBox},
-    };
+    use crate::c_lib::libc::malloc_wraps::{MallocAllocator, MallocBox};
     unsafe {
         let safe_ptr = malloc_safe_val(inf.ord);
         assert_eq!(*safe_ptr, inf.ord);
@@ -347,5 +345,4 @@ pub fn test_malloc(inf: TestInfo) {
         assert_eq!(slice, &[0, 0, 0]);
         free_safe(slice_safe);
     }
-
 }

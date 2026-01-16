@@ -17,7 +17,7 @@
 
 use core::fmt::Display;
 
-use x86_64::structures::paging::{mapper::MapToError, Size4KiB};
+use x86_64::structures::paging::{Size4KiB, mapper::MapToError};
 
 use crate::{c_lib::BootInfo, interrupts, lib_alloc::init_heap, mem, serial_println};
 

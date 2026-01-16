@@ -13,9 +13,14 @@ use alloc::{boxed::Box, collections::vec_deque::VecDeque, vec::Vec};
 use x86_64::instructions::hlt;
 
 use crate::{
-    hlt_loop, interrupts::InterruptGuard, serial_println, thread::{
-        self, State, Thread, ThreadID, build::TPriority, tls::{ThreadSelf, install_tls}
-    }
+    hlt_loop,
+    interrupts::InterruptGuard,
+    serial_println,
+    thread::{
+        self, State, Thread, ThreadID,
+        build::TPriority,
+        tls::{ThreadSelf, install_tls},
+    },
 };
 
 /// The global Scheduler
@@ -36,8 +41,11 @@ impl ReadyQueue {
     }
 
     pub fn queue(&mut self, thread: Thread) {
-        if let State::Ready = thread.state() {} else {
-            panic!("Safety invariant violated: `ReadyQueue::queue` must not be called with a thread that is not ready.");
+        if let State::Ready = thread.state() {
+        } else {
+            panic!(
+                "Safety invariant violated: `ReadyQueue::queue` must not be called with a thread that is not ready."
+            );
         }
         self.0.push_back(thread);
     }
@@ -76,7 +84,9 @@ impl NonRunning {
             thread.state(),
             State::Sleeping(..) | State::Blocked(..) | State::Terminated
         ) {
-            panic!("Safety invariant violated: `NonRunning::queue` must never be called with a thread that is not sleeping, blocked or terminated.")
+            panic!(
+                "Safety invariant violated: `NonRunning::queue` must never be called with a thread that is not sleeping, blocked or terminated."
+            )
         }
         self.0.push_back(NonRunningThread(priority, thread));
     }
@@ -202,12 +212,17 @@ impl Queues {
     }
 
     pub fn place_idle(&mut self, idle: Thread) -> &mut Thread {
-        if let State::Ready = idle.state() {} else if idle.id() != ThreadID(0) {
-            panic!("Safety invariant violation: `Queues::place_idle` should only receive ready, 0 ID threads (idle)");
+        if let State::Ready = idle.state() {
+        } else if idle.id() != ThreadID(0) {
+            panic!(
+                "Safety invariant violation: `Queues::place_idle` should only receive ready, 0 ID threads (idle)"
+            );
         }
 
         if self.idle.is_some() {
-            panic!("Idle thread already exists, but the thread was already asserted to be the idle one. this likely indicates data being sent between CPUs");
+            panic!(
+                "Idle thread already exists, but the thread was already asserted to be the idle one. this likely indicates data being sent between CPUs"
+            );
             // better error message for when we get CPUs
         }
 
@@ -273,7 +288,7 @@ impl Queues {
                         } else {
                             self.non_running.queue(thread, priority);
                         }
-                    },
+                    }
                     WakeEvent::Atomic(locked) => {
                         let is_locked = locked.load(Ordering::Relaxed);
                         if !is_locked {
@@ -285,8 +300,11 @@ impl Queues {
                     }
                 }
             } else if priority == Priority::None {
-                if let State::Terminated = thread.state() {} else {
-                    panic!("Safety invariant violated: `Queues::restore_done` detected a non-terminated thread of `None` Priority")
+                if let State::Terminated = thread.state() {
+                } else {
+                    panic!(
+                        "Safety invariant violated: `Queues::restore_done` detected a non-terminated thread of `None` Priority"
+                    )
                 }
                 drop(thread);
                 continue; // the thread is terminated, we can drop and continue on.
@@ -317,9 +335,7 @@ impl Queues {
     }
 
     pub fn has_targets(&self) -> bool {
-        !self.high.0.is_empty()
-            && !self.med.0.is_empty()
-            && !self.low.0.is_empty()
+        !self.high.0.is_empty() && !self.med.0.is_empty() && !self.low.0.is_empty()
     }
 }
 
@@ -426,9 +442,9 @@ impl Scheduler {
         for _ in 0..len {
             let NonRunningThread(priority, mut thread) = queues.non_running.0.pop_front().unwrap();
             match thread.state() {
-                State::Ready | State::Running => panic!(
-                    "Safety invariant violated: detected a thread in the non running queue"
-                ),
+                State::Ready | State::Running => {
+                    panic!("Safety invariant violated: detected a thread in the non running queue")
+                }
                 State::Blocked(WakeEvent::EndOf(waited)) if *waited == id => {
                     thread.set_state(State::Ready);
                     queues.queue(priority, thread);
@@ -678,7 +694,7 @@ pub enum WakeEvent {
     KeyInput,
     FnYieldTrue(Box<dyn Fn() -> bool>),
     // only supports static lifetimes for now.
-    Atomic(&'static AtomicBool)
+    Atomic(&'static AtomicBool),
 }
 
 // ASM linkage.

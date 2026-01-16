@@ -33,7 +33,7 @@ impl Display for JoinError {
             JoinErrorKind::Unfinished => "but it did not finish yet",
             JoinErrorKind::Unset => "but it prematurely exited",
         };
-        write!(f, "Attempted to join thread id {}, {fmt}.", self.0 .0)
+        write!(f, "Attempted to join thread id {}, {fmt}.", self.0.0)
     }
 }
 

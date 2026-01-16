@@ -1,5 +1,7 @@
 //! Tools for executing futures using thread blocking for efficiency
 
+use core::marker::PhantomPinned;
+use core::pin::{Pin};
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{RawWaker, RawWakerVTable, Waker};
 use core::{
@@ -8,7 +10,9 @@ use core::{
 };
 
 use alloc::boxed::Box;
+use pc_keyboard::KeyEvent;
 
+use crate::event::{self, reg_kbd_waker};
 use crate::thread::{self, JoinHandle};
 
 /// Runs the given future, blocking when it is pending.
@@ -33,10 +37,10 @@ where
 }
 
 /// Runs the future on a new thread.
-pub fn thread<
-    F: Future<Output = T> + Send + 'static,
-    T: Send + 'static,
->(future: F, stack: usize) -> JoinHandle<T> {
+pub fn thread<F: Future<Output = T> + Send + 'static, T: Send + 'static>(
+    future: F,
+    stack: usize,
+) -> JoinHandle<T> {
     thread::spawn(|| run_future(future), stack)
 }
 
@@ -80,7 +84,52 @@ fn wake_by_ref(data: *const ()) {
 }
 
 fn drop_waker(data: *const ()) {
-    unsafe {
-        drop(Box::from_raw(data.cast::<TWaker>().cast_mut()))
+    unsafe { drop(Box::from_raw(data.cast::<TWaker>().cast_mut())) }
+}
+
+// helper types
+
+/// a future which returns key input
+/// 
+/// see [`key_input`]
+#[derive(Debug)]
+pub struct KeyInput {
+    state: Option<KeyEvent>,
+    registered: bool,
+    _pinned: PhantomPinned
+}
+
+impl Future for KeyInput<> {
+    type Output = KeyEvent;
+
+    fn poll(self: core::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.state.is_some() {
+            Poll::Ready(
+                self.state.as_ref().cloned().unwrap() // this is ugly, but efficient
+            )
+        } else {
+
+            if self.registered {
+                return Poll::Pending;
+            }
+
+            // note: the following implementation requires `self` is not moved until completion.
+
+            reg_kbd_waker(cx.waker().clone());
+
+            let ptr = &raw const self.state;
+            let refr = unsafe { ptr.cast_mut().as_mut().unwrap() };
+            event::add_key_listener_once(|ev| {
+                *refr = Some(ev)
+            });
+            Poll::Pending
+        }
     }
+}
+
+/// returns a future that returns key input.
+/// 
+/// due to its implementation - it cannot be moved, thus it is pinnned
+pub fn key_input<'a>() -> Pin<Box<KeyInput>> {
+    Box::pin(KeyInput { state: None, registered: false, _pinned: PhantomPinned })
 }

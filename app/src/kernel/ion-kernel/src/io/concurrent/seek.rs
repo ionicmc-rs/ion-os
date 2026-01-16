@@ -26,4 +26,3 @@ pub trait AsyncSeek: Seek {
         self.async_seek(SeekFrom::Current(n)).await.map(|_| ())
     }
 }
-

@@ -4,7 +4,10 @@ use core::cmp::min;
 
 use alloc::{string::String, vec::Vec};
 
-use crate::io::{BufRead, Error, ErrorKind, IoSlice, IoSliceMut, Read, Seek, SeekFrom, Write, concurrent::{read::AsyncRead, seek::AsyncSeek, write::AsyncWrite}};
+use crate::io::{
+    BufRead, Error, ErrorKind, IoSlice, IoSliceMut, Read, Seek, SeekFrom, Write,
+    concurrent::{read::AsyncRead, seek::AsyncSeek, write::AsyncWrite},
+};
 
 /// An empty stream.
 ///

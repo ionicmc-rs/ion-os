@@ -6,14 +6,22 @@ pub struct ThreadPool {
     max: u8,
     stack: usize,
     list: VecDeque<JoinHandle<()>>,
-    queue: VecDeque<Box<dyn Fn() + Send>>
+    queue: VecDeque<Box<dyn Fn() + Send>>,
 }
 
 impl ThreadPool {
     pub fn new(max: u8, stack: usize) -> Self {
-        assert!(max > 1, "maximum size must exceed one, consider spawning threads if you only need 1");
+        assert!(
+            max > 1,
+            "maximum size must exceed one, consider spawning threads if you only need 1"
+        );
 
-        Self { max, stack, list: VecDeque::with_capacity(max as usize), queue: VecDeque::new() }
+        Self {
+            max,
+            stack,
+            list: VecDeque::with_capacity(max as usize),
+            queue: VecDeque::new(),
+        }
     }
 
     pub fn execute(&mut self, f: impl Fn() + Send + 'static) -> Result<(), usize> {
@@ -32,12 +40,12 @@ impl ThreadPool {
         loop {
             let next = match self.list.pop_front() {
                 Some(v) => v,
-                None => break Ok(())
+                None => break Ok(()),
             };
 
             let next_in_queue = match self.queue.pop_front() {
                 Some(ele) => thread::spawn(ele, self.stack),
-                None => continue
+                None => continue,
             };
             self.list.push_back(next_in_queue);
 

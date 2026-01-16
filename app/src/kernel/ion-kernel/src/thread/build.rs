@@ -29,7 +29,7 @@ pub enum TPriority {
     High,
     #[default]
     Med,
-    Low
+    Low,
 }
 
 #[derive(Default)]
@@ -38,7 +38,7 @@ pub struct ThreadBuilder<T: Send + 'static> {
     func: Option<Box<dyn FnOnce() -> T + Send + 'static>>,
     safe: bool,
     stack: usize,
-    priority: TPriority
+    priority: TPriority,
 }
 
 impl<T: Send + 'static> Debug for ThreadBuilder<T> {
@@ -57,7 +57,7 @@ impl<T: Send + 'static> ThreadBuilder<T> {
             func: None,
             safe: true,
             stack: 16 * 1024,
-            priority: TPriority::Med
+            priority: TPriority::Med,
         }
     }
 
@@ -85,7 +85,7 @@ impl<T: Send + 'static> ThreadBuilder<T> {
         self.func = Some(Box::new(f));
         self
     }
-    
+
     pub fn runs(&mut self, f: impl FnOnce() -> T + Send + 'static) -> &mut Self {
         self.func = Some(Box::new(f));
         self
@@ -109,7 +109,7 @@ impl<T: Send + 'static> ThreadBuilder<T> {
     pub const fn set_stack(&mut self, stack: usize) -> &mut Self {
         self.stack = stack;
         self
-    } 
+    }
 
     /// Builds the thread, queueing it into the scheduler.
     pub fn build(self) {

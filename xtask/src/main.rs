@@ -1,7 +1,10 @@
 use anyhow::*;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::{
-    fs, io::stdin, path::{Path, PathBuf}, process::Command
+    fs,
+    io::stdin,
+    path::{Path, PathBuf},
+    process::Command,
 };
 
 //
@@ -9,7 +12,11 @@ use std::{
 //
 
 #[derive(Parser)]
-#[command(author = "Mostafa Khaled", version, about = "IonOS build orchestration (xtask)")]
+#[command(
+    author = "Mostafa Khaled",
+    version,
+    about = "IonOS build orchestration (xtask)"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Cmd,
@@ -17,8 +24,6 @@ struct Cli {
     /// Target architecture (e.g. x86_64, aarch64)
     #[arg(long, default_value = "x86_64", global = true)]
     arch: String,
-
-    
 }
 
 #[derive(Subcommand)]
@@ -33,7 +38,7 @@ enum Cmd {
         test: bool,
     },
     /// Build and Run tests
-    Test { 
+    Test {
         /// Sets the virtual machine to run the tests.
         #[arg(long, value_enum, default_value = "qemu", global = true)]
         vm: Vm,
@@ -61,8 +66,8 @@ enum Cmd {
         verbose: bool,
         /// Virtual machine to check.
         #[arg(long)]
-        vm: Option<Vm>
-    }
+        vm: Option<Vm>,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy)]
@@ -118,28 +123,40 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if !SUPPORTED_ARCHS.contains(&cli.arch.as_str()) {
-        bail!("unsupported architecture: {}\n\nThe supported architectures are: \n{}", cli.arch, SUPPORTED_ARCHS.join("\n"))
+        bail!(
+            "unsupported architecture: {}\n\nThe supported architectures are: \n{}",
+            cli.arch,
+            SUPPORTED_ARCHS.join("\n")
+        )
     }
 
     match cli.command {
-        Cmd::Build { release, test } => {
-            build(&cli, test, release)
-        },
+        Cmd::Build { release, test } => build(&cli, test, release),
         Cmd::Test { vm } => {
             build(&cli, true, false)?;
-            println!("build complete, you may need to change the permissions of kernel.iso before executing.");
+            println!(
+                "build complete, you may need to change the permissions of kernel.iso before executing."
+            );
             run_vm(vm, cli.arch, true)
-        },
-        Cmd::Run { no_build, vm, release } => {
+        }
+        Cmd::Run {
+            no_build,
+            vm,
+            release,
+        } => {
             if !no_build {
                 build(&cli, false, release)?;
             }
-            println!("build complete, you may need to change the permissions of kernel.iso before executing.");
+            println!(
+                "build complete, you may need to change the permissions of kernel.iso before executing."
+            );
             run_vm(vm, cli.arch, false)
         }
-        Cmd::Doctor { minimal, vm, verbose } => {
-            doctor(minimal, vm, verbose)
-        }
+        Cmd::Doctor {
+            minimal,
+            vm,
+            verbose,
+        } => doctor(minimal, vm, verbose),
     }
 }
 
@@ -164,14 +181,14 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
     // ASM: app/src/<arch>/**/*.asm
     // --------------------------------------------------
     for asm in find_files(format!("app/src/{arch}"), "asm")? {
-        let out = mirror_path(&asm, &format!("app/src/{arch}"), &build_root)
-            .with_extension("o");
+        let out = mirror_path(&asm, &format!("app/src/{arch}"), &build_root).with_extension("o");
 
         fs::create_dir_all(out.parent().unwrap())?;
 
         docker(&[
             "nasm",
-            "-f", "elf64",
+            "-f",
+            "elf64",
             asm.to_str().unwrap(),
             "-o",
             out.to_str().unwrap(),
@@ -184,8 +201,8 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
     // C: app/src/kernel/**/*.c
     // --------------------------------------------------
     for c in find_files("app/src/kernel", "c")? {
-        let out = mirror_path(&c, "app/src/kernel", &format!("{build_root}/kernel"))
-            .with_extension("o");
+        let out =
+            mirror_path(&c, "app/src/kernel", &format!("{build_root}/kernel")).with_extension("o");
 
         fs::create_dir_all(out.parent().unwrap())?;
 
@@ -197,7 +214,8 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
             "-mno-red-zone",
             "-fno-omit-frame-pointer",
             "-fno-pic",
-            "-I", "app/src/kernel/c_entry",
+            "-I",
+            "app/src/kernel/c_entry",
             c.to_str().unwrap(),
             "-o",
             out.to_str().unwrap(),
@@ -220,11 +238,16 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
         "cargo",
         "+nightly",
         "build",
-        "-p", "ion-kernel",
-        "--target", &target_json,
-        "-Z", "build-std=core,alloc",
-        "-Z", "build-std-features=compiler-builtins-mem",
-        "--target-dir", &target_dir,
+        "-p",
+        "ion-kernel",
+        "--target",
+        &target_json,
+        "-Z",
+        "build-std=core,alloc",
+        "-Z",
+        "build-std-features=compiler-builtins-mem",
+        "--target-dir",
+        &target_dir,
     ];
 
     if test {
@@ -240,9 +263,7 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
     docker(&rust_cmd)?;
 
     // NOTE: target naming scheme => <arch>.json → <arch>/debug
-    let rust_lib = PathBuf::from(format!(
-        "{target_dir}/{arch}/debug/libion_kernel.a"
-    ));
+    let rust_lib = PathBuf::from(format!("{target_dir}/{arch}/debug/libion_kernel.a"));
 
     if !rust_lib.exists() {
         bail!("Rust staticlib not found: {}", rust_lib.display());
@@ -255,14 +276,20 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
     // --------------------------------------------------
     fs::create_dir_all(&dist_root)?;
 
-    let elf = if test { format!("{dist_root}/test/kernel.elf") } else { format!("{dist_root}/kernel.elf") };
+    let elf = if test {
+        format!("{dist_root}/test/kernel.elf")
+    } else {
+        format!("{dist_root}/kernel.elf")
+    };
 
     let mut ld_args = vec![
         "x86_64-elf-ld",
         "-n",
         "--gc-sections",
-        "-T", "app/targets/x86_64/linker.ld",
-        "-o", &elf,
+        "-T",
+        "app/targets/x86_64/linker.ld",
+        "-o",
+        &elf,
     ];
 
     for obj in &objects {
@@ -276,7 +303,8 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
     // --------------------------------------------------
     docker(&[
         "objcopy",
-        "-O", "binary",
+        "-O",
+        "binary",
         &elf,
         &elf.replace(".elf", ".bin"),
     ])?;
@@ -286,12 +314,17 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
     // --------------------------------------------------
     fs::copy(&elf, "app/targets/x86_64/iso/boot/kernel.elf")?;
 
-    let iso = if test { format!("{dist_root}/test/ion_os_{arch}_test.iso") } else {format!("{dist_root}/ion_os_{arch}.iso")};
+    let iso = if test {
+        format!("{dist_root}/test/ion_os_{arch}_test.iso")
+    } else {
+        format!("{dist_root}/ion_os_{arch}.iso")
+    };
 
     docker(&[
         "grub-mkrescue",
         "/usr/lib/grub/i386-pc",
-        "-o", &iso,
+        "-o",
+        &iso,
         "app/targets/x86_64/iso",
     ])?;
 
@@ -319,15 +352,17 @@ fn run_vm(vm: Vm, arch: String, test: bool) -> Result<()> {
 
 fn run_qemu(iso: &str) -> Result<()> {
     let mut binding = Command::new("qemu-system-x86_64");
-    let cmd = binding
-        .args([
-            iso,
-            "-debugcon", "stdio",
-            "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
-        ]);
+    let cmd = binding.args([
+        iso,
+        "-debugcon",
+        "stdio",
+        "-device",
+        "isa-debug-exit,iobase=0xf4,iosize=0x04",
+    ]);
 
     let status = cmd.status()?.code();
-    if status != Some(33) { // qemu exit code for `OK`
+    if status != Some(33) {
+        // qemu exit code for `OK`
         bail!("qemu failed: {:?}", cmd);
     }
     Ok(())
@@ -361,24 +396,19 @@ fn mirror_path(path: &Path, from: &str, to: &str) -> PathBuf {
     Path::new(to).join(path.strip_prefix(from).unwrap())
 }
 
-
 // doctor
-
 
 use anyhow::{Context, Result};
 
 fn cmd_exists(cmd: &str) -> bool {
-    Command::new(cmd)
-        .arg("--version")
-        .output()
-        .is_ok()
+    Command::new(cmd).arg("--version").output().is_ok()
 }
 
 fn doctor(minimal: bool, vm: Option<Vm>, verbose: bool) -> Result<()> {
     check_rust(minimal, verbose)?;
     check_tools(minimal, vm, verbose)?;
     check_git(verbose)?;
-    
+
     if !minimal {
         check_cleanliness(verbose)?
     }
@@ -399,13 +429,13 @@ fn check_tools(minimal: bool, vm: Option<Vm>, verbose: bool) -> Result<()> {
 
     let vm_cmd = if let Some(vm) = vm {
         match vm {
-            Vm::Qemu => { 
+            Vm::Qemu => {
                 if verbose {
                     println!("checking for qemu archs: x86_64");
                 }
-                ["qemu-system-x86_64"] 
-            },
-            Vm::Bochs => bail!("bochs is not supported currently.")
+                ["qemu-system-x86_64"]
+            }
+            Vm::Bochs => bail!("bochs is not supported currently."),
         }
     } else {
         println!("Please select a virtual machine to check: ");
@@ -418,7 +448,7 @@ fn check_tools(minimal: bool, vm: Option<Vm>, verbose: bool) -> Result<()> {
         println!("[press a number to continue]");
         let mut buf = String::new();
         stdin().read_line(&mut buf)?;
-    
+
         let vm_cmd = match buf.as_str().trim() {
             "1" => {
                 if minimal {
@@ -426,8 +456,8 @@ fn check_tools(minimal: bool, vm: Option<Vm>, verbose: bool) -> Result<()> {
                 } else {
                     ["qemu-system-x86_64"] // TODO: add more archs.
                 }
-            },
-            v => bail!("unknown option: {v}")
+            }
+            v => bail!("unknown option: {v}"),
         };
 
         vm_cmd
@@ -442,7 +472,9 @@ fn check_tools(minimal: bool, vm: Option<Vm>, verbose: bool) -> Result<()> {
             println!("checking tool: {tool}");
         }
         if !cmd_exists(tool) {
-            anyhow::bail!("missing tool: {tool}\n\nhint: you can usually find missing tools in your Operating System's package manager (apt, pacman, winget, etc.)");
+            anyhow::bail!(
+                "missing tool: {tool}\n\nhint: you can usually find missing tools in your Operating System's package manager (apt, pacman, winget, etc.)"
+            );
         }
     }
 
@@ -456,8 +488,7 @@ fn check_git(verbose: bool) -> Result<()> {
         println!("checking git.");
     }
 
-    sh(Command::new("git").arg("--version"))
-        .context("git not found")?;
+    sh(Command::new("git").arg("--version")).context("git not found")?;
 
     if verbose {
         println!("checking `git status`");
@@ -468,7 +499,9 @@ fn check_git(verbose: bool) -> Result<()> {
         .output()?;
 
     if !output.stdout.is_empty() {
-        println!("  ⚠️ working tree not clean\n\n  hint: run `git add .` to stage all changes, and `git commit -m \"<MESSAGE>\"` to commit changes.");
+        println!(
+            "  ⚠️ working tree not clean\n\n  hint: run `git add .` to stage all changes, and `git commit -m \"<MESSAGE>\"` to commit changes."
+        );
     }
 
     Ok(())
@@ -481,9 +514,7 @@ fn check_project(verbose: bool) -> Result<()> {
         println!("checking cargo metadata")
     }
 
-    sh(Command::new("cargo").args(["metadata", "--no-deps"]))
-        .context("cargo metadata failed")?;
-
+    sh(Command::new("cargo").args(["metadata", "--no-deps"])).context("cargo metadata failed")?;
 
     if verbose {
         println!("running `cargo check`");
@@ -492,11 +523,9 @@ fn check_project(verbose: bool) -> Result<()> {
     // TODO: add `--deep` option to change this to `clippy`
 
     sh(Command::new("cargo").args(["check"]))?;
-    
+
     Ok(())
 }
-
-
 
 fn check_cleanliness(verbose: bool) -> Result<()> {
     println!("- Rust components");
@@ -515,13 +544,14 @@ fn check_cleanliness(verbose: bool) -> Result<()> {
             println!("checking rust tool: {c}");
         }
         if !installed.contains(c) {
-            anyhow::bail!("missing rustup component: {c}.\n\nhint: install this tool via `rustup component add {c}`\n\nIf you do not need `{c}`, you can silence this error (and all other non-essential tool errors) via `--minimal`");
+            anyhow::bail!(
+                "missing rustup component: {c}.\n\nhint: install this tool via `rustup component add {c}`\n\nIf you do not need `{c}`, you can silence this error (and all other non-essential tool errors) via `--minimal`"
+            );
         }
     }
 
     Ok(())
 }
-
 
 fn check_rust(_: bool, verbose: bool) -> Result<()> {
     println!("- Rust toolchain");
@@ -531,22 +561,27 @@ fn check_rust(_: bool, verbose: bool) -> Result<()> {
     }
 
     if !cmd_exists("rustup") {
-        bail!("rustup was not found.\n\nhint: You can install it via `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`");
+        bail!(
+            "rustup was not found.\n\nhint: You can install it via `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`"
+        );
     }
     if verbose {
         println!("checking: rustc")
     }
     if !cmd_exists("rustc") {
-        bail!("The rust compiler was not found.\n\nhint: You can install it via rustup: `rustup toolchain install nightly`, `rustup default nightly`");
+        bail!(
+            "The rust compiler was not found.\n\nhint: You can install it via rustup: `rustup toolchain install nightly`, `rustup default nightly`"
+        );
     }
     if verbose {
         println!("checking: cargo")
     }
     if !cmd_exists("cargo") {
-        bail!("Cargo was not found\n\nhint: You can install it via rustup: `rustup toolchain install nightly`, `rustup default nightly`");
+        bail!(
+            "Cargo was not found\n\nhint: You can install it via rustup: `rustup toolchain install nightly`, `rustup default nightly`"
+        );
     }
 
-    
     Ok(())
 }
 

@@ -55,10 +55,13 @@ pub trait AsyncWrite: Write {
     }
 
     /// Write formatted text using `core::fmt`.
-    /// 
+    ///
     /// the default implementation returns `WouldBlock` because it is not possible
     async fn async_write_fmt(&mut self, _args: fmt::Arguments<'_>) -> Result<()> {
-        Err(Error::new(ErrorKind::WouldBlock, "the type did not provide an implementation for `async_write_fmt`"))
+        Err(Error::new(
+            ErrorKind::WouldBlock,
+            "the type did not provide an implementation for `async_write_fmt`",
+        ))
     }
 
     fn can_write_fmt_async(&self) -> bool {

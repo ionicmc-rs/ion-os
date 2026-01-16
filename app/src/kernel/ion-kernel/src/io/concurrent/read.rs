@@ -2,7 +2,6 @@ use alloc::{string::String, vec::Vec};
 
 use crate::io::{Error, ErrorKind, IoSliceMut, Read, Result};
 
-
 pub trait AsyncRead: Read {
     /// reads data into the buffer, returning the number of bytes read.
     ///

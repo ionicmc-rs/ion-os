@@ -4,12 +4,12 @@
 use core::ptr::NonNull;
 
 use x86_64::{
-    structures::paging::{OffsetPageTable, PageTable},
     PhysAddr, VirtAddr,
+    structures::paging::{OffsetPageTable, PageTable},
 };
 
 use crate::{
-    c_lib::{libc, PHYSICAL_MEMORY_OFFSET, USABLE_ENTRY},
+    c_lib::{PHYSICAL_MEMORY_OFFSET, USABLE_ENTRY, libc},
     serial_println,
 };
 
