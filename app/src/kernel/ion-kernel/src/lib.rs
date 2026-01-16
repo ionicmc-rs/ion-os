@@ -33,11 +33,10 @@
 )]
 #![test_runner(test::run_tests)] // this is unused but silences errors.
 
-
 extern crate alloc;
 
 use crate::{
-    c_lib::{bit_flags::BitFlags, libc, BootInfoC},
+    c_lib::{BootInfoC, bit_flags::BitFlags, libc},
     entry::kernel_main,
     io::Error,
     log::{info, trace, warn},
@@ -45,8 +44,11 @@ use crate::{
     thread::ThreadBuilder,
 };
 
+pub mod asyncio;
 pub mod c_lib;
 pub mod entry;
+/// tools for registering event listeners
+pub mod event;
 pub mod init;
 pub mod interrupts;
 pub mod io;
@@ -59,7 +61,6 @@ pub mod serial;
 pub mod test;
 pub mod text;
 pub mod thread;
-pub mod asyncio;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {
@@ -143,7 +144,9 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
     }
 
     if !ecx.read_flag(5) && cfg!(debug_assertions) {
-        warn!("Your Virtual Machine does not support VMX, It is recommended to switch over to one that does.");
+        warn!(
+            "Your Virtual Machine does not support VMX, It is recommended to switch over to one that does."
+        );
     }
 
     if !ecx.read_flag(17) {
@@ -175,7 +178,6 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     serial_println!("\nWelcome User of QEMU! Thank you for using Ion OS");
-
 
     // Read the pointer
     // Safety: the pointer is guaranteed always to be valid, as this is passed in from C. other calls

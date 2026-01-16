@@ -5,7 +5,7 @@ use core::fmt;
 
 use x86_64::instructions::interrupts;
 
-use crate::text::{print, println, query_print_color, set_print_color, Color};
+use crate::text::{Color, print, println, query_print_color, set_print_color};
 
 /// Log levels
 ///

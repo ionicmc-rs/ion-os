@@ -83,7 +83,6 @@ impl core::fmt::Write for BasicSerial {
     }
 }
 
-
 /// base form for serial prints
 pub mod dbg {
     use core::fmt::Write as _;

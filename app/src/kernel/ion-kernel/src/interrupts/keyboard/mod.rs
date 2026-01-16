@@ -7,18 +7,24 @@
 //!
 //! You do not use this module
 
-use x86_64::structures::idt::InterruptStackFrame;
+use core::cell::OnceCell;
 
-use crate::{interrupts::pic8259::handlers::notify, scheduler};
+use crossbeam_queue::ArrayQueue;
+use x86_64::{instructions::port::Port, structures::idt::InterruptStackFrame};
+
+use crate::{
+    interrupts::pic8259::handlers::notify,
+    log::warn,
+    thread::sync::{Mutex, TryLockError},
+};
 
 use pc_keyboard::{
-    layouts::{self, Us104Key},
-    HandleControl, Keyboard,
+    HandleControl, Keyboard, layouts::{self, Us104Key}
 };
-use spin::Mutex;
 
 lazy_static::lazy_static! {
-    static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ps2::ScancodeSet>> = {
+    /// Global keyboard
+    pub static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ps2::ScancodeSet>> = {
         // let mut data = Port::new(0x60);
         // let mut write = Port::new(0x64);
 
@@ -26,46 +32,42 @@ lazy_static::lazy_static! {
     };
 }
 
-#[allow(unused)]
-struct Once {
-    init: *const ps2::ScancodeSet,
-}
-
-#[allow(unused)]
-impl Once {
-    pub const fn new(init: &ps2::ScancodeSet) -> Self {
-        Self {
-            init: init as *const ps2::ScancodeSet,
-        }
-    }
-
-    pub const fn new_ptr(init: *const ps2::ScancodeSet) -> Self {
-        Self { init }
-    }
-
-    pub fn set(&self, set: ps2::ScancodeSet) {
-        let ptr = self.init as *mut ps2::ScancodeSet;
-        unsafe { *ptr = set }
-    }
-
-    pub fn query(&self) -> ps2::ScancodeSet {
-        unsafe { *self.init }
-    }
-}
-
-unsafe impl Sync for Once {}
-
-// for now, allow unused.
-#[allow(unused)]
-static mut SCAN_CODE_SET_IS_SET: ps2::ScancodeSet = ps2::ScancodeSet::None;
-
-#[allow(unused)]
-static SCAN_CODE_SET_QUERIED: Once = Once::new_ptr(&raw const SCAN_CODE_SET_IS_SET);
+/// Scancode Queue
+pub static SC_QUEUE: Mutex<OnceCell<ArrayQueue<u8>>> = Mutex::new(OnceCell::new());
 
 /// Handler Keyboard Input
 pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    unsafe { scheduler::wake_kbd() };
+    let binding = match SC_QUEUE.try_lock() {
+        Ok(v) => v,
+        Err(e) => match e {
+            TryLockError::Locked => {
+                warn!("keyboard input dropped: input is currently being handled.");
+                notify!(unsafe Keyboard);
+                return;
+            }
+            TryLockError::Poisoned => {
+                panic!("scancode queue was poisoned - this indicates it was improperly used.")
+            }
+        },
+    };
+    let queue = binding.get_or_init(|| ArrayQueue::new(100));
 
+    let mut data = Port::new(0x60);
+
+    let scancode = unsafe { data.read() };
+
+    match queue.push(scancode) {
+        Ok(()) => (),
+        Err(e) => warn!("keyboard input `{e}` dropped: not enough space."),
+    }
+
+    // this is left here to avoid confusion
+    //
+    // do NOT call this - this is only called AFTER hooks are ran
+    // by another thread.
+    // unsafe { scheduler::wake_kbd() };
+
+    drop(binding);
     notify!(unsafe Keyboard);
 }
 

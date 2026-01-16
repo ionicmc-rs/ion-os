@@ -61,13 +61,10 @@ extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
 #[cfg(feature = "test")]
 /// Tests
 pub mod test {
-    use crate::{
-        c_lib::libc,
-        test::TestInfo
-    };
+    use crate::{c_lib::libc, test::TestInfo};
 
     /// breakpoint test
-    pub fn test_breakpoint(_inf: TestInfo)  {
+    pub fn test_breakpoint(_inf: TestInfo) {
         x86_64::instructions::interrupts::int3();
         // // always passes, which may be a problem...
         // now can check the error code number

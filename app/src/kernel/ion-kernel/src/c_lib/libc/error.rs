@@ -21,7 +21,7 @@ pub extern "C" fn __errno_location() -> *mut i32 {
 }
 
 use core::{
-    ffi::{c_char, CStr},
+    ffi::{CStr, c_char},
     ops::Deref,
 };
 

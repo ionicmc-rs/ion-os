@@ -29,11 +29,7 @@ pub struct LDivT {
 /// will return the value as +ve if it is -ve.
 #[unsafe(no_mangle)]
 pub extern "C" fn abs(x: i32) -> i32 {
-    if x < 0 {
-        -x
-    } else {
-        x
-    }
+    if x < 0 { -x } else { x }
 }
 
 /// Absolute value of x
@@ -41,11 +37,7 @@ pub extern "C" fn abs(x: i32) -> i32 {
 /// will return the value as +ve if it is -ve.
 #[unsafe(no_mangle)]
 pub extern "C" fn labs(x: i64) -> i64 {
-    if x < 0 {
-        -x
-    } else {
-        x
-    }
+    if x < 0 { -x } else { x }
 }
 
 /// Division returning struct

@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use x86_64::structures::tss::TaskStateSegment;
 /// Contains a private interface for the GDT and TSS tables.
-use x86_64::{structures::gdt::Descriptor, VirtAddr};
+use x86_64::{VirtAddr, structures::gdt::Descriptor};
 
 lazy_static! {
     static ref TSS: TaskStateSegment = {
@@ -51,7 +51,7 @@ struct Selectors {
 
 /// Initialize GDT and TSS.
 pub fn init() {
-    use x86_64::instructions::segmentation::{Segment, CS};
+    use x86_64::instructions::segmentation::{CS, Segment};
     use x86_64::instructions::tables::load_tss;
 
     GDT.0.load();

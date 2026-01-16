@@ -25,11 +25,10 @@ pub fn is_heap_addr(addr: usize) -> bool {
 }
 
 use x86_64::{
-    align_up,
+    VirtAddr, align_up,
     structures::paging::{
-        mapper::MapToError, FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB,
+        FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB, mapper::MapToError,
     },
-    VirtAddr,
 };
 
 use crate::thread;
