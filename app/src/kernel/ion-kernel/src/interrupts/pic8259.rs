@@ -1,3 +1,9 @@
+//! Contains Definitions for a PIC8259 Controller
+//!
+//! In reality, QEMU probably emulates an APIC controller, but backwards compatibility is supported, and a PIC controller is simpler to
+//! Set up.
+//!
+//! Typically, you do not use this at all - interrupt handlers will handle everything.
 use pic8259::ChainedPics;
 use spin;
 
@@ -7,7 +13,7 @@ pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
 /// PIC8259 Controller. (Hardware Controller.)
-/// 
+///
 /// Likely, this will not actually be used, but it is easier to set up, and modern APIC controllers
 /// accept this.
 pub static PICS: spin::Mutex<ChainedPics> =
@@ -19,7 +25,7 @@ pub fn init() {
 }
 
 /// Index for Hardware Interrupts.
-/// 
+///
 /// List
 /// - Timer: 32
 /// - Keyboard: 33
@@ -27,13 +33,15 @@ pub fn init() {
 #[repr(u8)]
 pub enum InterruptIndex {
     /// Index for a Timer Interrupt
-    /// 
+    ///
+    /// The Timer Interrupt is used to detect the Intel 8253 hardware interrupt, which runs all the time at a fixed interval.
+    ///
     /// Equivalent to the [`PIC_1_OFFSET`]
     Timer = PIC_1_OFFSET,
     /// Index for a Keyboard Interrupt.
-    /// 
+    ///
     /// The keyboard interrupt is used to detect key inputs.
-    /// 
+    ///
     /// Equivalent to [`PIC_1_OFFSET`] + 1
     Keyboard,
 }
@@ -52,24 +60,14 @@ impl InterruptIndex {
 
 /// Contains the basic handlers for Hardware Interrupts.
 pub mod handlers {
-    use x86_64::structures::idt::InterruptStackFrame;
-
     /// Notifies that the interrupt handler has ended.
-    /// 
+    ///
     /// Requires an explicit `unsafe` keyword.
-    pub macro notify {
-        (unsafe $name:ident) => {
-            unsafe {
-                super::PICS.lock()
-                    .notify_end_of_interrupt(super::InterruptIndex::$name.as_u8());
-            }
+    pub macro notify(unsafe $name:ident) {
+        unsafe {
+            super::PICS
+                .lock()
+                .notify_end_of_interrupt(super::InterruptIndex::$name.as_u8());
         }
-    }
-
-    /// Intel 8253 timer interrupt.
-    /// 
-    /// simply notifies PIC that the interrupt was handled.
-    pub extern "x86-interrupt" fn timer(_frame: InterruptStackFrame) {
-        notify!(unsafe Timer);
     }
 }

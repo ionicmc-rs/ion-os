@@ -1,7 +1,10 @@
+//! Tools for reading bits.
+//!
+//! use [`bit_flags`](super::bit_flags) for reading bit flags.
 // /// Create a bool from a signed integer
 // /// # Panics
 // /// panics if i is not 1 or 0
-// /// 
+// ///
 // /// if you want to check instead, use [`try_from_int`]
 // pub const fn from_int(i: isize) -> bool {
 //     if i == 0 {
@@ -25,7 +28,7 @@
 // /// Create a bool from an un-singed integer
 // /// # Panics
 // /// panics if i is not 1 or 0
-// /// 
+// ///
 // /// if you want to check instead, use [`try_from_int`]
 // pub const fn from_uint(i: usize) -> bool {
 //     if i == 0 {
@@ -48,7 +51,7 @@
 
 // reading and writing
 
-/// Trait for Converting into bits, represented as bool 
+/// Trait for Converting into bits, represented as bool
 pub const trait IntoBit {
     /// converts the 1 or 0 into a bit,
     /// returning [`None`] if the value falls outside that range

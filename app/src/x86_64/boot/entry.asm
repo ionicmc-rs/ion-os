@@ -231,7 +231,6 @@ check_multiboot2_mmap:
     ret
 
 check_multiboot:
-    ; Accept MB2 or MB1, depending on your loader
     cmp     eax, 0x36d76289              ; Multiboot2
     je      .ok
     cmp     eax, 0x2BADB002              ; Multiboot1
@@ -428,10 +427,8 @@ page_table_l2:
     resb 4096
 
 stack_bottom:
-    resb 4096 * 16 ; 64 KiB stack
+    resb 4096 * 32 ; 128 KiB stack
 stack_top:
-
-
 
 section .rodata
 gdt64:

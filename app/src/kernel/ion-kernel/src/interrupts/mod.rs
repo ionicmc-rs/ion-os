@@ -1,27 +1,42 @@
-use crate::{interrupts::pic8259::InterruptIndex, println, serial_println};
-use lazy_static::lazy_static;
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+//! Tools for both Software and Hardware Interrupts.
+//!
+//! We use this module for setting the IDT, GDT and TSS tables, and handling keyboard inputs.
+//!
+//! These things are handled in Ion OS's initialization, so you wouldn't typically have to see them.
 
-macro set_index($idt:expr, $($index:ident => $handler:expr),*) {
-    $(
+use crate::{c_lib::libc, interrupts::pic8259::InterruptIndex, serial_println, text::println};
+use lazy_static::lazy_static;
+use x86_64::{
+    instructions::interrupts,
+    structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
+};
+
+macro set_index($idt:expr_2021, $($index:ident$((unsafe $stack:literal))? => $handler:expr_2021),*) {
+    $({
+        $(_ = $stack; let options = )?
         $idt[InterruptIndex::$index.as_u8()]
-            .set_handler_fn($handler);
-    )*
+           .set_handler_fn($handler);
+        $(unsafe { options.set_stack_index($stack) };)?
+    })*
 }
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
-        idt.page_fault.set_handler_fn(page_fault::page_fault);
         unsafe {
+            idt.page_fault.set_handler_fn(page_fault::page_fault)
+                .set_stack_index(page_fault::PAGE_FAULT_IST_INDEX);
             idt.double_fault.set_handler_fn(double_fault::double_fault)
                 .set_stack_index(double_fault::DOUBLE_FAULT_IST_INDEX);
         }
+        idt.general_protection_fault.set_handler_fn(gp::protection_fault);
         // Hardware Interrupts.
+
+
         set_index!(
             idt,
-            Timer => pic8259::handlers::timer,
+            Timer => timer::timer_isr,
             Keyboard => keyboard::keyboard_interrupt_handler
         );
 
@@ -29,37 +44,70 @@ lazy_static! {
     };
 }
 
-/// inits the idt.
+/// inits the IDT, GDT, TSS, PIC8259, and interrupts.
 pub fn init_interrupt_operations() {
     gdt::init();
     IDT.load();
     pic8259::init();
-    x86_64::instructions::interrupts::enable();
-    serial_println!("Initialized IDT properly");
+    // no interrupts here
+    serial_println!("Initialized interrupt operations properly");
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
+    libc::error::set_errno(3); // note: reads TLS
     println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
 #[cfg(feature = "test")]
 /// Tests
 pub mod test {
-    use crate::test::{TestInfo, TestResult};
+    use crate::{c_lib::libc, test::TestInfo};
 
     /// breakpoint test
-    pub fn test_breakpoint(_inf: TestInfo) -> TestResult {
+    pub fn test_breakpoint(_inf: TestInfo) {
         x86_64::instructions::interrupts::int3();
-        // always passes, which may be a problem...
-        TestResult::Ok
+        // // always passes, which may be a problem...
+        // now can check the error code number
+        assert_eq!(libc::get_errno().0, 3)
     }
 }
 
+/// Disables interrupts and reenables them upon drop
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct InterruptGuard(());
+
+impl Default for InterruptGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl InterruptGuard {
+    /// disables interrupts, reenabling them upon drop
+    pub fn new() -> Self {
+        interrupts::disable();
+        Self(())
+    }
+
+    /// disables this guard, keeping interrupts off.
+    pub fn disable(self) {
+        core::mem::forget(self);
+    }
+}
+
+impl Drop for InterruptGuard {
+    fn drop(&mut self) {
+        interrupts::enable();
+    }
+}
+
+mod double_fault;
 /// GDT
 pub mod gdt;
-/// PIC 8259 Compatibility.
-pub mod pic8259;
 /// Keyboard Interrupt Handling.
 pub mod keyboard;
-mod double_fault;
 mod page_fault;
+pub mod pic8259;
+mod timer;
+pub use timer::ticks;
+mod gp;
