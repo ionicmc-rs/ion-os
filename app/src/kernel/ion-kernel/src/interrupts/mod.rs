@@ -49,7 +49,7 @@ pub fn init_interrupt_operations() {
     gdt::init();
     IDT.load();
     pic8259::init();
-    x86_64::instructions::interrupts::enable();
+    // no interrupts here
     serial_println!("Initialized interrupt operations properly");
 }
 

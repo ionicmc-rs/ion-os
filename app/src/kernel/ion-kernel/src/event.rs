@@ -1,47 +1,77 @@
+use alloc::{boxed::Box, vec::Vec};
 use core::task::Waker;
 
-use alloc::{boxed::Box, vec::Vec};
 use pc_keyboard::KeyEvent;
+use spin::Mutex;
 
-use crate::thread::sync::Mutex;
-
-/// keyboard hooks
-pub static KEYBOARD_HOOKS: Mutex<Vec<Box<dyn Fn(KeyEvent) + Sync>>> = Mutex::new(Vec::new());
-
-/// keyboard listeners that only run once
-pub static KEYBOARD_ONCE_HOOKS: Mutex<Vec<Box<dyn FnOnce(KeyEvent) + Sync>>> =
+/// Keyboard hooks (run every key event)
+static KEYBOARD_HOOKS: Mutex<Vec<Box<dyn Fn(KeyEvent) + Send + Sync>>> =
     Mutex::new(Vec::new());
-/// wakers that run on key input
-pub static KEYBOARD_WAKERS: Mutex<Vec<Waker>> = Mutex::new(Vec::new());
 
-/// returns the index of the hook
-pub fn add_key_listener(f: impl Fn(KeyEvent) + Sync + 'static) -> usize {
-    let mut lock = KEYBOARD_HOOKS.lock();
-    lock.push(Box::new(f));
-    lock.len() - 1
+/// Keyboard hooks that run once
+static KEYBOARD_ONCE_HOOKS: Mutex<Vec<Box<dyn FnOnce(KeyEvent) + Send + Sync>>> =
+    Mutex::new(Vec::new());
+
+/// Keyboard wakers
+static KEYBOARD_WAKERS: Mutex<Vec<Waker>> =
+    Mutex::new(Vec::new());
+
+/// Register a keyboard hook (persistent)
+pub fn add_key_listener(f: impl Fn(KeyEvent) + Send + Sync + 'static) -> usize {
+    let mut hooks = KEYBOARD_HOOKS.lock();
+    hooks.push(Box::new(f));
+    hooks.len() - 1
 }
 
-/// remove the nth index from the keyboard listeners
-pub fn rem_keyboard_index(i: usize) -> impl Fn(KeyEvent) + Sync + 'static {
-    let mut lock = KEYBOARD_HOOKS.lock();
-    lock.remove(i)
+/// Remove the hook at index `i`
+pub fn rem_keyboard_index(i: usize) -> Option<Box<dyn Fn(KeyEvent) + Send + Sync>> {
+    let mut hooks = KEYBOARD_HOOKS.lock();
+    if i < hooks.len() {
+        Some(hooks.remove(i))
+    } else {
+        None
+    }
 }
-/// add a keyboard listener that only runs once
-pub fn add_key_listener_once(f: impl FnOnce(KeyEvent) + Sync + 'static) {
+
+/// Register a keyboard hook that runs once
+pub fn add_key_listener_once(f: impl FnOnce(KeyEvent) + Send + Sync + 'static) {
     KEYBOARD_ONCE_HOOKS.lock().push(Box::new(f));
 }
-/// take keyboard once hooks
-pub fn take_kbd_once_hooks() -> Vec<Box<dyn FnOnce(KeyEvent) + Sync + 'static>> {
-    let mut hooks = KEYBOARD_ONCE_HOOKS.lock();
-    core::mem::take(&mut *hooks)
+
+/// Run all persistent keyboard hooks
+///
+/// Safe to call from thread context.
+/// No allocation, no blocking.
+pub fn run_kbd_hooks(ev: KeyEvent) {
+    let hooks = KEYBOARD_HOOKS.lock();
+    for hook in hooks.iter() {
+        hook(ev.clone());
+    }
 }
 
-/// register a keyboard waker
+/// Run and consume all one-shot keyboard hooks
+pub fn run_kbd_once_hooks(ev: KeyEvent) {
+    let mut hooks = KEYBOARD_ONCE_HOOKS.lock();
+
+    // Drain explicitly so ownership and drop are obvious
+    while let Some(hook) = hooks.pop() {
+        hook(ev.clone());
+    }
+}
+
+/// Register a waker to be woken on next key event
 pub fn reg_kbd_waker(waker: Waker) {
     KEYBOARD_WAKERS.lock().push(waker);
 }
-/// take all keyboard wakers
-pub fn take_kbd_wakers() -> Vec<Waker> {
+
+/// Wake and clear all keyboard wakers
+pub fn wake_kbd_wakers() {
     let mut wakers = KEYBOARD_WAKERS.lock();
-    core::mem::take(&mut *wakers)
+
+    // Wake first, then drop
+    for waker in wakers.iter() {
+        waker.wake_by_ref();
+    }
+
+    wakers.clear();
 }

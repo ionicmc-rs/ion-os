@@ -50,6 +50,10 @@ fn panic(info: &PanicInfo) -> ! {
 
 /// panics the current thread.
 pub fn panic_thread(info: &PanicInfo) -> ! {
+    if thread::panicking() {
+        serial_println!("double panic - halt");
+        hlt_loop()
+    }
     unsafe { thread::build::set_panic() };
     let loc = info.location().unwrap();
     let message = info.message();

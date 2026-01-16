@@ -7,15 +7,13 @@
 //!
 //! You do not use this module
 
-use core::cell::OnceCell;
+use core::{mem::MaybeUninit};
 
 use crossbeam_queue::ArrayQueue;
-use x86_64::{instructions::port::Port, structures::idt::InterruptStackFrame};
-
+use x86_64::{ instructions::port::Port, structures::idt::InterruptStackFrame};
+use spin::Mutex;
 use crate::{
-    interrupts::pic8259::handlers::notify,
-    log::warn,
-    thread::sync::{Mutex, TryLockError},
+    interrupts::pic8259::handlers::notify, log::warn,
 };
 
 use pc_keyboard::{
@@ -33,41 +31,20 @@ lazy_static::lazy_static! {
 }
 
 /// Scancode Queue
-pub static SC_QUEUE: Mutex<OnceCell<ArrayQueue<u8>>> = Mutex::new(OnceCell::new());
+// it is way safer to have this zeroed so that it isn't accident read incorrectly
+pub static mut SC_QUEUE: MaybeUninit<ArrayQueue<u8>> = MaybeUninit::zeroed();
+static mut KBD_PORT: Port<u8> = Port::new(0x60);
 
 /// Handler Keyboard Input
+#[allow(static_mut_refs)]
 pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    let binding = match SC_QUEUE.try_lock() {
-        Ok(v) => v,
-        Err(e) => match e {
-            TryLockError::Locked => {
-                warn!("keyboard input dropped: input is currently being handled.");
-                notify!(unsafe Keyboard);
-                return;
-            }
-            TryLockError::Poisoned => {
-                panic!("scancode queue was poisoned - this indicates it was improperly used.")
-            }
-        },
-    };
-    let queue = binding.get_or_init(|| ArrayQueue::new(100));
+    let sc = unsafe { KBD_PORT.read() };
 
-    let mut data = Port::new(0x60);
-
-    let scancode = unsafe { data.read() };
-
-    match queue.push(scancode) {
-        Ok(()) => (),
-        Err(e) => warn!("keyboard input `{e}` dropped: not enough space."),
+    // before interrupts are ever enabled - SC_QUEUE should be enabled.
+    if unsafe { SC_QUEUE.assume_init_mut().push(sc) }.is_err() {
+        warn!("keyboard: input dropped due to lack of space.");
     }
-
-    // this is left here to avoid confusion
-    //
-    // do NOT call this - this is only called AFTER hooks are ran
-    // by another thread.
-    // unsafe { scheduler::wake_kbd() };
-
-    drop(binding);
+    
     notify!(unsafe Keyboard);
 }
 

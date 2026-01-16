@@ -17,9 +17,10 @@
 
 use core::fmt::Display;
 
+use crossbeam_queue::ArrayQueue;
 use x86_64::structures::paging::{Size4KiB, mapper::MapToError};
 
-use crate::{c_lib::BootInfo, interrupts, lib_alloc::init_heap, mem, serial_println};
+use crate::{c_lib::BootInfo, interrupts::{self, keyboard::SC_QUEUE}, lib_alloc::init_heap, mem, serial_println};
 
 /// An error while Initializing the Kernel
 ///
@@ -75,6 +76,7 @@ impl From<MapToError<Size4KiB>> for InitErr {
 /// and the rest is TODO.
 /// # Errors
 /// returns the first error, as an [`InitErr`]
+#[allow(static_mut_refs)]
 pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
     // serial_println!("Now Initializing GDT and TSS.");
     // interrupts::init_gdt_tss();
@@ -88,7 +90,9 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
 
     init_heap(&mut mapper, &mut f_alloc)?;
 
-    // x86_64::instructions::interrupts::enable();
+    unsafe { SC_QUEUE.write(ArrayQueue::new(100)) };
+
+    x86_64::instructions::interrupts::enable();
 
     serial_println!("Initializing Done.");
     Ok(())
