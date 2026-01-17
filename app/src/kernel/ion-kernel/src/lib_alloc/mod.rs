@@ -1,6 +1,9 @@
 //! Contains tools for Allocation
 //!
 //! Typically, you dont use this module, you use [`alloc`]
+
+// TODO: Add arch-agnostic features here
+
 use core::{alloc::GlobalAlloc, fmt};
 
 use linked_list_allocator::LockedHeap;
@@ -9,7 +12,7 @@ use linked_list_allocator::LockedHeap;
 fn heap_start() -> usize {
     // in the future, we have the heap right after the OS.
     pub const HEAP_START: usize = 0x_4444_4444_0000;
-    align_up(HEAP_START as u64, 16) as usize
+    linked_list_allocator::align_up(HEAP_START as *mut u8, 16) as usize
 }
 
 fn heap_end() -> usize {
@@ -25,7 +28,7 @@ pub fn is_heap_addr(addr: usize) -> bool {
 }
 
 use x86_64::{
-    VirtAddr, align_up,
+    VirtAddr,
     structures::paging::{
         FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB, mapper::MapToError,
     },
