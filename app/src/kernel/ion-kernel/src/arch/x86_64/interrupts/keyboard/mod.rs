@@ -13,7 +13,7 @@ use crossbeam_queue::ArrayQueue;
 use x86_64::{ instructions::port::Port, structures::idt::InterruptStackFrame};
 use spin::Mutex;
 use crate::{
-    interrupts::pic8259::handlers::notify, log::warn,
+    arch::interrupts::pic8259::handlers::notify, log::warn,
 };
 
 use pc_keyboard::{

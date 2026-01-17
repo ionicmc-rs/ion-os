@@ -20,7 +20,7 @@ use core::fmt::Display;
 use crossbeam_queue::ArrayQueue;
 use x86_64::structures::paging::{Size4KiB, mapper::MapToError};
 
-use crate::{c_lib::BootInfo, interrupts::{self, keyboard::SC_QUEUE}, lib_alloc::init_heap, mem, serial_println};
+use crate::{c_lib::BootInfo, arch::interrupts::{self, keyboard::SC_QUEUE}, lib_alloc::init_heap, mem, serial_println};
 
 /// An error while Initializing the Kernel
 ///

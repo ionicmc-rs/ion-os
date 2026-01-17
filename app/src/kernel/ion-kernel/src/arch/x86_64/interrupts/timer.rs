@@ -3,7 +3,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use x86_64::structures::idt::InterruptStackFrame;
 
 use crate::{
-    interrupts::pic8259::handlers::notify, scheduler,
+    arch::interrupts::pic8259::handlers::notify, scheduler,
     serial_println, /* scheduler, serial_println */
 };
 

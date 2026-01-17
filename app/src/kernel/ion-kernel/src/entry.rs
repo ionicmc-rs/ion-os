@@ -3,10 +3,10 @@
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{event::{self}, interrupts::keyboard::{KEYBOARD, SC_QUEUE}, log::error, stack};
+use crate::{event::{self}, arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, log::error, stack};
 #[allow(unused)]
 use crate::{
-    c_lib, hlt_loop, interrupts, lib_alloc, serial_println,
+    c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
     test::run_tests,
     text,
     thread::{
@@ -35,7 +35,7 @@ fn handle_kbd() -> ! {
             };
 
             serial_println!("adding byte: ");
-            let ev = match KEYBOARD
+            let ev: pc_keyboard::KeyEvent = match KEYBOARD
                 .lock()
                 .add_byte(sc)
             {

@@ -26,8 +26,8 @@ lazy_static! {
 
 use x86_64::structures::gdt::{GlobalDescriptorTable, SegmentSelector};
 
-use crate::interrupts::double_fault::DOUBLE_FAULT_IST_INDEX;
-use crate::interrupts::page_fault::PAGE_FAULT_IST_INDEX;
+use crate::arch::interrupts::double_fault::DOUBLE_FAULT_IST_INDEX;
+use crate::arch::interrupts::page_fault::PAGE_FAULT_IST_INDEX;
 
 lazy_static! {
     static ref GDT: (GlobalDescriptorTable, Selectors) = {
