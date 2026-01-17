@@ -256,3 +256,209 @@ impl DynStack {
         unsafe { other.copy_to(self.base, self.size) };
     }
 }
+
+
+// static stack
+
+// yes i wrote it with AI, theres nothing you can do to stop me >:)
+
+/// A stack of a fixed, statically known size.
+///
+/// # Guarantees
+/// - The stack memory is reserved at compile time.
+/// - The size is exactly `SIZE` bytes for the lifetime of the stack.
+/// - The stack cannot be resized or rebased.
+/// - The stack grows downward.
+/// - `base()` is the lowest address.
+/// - `top()` is the initial stack pointer.
+///
+/// This type is intended for:
+/// - kernel stacks
+/// - interrupt stacks
+/// - bootstrap / early-init stacks
+///
+/// It deliberately does **not** track the stack pointer.
+/// Use a `Tracked<StaticStack<_>>` wrapper for that.
+///
+/// # Layout
+/// ```text
+/// base ─────────────────────── top
+/// ^ lowest address             ^ initial RSP
+/// ```
+pub struct StaticStack<const SIZE: usize> {
+    // Invariant: `dynamic.size == SIZE`
+    dynamic: DynStack,
+}
+
+impl<const SIZE: usize> StaticStack<SIZE> {
+    // -------------------------------------------------------------------------
+    // Creation
+    // -------------------------------------------------------------------------
+
+    /// Creates a static stack backed by a `'static` byte array.
+    ///
+    /// # Panics
+    /// Panics if:
+    /// - `SIZE == 0`
+    /// - the array is not 16-byte aligned
+    ///
+    /// # Notes
+    /// - The backing array must live for the entire lifetime of the kernel.
+    /// - The stack pointer should be initialized to `top()`.
+    pub fn from_array(array: &'static [u8; SIZE]) -> Self {
+        if SIZE == 0 {
+            panic!("StaticStack size must be non-zero");
+        }
+
+        let ptr = array.as_ptr() as usize;
+        if (ptr & 0xF) != 0 {
+            panic!("StaticStack base must be 16-byte aligned");
+        }
+
+        // Safety:
+        // - pointer is non-null
+        // - pointer is aligned
+        // - memory is valid for reads/writes for entire program lifetime
+        let dynamic = unsafe {
+            DynStack::new_unchecked(array.as_ptr() as *mut u8, SIZE)
+        };
+
+        Self { dynamic }
+    }
+
+    /// Creates a static stack from a non-`'static` array **without lifetime checks**.
+    ///
+    /// # Safety
+    /// - The backing array must outlive all uses of the stack.
+    /// - The array must be properly aligned.
+    /// - The memory must remain valid for reads and writes.
+    pub const unsafe fn from_array_unchecked(array: &[u8; SIZE]) -> Self {
+        let dynamic =
+            unsafe { DynStack::new_unchecked(array.as_ptr() as *mut u8, SIZE) };
+
+        Self { dynamic }
+    }
+
+    // -------------------------------------------------------------------------
+    // Geometry access
+    // -------------------------------------------------------------------------
+
+    /// Returns the base (lowest address) of the stack.
+    #[inline]
+    pub fn base(&self) -> *mut u8 {
+        self.dynamic.base()
+    }
+
+    /// Returns the size of the stack in bytes.
+    #[inline]
+    pub const fn size(&self) -> usize {
+        SIZE
+    }
+
+    /// Returns the top of the stack (initial stack pointer).
+    #[inline]
+    pub fn top(&self) -> *mut u8 {
+        self.dynamic.top()
+    }
+
+    // -------------------------------------------------------------------------
+    // Containment
+    // -------------------------------------------------------------------------
+
+    /// Returns whether the given address lies within this stack.
+    ///
+    /// The upper bound is exclusive.
+    #[inline]
+    pub fn contains(&self, addr: usize) -> bool {
+        self.dynamic.contains(addr)
+    }
+
+    /// Returns whether the given pointer lies within this stack.
+    #[inline]
+    pub fn contains_ptr(&self, ptr: *const u8) -> bool {
+        self.contains(ptr as usize)
+    }
+
+    // -------------------------------------------------------------------------
+    // Views
+    // -------------------------------------------------------------------------
+
+    /// Returns the entire stack memory as a slice.
+    ///
+    /// # Safety
+    /// Mutating stack memory while it is actively in use by the CPU
+    /// may cause undefined behavior.
+    #[inline]
+    pub fn as_slice(&self) -> &[u8] {
+        self.dynamic.as_slice()
+    }
+
+    /// Returns the entire stack memory as a mutable slice.
+    ///
+    /// # Safety
+    /// Mutating stack memory while it is actively in use by the CPU
+    /// may cause undefined behavior.
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        self.dynamic.as_mut_slice()
+    }
+
+    // -------------------------------------------------------------------------
+    // Copying
+    // -------------------------------------------------------------------------
+
+    /// Copies this stack into another static stack of the **same size**.
+    ///
+    /// # Panics
+    /// Panics if the sizes do not match.
+    ///
+    /// # Notes
+    /// - The stacks must not overlap.
+    /// - This does **not** adjust any stack pointers.
+    pub fn write_to_exact<const OTHER: usize>(
+        &self,
+        other: &mut StaticStack<OTHER>,
+    ) {
+        if SIZE != OTHER {
+            panic!("StaticStack size mismatch");
+        }
+
+        // Safety:
+        // - sizes are equal
+        // - both stacks are valid
+        unsafe {
+            self.dynamic
+                .base()
+                .copy_to_nonoverlapping(other.dynamic.base(), SIZE);
+        }
+    }
+
+    /// Copies this stack into a raw pointer.
+    ///
+    /// # Safety
+    /// - `dst` must be valid for writes of `SIZE` bytes.
+    /// - The destination must not overlap this stack.
+    pub unsafe fn write_to_ptr(&self, dst: *mut u8) {
+        unsafe { self.dynamic.base().copy_to_nonoverlapping(dst, SIZE) };
+    }
+
+    // -------------------------------------------------------------------------
+    // Internal access
+    // -------------------------------------------------------------------------
+
+    /// Exposes the underlying `DynStack`.
+    #[inline]
+    pub fn as_dyn(&self) -> &DynStack {
+        &self.dynamic
+    }
+}
+
+
+pub macro create_static_stacks($($vis:vis $name:ident: $count:expr),* $(,)?) {
+    $(
+        $vis static mut $name: $crate::stack::StaticStack<$count> = {
+            static __RESERVATION: [u8; $count] = [0; $count];
+            $crate::stack::StaticStack::from_array(&__RESERVATION)
+        };
+    )*
+}
