@@ -12,6 +12,7 @@
 
 use core::{fmt::Debug, slice};
 
+use alloc::{boxed::Box, vec};
 use x86_64::align_up;
 
 pub trait Stack {
@@ -461,4 +462,157 @@ pub macro create_static_stacks($($vis:vis $name:ident: $count:expr),* $(,)?) {
             $crate::stack::StaticStack::from_array(&__RESERVATION)
         };
     )*
+}
+
+// allocated stack
+
+/// A dynamically allocated stack backed by a heap allocation.
+///
+/// # Guarantees
+/// - Memory is owned by this stack.
+/// - Memory is contiguous and writable.
+/// - The stack size is fixed for its lifetime.
+/// - The stack grows downward.
+/// - `base()` is the lowest usable address.
+/// - `top()` is the initial stack pointer.
+///
+/// This type does **not** track the stack pointer.
+pub struct AllocatedStack {
+    backing: Box<[u8]>,
+}
+
+impl AllocatedStack {
+    // -------------------------------------------------------------------------
+    // Creation
+    // -------------------------------------------------------------------------
+
+    /// Allocates a new stack of the given size.
+    ///
+    /// # Panics
+    /// Panics if:
+    /// - `size == 0`
+    /// - `size` is not 16-byte aligned
+    ///
+    /// # Notes
+    /// - The stack pointer should be initialized to `top()`.
+    pub fn new(size: usize) -> Self {
+        if size == 0 {
+            panic!("AllocatedStack size must be non-zero");
+        }
+
+        if (size & 0xF) != 0 {
+            panic!("AllocatedStack size must be 16-byte aligned");
+        }
+
+        // Allocate zeroed memory to avoid leaking old data
+        let backing = vec![0u8; size].into_boxed_slice();
+
+        Self { backing }
+    }
+
+    /// Creates an allocated stack from a boxed slice without validation.
+    ///
+    /// # Safety
+    /// - `backing` must not be resized or aliased.
+    /// - The memory must remain writable.
+    pub unsafe fn from_box_unchecked(backing: Box<[u8]>) -> Self {
+        Self { backing }
+    }
+
+    // -------------------------------------------------------------------------
+    // Geometry
+    // -------------------------------------------------------------------------
+
+    /// Returns the base (lowest address) of the stack.
+    #[inline]
+    pub fn base(&self) -> *mut u8 {
+        self.backing.as_ptr() as *mut u8
+    }
+
+    /// Returns the stack size in bytes.
+    #[inline]
+    pub fn size(&self) -> usize {
+        self.backing.len()
+    }
+
+    /// Returns the top of the stack (initial stack pointer).
+    #[inline]
+    pub fn top(&self) -> *mut u8 {
+        unsafe { self.base().add(self.size()) }
+    }
+
+    // -------------------------------------------------------------------------
+    // Containment
+    // -------------------------------------------------------------------------
+
+    /// Returns whether the given address lies within this stack.
+    ///
+    /// The upper bound is exclusive.
+    #[inline]
+    pub fn contains(&self, addr: usize) -> bool {
+        let base = self.base() as usize;
+        addr >= base && addr < base + self.size()
+    }
+
+    /// Returns whether the given pointer lies within this stack.
+    #[inline]
+    pub fn contains_ptr(&self, ptr: *const u8) -> bool {
+        self.contains(ptr as usize)
+    }
+
+    // -------------------------------------------------------------------------
+    // Views
+    // -------------------------------------------------------------------------
+
+    /// Returns the entire stack memory as a slice.
+    #[inline]
+    pub fn as_slice(&self) -> &[u8] {
+        &self.backing
+    }
+
+    /// Returns the entire stack memory as a mutable slice.
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        &mut self.backing
+    }
+
+    // -------------------------------------------------------------------------
+    // Copying
+    // -------------------------------------------------------------------------
+
+    /// Copies this stack into another allocated stack of equal size.
+    ///
+    /// # Panics
+    /// Panics if the stack sizes do not match.
+    pub fn write_to_exact(&self, other: &mut AllocatedStack) {
+        if self.size() != other.size() {
+            panic!("AllocatedStack size mismatch");
+        }
+
+        unsafe {
+            self.base()
+                .copy_to_nonoverlapping(other.base(), self.size());
+        }
+    }
+
+    /// Copies this stack into a raw pointer.
+    ///
+    /// # Safety
+    /// - `dst` must be valid for writes of `size()` bytes.
+    pub unsafe fn write_to_ptr(&self, dst: *mut u8) {
+        unsafe { self.base()
+            .copy_to_nonoverlapping(dst, self.size()) };
+    }
+}
+
+impl Debug for AllocatedStack {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "<AllocatedStack {:p} -> {:p} ({} bytes)>",
+            self.base(),
+            self.top(),
+            self.size()
+        )
+    }
 }
