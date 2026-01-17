@@ -3,7 +3,7 @@
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{asyncio, event::{self}, interrupts::keyboard::{KEYBOARD, SC_QUEUE}, log::error, stack};
+use crate::{event::{self}, interrupts::keyboard::{KEYBOARD, SC_QUEUE}, log::error, stack};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, interrupts, lib_alloc, serial_println,
@@ -76,9 +76,6 @@ pub fn kernel_main() {
         .with_stack(8 * 4096)
         .with_entry(handle_kbd)
         .build();
-
-    serial_println!("{:?}", asyncio::run_future(asyncio::key_input()));
-
     cfg_if::cfg_if! {
         if #[cfg(feature = "test")] {
             run_tests(&[

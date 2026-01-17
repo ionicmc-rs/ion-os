@@ -15,10 +15,18 @@ use core::{fmt::Debug, slice};
 use alloc::{boxed::Box, vec};
 use x86_64::align_up;
 
+/// Represents a stack.
+/// 
+/// note: stacks are not required to track their state (this is done by the [`Tracked`] wrapper)
 pub trait Stack {
+    /// base of the stack
     fn base(&self) -> *mut u8;
+    /// stack size
     fn size(&self) -> usize;
 
+    /// stack top
+    /// 
+    /// base + size by default
     fn top(&self) -> *mut u8 {
         self.base().wrapping_add(self.size())
     }
@@ -57,8 +65,11 @@ impl Debug for DynStack {
 }
 
 /// Error for invalid pointers
+#[derive(Debug)]
 pub enum PointerError {
+    /// pointer was null
     Null,
+    /// pointer was not aligned to 16
     Misaligned
 }
 
@@ -87,6 +98,10 @@ impl DynStack {
         Self { base, size }
     }
 
+    /// creates a dynamic stack from a slice.
+    /// 
+    /// # Safety 
+    /// it must outlive this stack
     pub const fn from_slice(slice: &[u8]) -> Self {
         Self { base: slice.as_ptr().cast_mut(), size: slice.len() }
     }
@@ -286,6 +301,7 @@ impl DynStack {
 /// base ─────────────────────── top
 /// ^ lowest address             ^ initial RSP
 /// ```
+#[derive(Debug, PartialEq, Eq)]
 pub struct StaticStack<const SIZE: usize> {
     // Invariant: `dynamic.size == SIZE`
     dynamic: DynStack,
@@ -441,6 +457,7 @@ impl<const SIZE: usize> Stack for StaticStack<SIZE> {
     }
 }
 
+/// creates static stacks
 pub macro create_static_stacks($($vis:vis $name:ident: $count:expr),* $(,)?) {
     $(
         $vis static mut $name: $crate::stack::StaticStack<$count> = {
@@ -769,6 +786,155 @@ impl<S: Stack> Tracked<S> {
     }
 }
 
+// pushing and popping
+
+use core::{mem, ptr};
+
+impl<S: Stack> Tracked<S> {
+    // ---------------------------------------------------------------------
+    // Raw byte operations
+    // ---------------------------------------------------------------------
+
+    /// Pushes `size` bytes onto the stack.
+    ///
+    /// The stack pointer is moved downward by `size`.
+    ///
+    /// # Panics
+    /// Panics if:
+    /// - the stack would overflow
+    /// - the resulting `rsp` is not aligned to 16 bytes
+    pub fn push_bytes(&mut self, size: usize) -> *mut u8 {
+        let new_rsp = self.rsp.wrapping_sub(size);
+
+        let base = self.stack.base() as usize;
+
+        if new_rsp < base {
+            panic!("stack overflow");
+        }
+
+        if (new_rsp & 0xF) != 0 {
+            panic!("rsp misaligned after push");
+        }
+
+        self.rsp = new_rsp;
+        new_rsp as *mut u8
+    }
+
+    /// Pops `size` bytes from the stack.
+    ///
+    /// # Panics
+    /// Panics if:
+    /// - the stack would underflow
+    pub fn pop_bytes(&mut self, size: usize) {
+        let new_rsp = self.rsp.wrapping_add(size);
+        let top = self.stack.top() as usize;
+
+        if new_rsp > top {
+            panic!("stack underflow");
+        }
+
+        self.rsp = new_rsp;
+    }
+
+    /// Pushes bytes without checks.
+    ///
+    /// # Safety
+    /// - caller must ensure no overflow
+    /// - resulting `rsp` must be valid
+    pub unsafe fn push_bytes_unchecked(&mut self, size: usize) -> *mut u8 {
+        self.rsp -= size;
+        self.rsp as *mut u8
+    }
+
+    /// Pops bytes without checks.
+    ///
+    /// # Safety
+    /// - caller must ensure no underflow
+    pub unsafe fn pop_bytes_unchecked(&mut self, size: usize) {
+        self.rsp += size;
+    }
+}
+
+impl<S: Stack> Tracked<S> {
+    // ---------------------------------------------------------------------
+    // Typed operations
+    // ---------------------------------------------------------------------
+
+    /// Pushes a value onto the stack.
+    ///
+    /// # Panics
+    /// Panics if:
+    /// - the stack overflows
+    /// - alignment requirements are violated
+    pub fn push<T>(&mut self, value: T) {
+        let size = mem::size_of::<T>();
+        let align = mem::align_of::<T>();
+
+        let new_rsp = (self.rsp - size) & !(align - 1);
+
+        let base = self.stack.base() as usize;
+        if new_rsp < base {
+            panic!("stack overflow");
+        }
+
+        self.rsp = new_rsp;
+
+        unsafe {
+            ptr::write(self.rsp as *mut T, value);
+        }
+    }
+
+    /// Pops a value from the stack.
+    ///
+    /// # Panics
+    /// Panics if:
+    /// - the stack underflows
+    pub fn pop<T>(&mut self) -> T {
+        let align = mem::align_of::<T>();
+        let rsp = self.rsp;
+
+        if (rsp & (align - 1)) != 0 {
+            panic!("rsp misaligned for pop");
+        }
+
+        let value = unsafe {
+            ptr::read(rsp as *const T)
+        };
+
+        let new_rsp = rsp + mem::size_of::<T>();
+        let top = self.stack.top() as usize;
+
+        if new_rsp > top {
+            panic!("stack underflow");
+        }
+
+        self.rsp = new_rsp;
+        value
+    }
+
+    /// Pushes a value without checks.
+    ///
+    /// # Safety
+    /// - caller must ensure alignment
+    /// - caller must ensure no overflow
+    pub unsafe fn push_unchecked<T>(&mut self, value: T) {
+        self.rsp -= mem::size_of::<T>();
+        unsafe { ptr::write(self.rsp as *mut T, value) };
+    }
+
+    /// Pops a value without checks.
+    ///
+    /// # Safety
+    /// - caller must ensure alignment
+    /// - caller must ensure no underflow
+    pub unsafe fn pop_unchecked<T>(&mut self) -> T {
+        let value = unsafe { ptr::read(self.rsp as *const T) };
+        self.rsp += mem::size_of::<T>();
+        value
+    }
+}
+
+
 impl<S: Stack + Debug> Debug for Tracked<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Tracked")
@@ -779,13 +945,17 @@ impl<S: Stack + Debug> Debug for Tracked<S> {
 }
 
 #[cfg(feature = "test")]
+#[allow(missing_docs)]
 pub mod tests {
     use crate::{stack::{DynStack, Stack, StaticStack, Tracked}, test::TestInfo};
 
     pub fn tracked_initial_rsp_is_top(_info: TestInfo) {
-        static STACK: [u8; 4096] = [0; 4096];
+        #[repr(align(16))]
+        struct S([u8; 4096]);
 
-        let stack = StaticStack::<4096>::from_array(&STACK);
+        static STACK: S = S([0; 4096]);
+
+        let stack = StaticStack::<4096>::from_array(&STACK.0);
         let tracked = Tracked::new(stack);
 
         assert_eq!(
@@ -793,6 +963,7 @@ pub mod tests {
             tracked.stack().top() as usize
         );
     }
+
 
     pub fn tracked_rejects_misaligned_rsp(mut info: TestInfo) {
         info.should_panic();
@@ -815,19 +986,21 @@ pub mod tests {
     }
 
     pub fn tracked_used_remaining_correct(_info: TestInfo) {
-        static STACK: [u8; 1024] = [0; 1024];
+        #[repr(align(16))]
+        struct S([u8; 1024]);
 
-        let stack = StaticStack::<1024>::from_array(&STACK);
+        static STACK: S = S([0; 1024]);
+
+        let stack = StaticStack::<1024>::from_array(&STACK.0);
         let mut tracked = Tracked::new(stack);
 
-        let original_rsp = tracked.rsp();
-        let new_rsp = original_rsp - 128;
-
+        let new_rsp = tracked.rsp() - 128;
         tracked.set_rsp(new_rsp);
 
         assert_eq!(tracked.used(), 128);
         assert_eq!(tracked.remaining(), 1024 - 128);
     }
+
 
     pub fn tracked_set_rsp_rejects_invalid(mut info: TestInfo) {
         info.should_panic();
@@ -841,20 +1014,30 @@ pub mod tests {
     }
 
     pub fn tracked_unchecked_preserves_rsp(_info: TestInfo) {
-        static STACK: [u8; 256] = [0; 256];
-        let stack = StaticStack::<256>::from_array(&STACK);
+        #[repr(align(16))]
+        struct S([u8; 256]);
+
+        static STACK: S = S([0; 256]);
+
+        let stack = StaticStack::<256>::from_array(&STACK.0);
 
         let rsp = stack.base() as usize + 3; // intentionally invalid
 
-        let tracked = unsafe { Tracked::new_unchecked(stack, rsp) };
+        let tracked = unsafe {
+            Tracked::new_unchecked(stack, rsp)
+        };
 
         assert_eq!(tracked.rsp(), rsp);
     }
 
-    pub fn tracked_map_preserves_rsp(_info: TestInfo) {
-        static STACK: [u8; 1024] = [0; 1024];
 
-        let stack = StaticStack::<1024>::from_array(&STACK);
+    pub fn tracked_map_preserves_rsp(_info: TestInfo) {
+        #[repr(align(16))]
+        struct S([u8; 1024]);
+
+        static STACK: S = S([0; 1024]);
+
+        let stack = StaticStack::<1024>::from_array(&STACK.0);
         let tracked = Tracked::new(stack);
 
         let rsp = tracked.rsp();
@@ -865,4 +1048,5 @@ pub mod tests {
 
         assert_eq!(mapped.rsp(), rsp);
     }
+
 }
