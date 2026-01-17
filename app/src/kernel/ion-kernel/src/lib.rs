@@ -53,7 +53,6 @@ pub mod init;
 pub mod io;
 pub mod lib_alloc;
 pub mod log;
-pub mod mem;
 pub mod panic;
 pub mod scheduler;
 pub mod serial;

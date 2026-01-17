@@ -10,3 +10,7 @@ pub mod interrupts;
 pub mod ctx;
 /// Thread-local storage
 pub mod tls;
+/// allocating frames
+pub mod frame_allocator;
+/// memory paging
+pub mod mmu;

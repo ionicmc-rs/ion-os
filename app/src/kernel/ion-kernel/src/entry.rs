@@ -15,7 +15,6 @@ use crate::{
         sync::{Mutex, MutexGuard},
     },
 };
-use crate::stack;
 
 #[allow(static_mut_refs)]
 fn handle_kbd() -> ! {
@@ -78,6 +77,7 @@ pub fn kernel_main() {
         .build();
     cfg_if::cfg_if! {
         if #[cfg(feature = "test")] {
+            use crate::stack;
             run_tests(&[
                 // all tests go here
 
