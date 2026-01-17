@@ -449,7 +449,9 @@ fn check_tools(minimal: bool, vm: Option<Vm>, verbose: bool) -> Result<()> {
         let mut buf = String::new();
         stdin().read_line(&mut buf)?;
 
-        let vm_cmd = match buf.as_str().trim() {
+        
+
+        match buf.as_str().trim() {
             "1" => {
                 if minimal {
                     ["qemu-system-x86_64"]
@@ -458,9 +460,7 @@ fn check_tools(minimal: bool, vm: Option<Vm>, verbose: bool) -> Result<()> {
                 }
             }
             v => bail!("unknown option: {v}"),
-        };
-
-        vm_cmd
+        }
     };
 
     let mut tools = vec![];
