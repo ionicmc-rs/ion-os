@@ -18,9 +18,8 @@
 use core::fmt::Display;
 
 use crossbeam_queue::ArrayQueue;
-use x86_64::structures::paging::{Size4KiB, mapper::MapToError};
 
-use crate::{c_lib::BootInfo, arch::interrupts::{self, keyboard::SC_QUEUE}, lib_alloc::init_heap, mem, serial_println};
+use crate::{arch::{self, frame_allocator::BootInfoFrameAllocator, interrupts::{self, keyboard::SC_QUEUE}}, c_lib::BootInfo, lib_alloc::{HEAP_SIZE, HEAP_START, init_heap}, serial_println};
 
 /// An error while Initializing the Kernel
 ///
@@ -32,13 +31,13 @@ use crate::{c_lib::BootInfo, arch::interrupts::{self, keyboard::SC_QUEUE}, lib_a
 #[derive(Debug)]
 pub enum InitErr {
     /// An Error while initializing the Heap.
-    HeapInitializationErr(MapToError<Size4KiB>),
+    HeapInitializationErr,
 }
 
 impl Display for InitErr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::HeapInitializationErr(e) => write!(f, "Heap Initialization Error: {e:?}"),
+            Self::HeapInitializationErr => write!(f, "Heap Initialization Error"),
         }
     }
 }
@@ -53,16 +52,11 @@ impl InitErr {
     /// The rest returns false
     pub fn is_fatal(&self) -> bool {
         match self {
-            Self::HeapInitializationErr(_) => true,
+            Self::HeapInitializationErr => true,
         }
     }
 }
 
-impl From<MapToError<Size4KiB>> for InitErr {
-    fn from(value: MapToError<Size4KiB>) -> Self {
-        Self::HeapInitializationErr(value)
-    }
-}
 
 /// Initializes the kernel.
 ///
@@ -85,10 +79,12 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
 
     // allocation
 
-    let mut mapper = unsafe { mem::init() };
-    let mut f_alloc = unsafe { mem::BootInfoFrameAllocator::init(boot_info.mem_map_addr) };
+    let mut mapper = unsafe { arch::mmu::init() };
+    let mut f_alloc = unsafe { BootInfoFrameAllocator::init(boot_info.mem_map_addr) };
 
-    init_heap(&mut mapper, &mut f_alloc)?;
+    unsafe { arch::mmu::map_kernel_heap(&mut mapper, &mut f_alloc, HEAP_START, HEAP_SIZE) };
+
+    unsafe { init_heap() };
 
     unsafe { SC_QUEUE.write(ArrayQueue::new(100)) };
 

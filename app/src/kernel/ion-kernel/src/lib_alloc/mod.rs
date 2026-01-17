@@ -1,98 +1,79 @@
-//! Contains tools for Allocation
+//! Contains tools for allocation
 //!
-//! Typically, you dont use this module, you use [`alloc`]
-
-// TODO: Add arch-agnostic features here
+//! Typically, you don't use this module directly;
+//! instead, use [`alloc`] types like `Box`, `Vec`, etc.
 
 use core::{alloc::GlobalAlloc, fmt};
 
 use linked_list_allocator::LockedHeap;
-// Heap Defs.
 
+use crate::thread;
+
+/// Virtual start of the heap.
+///
+/// This address must be mapped by the architecture MMU code
+/// before calling [`init_heap`].
+pub const HEAP_START: usize = 0x_4444_4444_0000;
+
+/// Size of the heap in bytes.
+pub const HEAP_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
+
+#[inline]
 fn heap_start() -> usize {
-    // in the future, we have the heap right after the OS.
-    pub const HEAP_START: usize = 0x_4444_4444_0000;
     linked_list_allocator::align_up(HEAP_START as *mut u8, 16) as usize
 }
 
+#[inline]
 fn heap_end() -> usize {
     heap_start() + HEAP_SIZE
 }
 
-/// The Heap's Size
-pub const HEAP_SIZE: usize = 4 * 1024 * 1024; // 2 MiB by default.
-
-/// Returns wether addr is inside of the heap.
+/// Returns whether `addr` lies inside the heap.
+#[inline]
 pub fn is_heap_addr(addr: usize) -> bool {
-    (heap_start()..=heap_end()).contains(&addr)
+    (heap_start()..heap_end()).contains(&addr)
 }
 
-use x86_64::{
-    VirtAddr,
-    structures::paging::{
-        FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB, mapper::MapToError,
-    },
-};
-
-use crate::thread;
-
-/// Initialize the Heap.
-pub fn init_heap(
-    mapper: &mut impl Mapper<Size4KiB>,
-    frame_allocator: &mut impl FrameAllocator<Size4KiB>,
-) -> Result<(), MapToError<Size4KiB>> {
-    let page_range = {
-        let heap_start = VirtAddr::new(heap_start() as u64);
-        let heap_end = heap_start + HEAP_SIZE as u64 - 1u64;
-        let heap_start_page = Page::containing_address(heap_start);
-        let heap_end_page = Page::containing_address(heap_end);
-        Page::range_inclusive(heap_start_page, heap_end_page)
-    };
-
-    for page in page_range {
-        let frame = frame_allocator
-            .allocate_frame()
-            .ok_or(MapToError::FrameAllocationFailed)?;
-        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
-        unsafe { mapper.map_to(page, frame, flags, frame_allocator)?.flush() };
-    }
-
-    unsafe {
-        GLOBAL_ALLOC
-            .0
-            .lock()
-            .init(heap_start() as *mut u8, HEAP_SIZE);
-    }
-
-    Ok(())
+/// Initialize the heap allocator.
+///
+/// # Safety
+/// - The virtual memory range `[heap_start, heap_start + HEAP_SIZE)`
+///   must be mapped, writable, and exclusive to the heap.
+/// - Must be called exactly once.
+pub unsafe fn init_heap() {
+    unsafe { GLOBAL_ALLOC
+        .0
+        .lock()
+        .init(heap_start() as *mut u8, HEAP_SIZE) };
 }
 
-/// An allocator that reschedules if needed
+/// A global allocator that cooperates with the scheduler.
 pub struct RescheduleAlloc(LockedHeap);
 
 impl fmt::Debug for RescheduleAlloc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RescheduleAlloc").finish_non_exhaustive()
+        f.debug_struct("RescheduleAlloc")
+            .finish_non_exhaustive()
     }
 }
 
 impl RescheduleAlloc {
-    /// Creates an empty heap
+    /// Create an empty allocator.
     pub const fn empty() -> Self {
-        RescheduleAlloc(LockedHeap::empty())
+        Self(LockedHeap::empty())
     }
 }
 
 unsafe impl GlobalAlloc for RescheduleAlloc {
     #[inline]
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        thread::critical_moment(|| unsafe { self.0.alloc(layout) }) // reschedules after
+        thread::critical_moment(|| unsafe { self.0.alloc(layout) })
     }
 
     #[inline]
     unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
-        thread::critical_moment(|| unsafe {
-            self.0.dealloc(ptr, layout);
+        thread::critical_moment(|| {
+            unsafe { self.0.dealloc(ptr, layout) };
         })
     }
 
@@ -112,14 +93,11 @@ unsafe impl GlobalAlloc for RescheduleAlloc {
     }
 }
 
-// Global Allocator
-
-#[global_allocator]
-/// This static the global allocator.
+/// Global kernel allocator.
 ///
-/// This should be used through [`Box`](alloc::boxed::Box), and other alloc types.
+/// Used implicitly by `Box`, `Vec`, etc.
+#[global_allocator]
 pub static GLOBAL_ALLOC: RescheduleAlloc = RescheduleAlloc::empty();
 
 #[cfg(feature = "test")]
-/// Tests
 pub mod tests;
