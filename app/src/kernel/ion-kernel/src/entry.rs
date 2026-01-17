@@ -1,6 +1,8 @@
 //! Main entry point
 
 
+use pc_keyboard::KeyState;
+
 #[cfg(feature = "test")]
 use super::trivial_assertion;
 use crate::{event, arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, log::error};
@@ -68,6 +70,13 @@ fn handle_kbd() -> ! {
 }
 /// final init.
 pub fn kernel_main() {
+    #[cfg(debug_assertions)]
+    event::add_key_listener(|ev| {
+        if ev.state != KeyState::Up {
+            serial_println!("Key Pressed: {:?}", ev)
+        }
+    });
+
     // keyboard input
     ThreadBuilder::<!>::new()
         .with_name("keyboard_handler")
