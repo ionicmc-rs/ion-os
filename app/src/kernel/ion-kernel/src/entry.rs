@@ -3,7 +3,7 @@
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{asyncio, event::{self}, interrupts::keyboard::{KEYBOARD, SC_QUEUE}, log::error};
+use crate::{asyncio, event::{self}, interrupts::keyboard::{KEYBOARD, SC_QUEUE}, log::error, stack};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, interrupts, lib_alloc, serial_println,
@@ -95,7 +95,15 @@ pub fn kernel_main() {
                 &lib_alloc::tests::test_freed_mem_used,
                 &lib_alloc::tests::test_alloc_tools,
                 // C Lib / LibC
-                &c_lib::libc::mem::test_malloc
+                &c_lib::libc::mem::test_malloc,
+                // Stack
+                &stack::tests::tracked_initial_rsp_is_top,
+                &stack::tests::tracked_map_preserves_rsp,
+                &stack::tests::tracked_rejects_misaligned_rsp,
+                &stack::tests::tracked_rejects_out_of_bounds_rsp,
+                &stack::tests::tracked_set_rsp_rejects_invalid,
+                &stack::tests::tracked_unchecked_preserves_rsp,
+                &stack::tests::tracked_used_remaining_correct,
             ]);
         } else {
             thread::exit_current();

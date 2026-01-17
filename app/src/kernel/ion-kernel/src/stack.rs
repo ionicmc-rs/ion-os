@@ -341,28 +341,6 @@ impl<const SIZE: usize> StaticStack<SIZE> {
     }
 
     // -------------------------------------------------------------------------
-    // Geometry access
-    // -------------------------------------------------------------------------
-
-    /// Returns the base (lowest address) of the stack.
-    #[inline]
-    pub fn base(&self) -> *mut u8 {
-        self.dynamic.base()
-    }
-
-    /// Returns the size of the stack in bytes.
-    #[inline]
-    pub const fn size(&self) -> usize {
-        SIZE
-    }
-
-    /// Returns the top of the stack (initial stack pointer).
-    #[inline]
-    pub fn top(&self) -> *mut u8 {
-        self.dynamic.top()
-    }
-
-    // -------------------------------------------------------------------------
     // Containment
     // -------------------------------------------------------------------------
 
@@ -454,6 +432,14 @@ impl<const SIZE: usize> StaticStack<SIZE> {
     }
 }
 
+impl<const SIZE: usize> Stack for StaticStack<SIZE> {
+    fn base(&self) -> *mut u8 {
+        self.dynamic.base
+    }
+    fn size(&self) -> usize {
+        SIZE
+    }
+}
 
 pub macro create_static_stacks($($vis:vis $name:ident: $count:expr),* $(,)?) {
     $(
@@ -520,28 +506,6 @@ impl AllocatedStack {
     }
 
     // -------------------------------------------------------------------------
-    // Geometry
-    // -------------------------------------------------------------------------
-
-    /// Returns the base (lowest address) of the stack.
-    #[inline]
-    pub fn base(&self) -> *mut u8 {
-        self.backing.as_ptr() as *mut u8
-    }
-
-    /// Returns the stack size in bytes.
-    #[inline]
-    pub fn size(&self) -> usize {
-        self.backing.len()
-    }
-
-    /// Returns the top of the stack (initial stack pointer).
-    #[inline]
-    pub fn top(&self) -> *mut u8 {
-        unsafe { self.base().add(self.size()) }
-    }
-
-    // -------------------------------------------------------------------------
     // Containment
     // -------------------------------------------------------------------------
 
@@ -602,6 +566,15 @@ impl AllocatedStack {
     pub unsafe fn write_to_ptr(&self, dst: *mut u8) {
         unsafe { self.base()
             .copy_to_nonoverlapping(dst, self.size()) };
+    }
+}
+
+impl Stack for AllocatedStack {
+    fn base(&self) -> *mut u8 {
+        self.backing.as_ptr() as *mut u8
+    }
+    fn size(&self) -> usize {
+        self.backing.len()
     }
 }
 
@@ -802,5 +775,94 @@ impl<S: Stack + Debug> Debug for Tracked<S> {
             .field("stack", &self.stack)
             .field("rsp", &format_args!("{:#x}", self.rsp))
             .finish()
+    }
+}
+
+#[cfg(feature = "test")]
+pub mod tests {
+    use crate::{stack::{DynStack, Stack, StaticStack, Tracked}, test::TestInfo};
+
+    pub fn tracked_initial_rsp_is_top(_info: TestInfo) {
+        static STACK: [u8; 4096] = [0; 4096];
+
+        let stack = StaticStack::<4096>::from_array(&STACK);
+        let tracked = Tracked::new(stack);
+
+        assert_eq!(
+            tracked.rsp(),
+            tracked.stack().top() as usize
+        );
+    }
+
+    pub fn tracked_rejects_misaligned_rsp(mut info: TestInfo) {
+        info.should_panic();
+
+        static STACK: [u8; 4096] = [0; 4096];
+        let stack = StaticStack::<4096>::from_array(&STACK);
+
+        let bad_rsp = stack.top() as usize - 8;
+        let _ = Tracked::with_rsp(stack, bad_rsp);
+    }
+
+    pub fn tracked_rejects_out_of_bounds_rsp(mut info: TestInfo) {
+        info.should_panic();
+
+        static STACK: [u8; 4096] = [0; 4096];
+        let stack = StaticStack::<4096>::from_array(&STACK);
+
+        let bad_rsp = stack.top() as usize + 16;
+        let _ = Tracked::with_rsp(stack, bad_rsp);
+    }
+
+    pub fn tracked_used_remaining_correct(_info: TestInfo) {
+        static STACK: [u8; 1024] = [0; 1024];
+
+        let stack = StaticStack::<1024>::from_array(&STACK);
+        let mut tracked = Tracked::new(stack);
+
+        let original_rsp = tracked.rsp();
+        let new_rsp = original_rsp - 128;
+
+        tracked.set_rsp(new_rsp);
+
+        assert_eq!(tracked.used(), 128);
+        assert_eq!(tracked.remaining(), 1024 - 128);
+    }
+
+    pub fn tracked_set_rsp_rejects_invalid(mut info: TestInfo) {
+        info.should_panic();
+
+        static STACK: [u8; 512] = [0; 512];
+        let stack = StaticStack::<512>::from_array(&STACK);
+        let mut tracked = Tracked::new(stack);
+
+        let bad_rsp = tracked.stack().base() as usize - 16;
+        tracked.set_rsp(bad_rsp);
+    }
+
+    pub fn tracked_unchecked_preserves_rsp(_info: TestInfo) {
+        static STACK: [u8; 256] = [0; 256];
+        let stack = StaticStack::<256>::from_array(&STACK);
+
+        let rsp = stack.base() as usize + 3; // intentionally invalid
+
+        let tracked = unsafe { Tracked::new_unchecked(stack, rsp) };
+
+        assert_eq!(tracked.rsp(), rsp);
+    }
+
+    pub fn tracked_map_preserves_rsp(_info: TestInfo) {
+        static STACK: [u8; 1024] = [0; 1024];
+
+        let stack = StaticStack::<1024>::from_array(&STACK);
+        let tracked = Tracked::new(stack);
+
+        let rsp = tracked.rsp();
+
+        let mapped = tracked.map(|s| {
+            DynStack::from_slice(s.as_slice())
+        });
+
+        assert_eq!(mapped.rsp(), rsp);
     }
 }
