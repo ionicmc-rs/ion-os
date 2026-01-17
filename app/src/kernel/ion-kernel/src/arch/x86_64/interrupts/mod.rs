@@ -4,12 +4,47 @@
 //!
 //! These things are handled in Ion OS's initialization, so you wouldn't typically have to see them.
 
-use crate::{c_lib::libc, interrupts::pic8259::InterruptIndex, serial_println, text::println};
+use crate::{c_lib::libc, arch::interrupts::pic8259::InterruptIndex, serial_println, text::println};
 use lazy_static::lazy_static;
 use x86_64::{
     instructions::interrupts,
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
 };
+
+// tools
+
+/// enables interrupts
+pub fn enable() {
+    interrupts::enable();
+}
+
+/// disables interrupts
+pub fn disable() {
+    interrupts::disable();
+}
+
+/// returns wether interrupts are enabled
+pub fn are_enabled() -> bool {
+    interrupts::are_enabled()
+}
+
+/// runs a function without interrupts.
+/// 
+/// this keeps them disabled if they were already
+/// 
+/// see [`interrupts::without_interrupts`]
+pub fn without_interrupts<R>(f: impl FnOnce() -> R) -> R {
+    interrupts::without_interrupts(f)
+}
+
+/// triggers the nth software interrupt
+/// # Safety
+/// see [`interrupts::software_interrupt`]
+pub unsafe fn trigger<const N: u8>() {
+    unsafe { interrupts::software_interrupt::<N>() };
+}
+
+// IDT
 
 macro set_index($idt:expr_2021, $($index:ident$((unsafe $stack:literal))? => $handler:expr_2021),*) {
     $({

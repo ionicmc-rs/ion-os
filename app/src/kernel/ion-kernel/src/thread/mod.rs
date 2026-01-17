@@ -10,7 +10,6 @@ use core::sync::atomic::{AtomicU64, Ordering};
 #[cfg(debug_assertions)]
 use crate::scheduler::idle_entry;
 use crate::{
-    interrupts,
     scheduler::{self, SCHEDULER, WakeEvent},
     serial_println,
     thread::{
@@ -19,6 +18,7 @@ use crate::{
         tls::{TlsAllocation, alloc_thread_self},
     },
 };
+use crate::arch;
 
 pub mod context;
 mod join;
@@ -39,11 +39,12 @@ pub struct ThreadID(pub u64);
 
 pub struct Thread {
     id: ThreadID,
-    /// owned memory to ensure [`Drop`] runs on the allocation
-    _stack: ThreadStack,
     ctx: context::Context,
     state: State,
     tls: usize,
+
+    /// owned memory to ensure [`Drop`] runs on the allocation
+    _stack: ThreadStack,
     // guards against forgetting to drop the allocation.
     _tls_guard: TlsAllocation, // No metadata storage here, we do that with thread local storage.
 }
@@ -85,13 +86,13 @@ impl Thread {
     }
 
     pub fn set_sleep(&mut self, ticks: u64) {
-        let wake_tick = interrupts::ticks().wrapping_add(ticks);
+        let wake_tick = arch::interrupts::ticks().wrapping_add(ticks);
         self.state = State::Sleeping(wake_tick);
     }
 
     pub fn should_wake(&self) -> bool {
         if let State::Sleeping(wake_tick) = self.state {
-            interrupts::ticks() == wake_tick
+            arch::interrupts::ticks() == wake_tick
         } else {
             false
         }

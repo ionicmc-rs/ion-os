@@ -50,7 +50,6 @@ pub mod entry;
 /// tools for registering event listeners
 pub mod event;
 pub mod init;
-pub mod interrupts;
 pub mod io;
 pub mod lib_alloc;
 pub mod log;
@@ -62,6 +61,7 @@ pub mod test;
 pub mod text;
 pub mod thread;
 pub mod stack;
+pub mod arch;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {

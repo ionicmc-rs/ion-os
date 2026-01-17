@@ -13,7 +13,7 @@ use alloc::{boxed::Box, collections::vec_deque::VecDeque, vec::Vec};
 
 use crate::{
     hlt_loop,
-    interrupts::InterruptGuard,
+    arch::interrupts::InterruptGuard,
     serial_println,
     thread::{
         self, State, Thread, ThreadID,
