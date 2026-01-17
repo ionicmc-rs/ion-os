@@ -616,3 +616,191 @@ impl Debug for AllocatedStack {
         )
     }
 }
+
+// finally, tracking stacks
+
+/// A stack paired with a tracked stack pointer.
+///
+/// # Guarantees
+/// - `rsp` always lies within the stack.
+/// - `rsp` is 16-byte aligned.
+/// - The stack grows downward.
+/// - The stack memory itself is not modified by this type.
+///
+/// This type does **not** perform stack switching by itself.
+/// It is intended to be used by schedulers and context switch code.
+pub struct Tracked<S: Stack> {
+    stack: S,
+    rsp: usize,
+}
+
+impl<S: Stack> Tracked<S> {
+    // -------------------------------------------------------------------------
+    // Creation
+    // -------------------------------------------------------------------------
+
+    /// Creates a new tracked stack with the stack pointer initialized to the top.
+    ///
+    /// # Panics
+    /// Panics if:
+    /// - the stack size is zero
+    /// - the stack top is not 16-byte aligned
+    pub fn new(stack: S) -> Self {
+        let top = stack.top() as usize;
+
+        if stack.size() == 0 {
+            panic!("Tracked stack size must be non-zero");
+        }
+
+        if (top & 0xF) != 0 {
+            panic!("Initial stack pointer must be 16-byte aligned");
+        }
+
+        Self {
+            stack,
+            rsp: top,
+        }
+    }
+
+    /// Creates a tracked stack with an explicit initial stack pointer.
+    ///
+    /// # Panics
+    /// Panics if:
+    /// - `rsp` is not within the stack
+    /// - `rsp` is not 16-byte aligned
+    pub fn with_rsp(stack: S, rsp: usize) -> Self {
+        let base = stack.base() as usize;
+        let top  = stack.top() as usize;
+
+        if rsp < base || rsp > top {
+            panic!("Initial rsp is outside of stack bounds");
+        }
+
+        if (rsp & 0xF) != 0 {
+            panic!("rsp must be 16-byte aligned");
+        }
+
+        Self { stack, rsp }
+    }
+
+    /// Creates a tracked stack without validation.
+    ///
+    /// # Safety
+    /// - `rsp` must lie within `stack`
+    /// - `rsp` must be 16-byte aligned
+    pub unsafe fn new_unchecked(stack: S, rsp: usize) -> Self {
+        Self { stack, rsp }
+    }
+
+    // -------------------------------------------------------------------------
+    // Accessors
+    // -------------------------------------------------------------------------
+
+    /// Returns a reference to the underlying stack.
+    #[inline]
+    pub fn stack(&self) -> &S {
+        &self.stack
+    }
+
+    /// Returns a mutable reference to the underlying stack.
+    ///
+    /// # Safety
+    /// Mutating stack memory while it is active may cause undefined behavior.
+    #[inline]
+    pub fn stack_mut(&mut self) -> &mut S {
+        &mut self.stack
+    }
+
+    /// Returns the current stack pointer.
+    #[inline]
+    pub fn rsp(&self) -> usize {
+        self.rsp
+    }
+
+    /// Sets the stack pointer.
+    ///
+    /// # Panics
+    /// Panics if:
+    /// - `rsp` is outside the stack
+    /// - `rsp` is not 16-byte aligned
+    pub fn set_rsp(&mut self, rsp: usize) {
+        let base = self.stack.base() as usize;
+        let top  = self.stack.top() as usize;
+
+        if rsp < base || rsp > top {
+            panic!("rsp outside of stack bounds");
+        }
+
+        if (rsp & 0xF) != 0 {
+            panic!("rsp must be 16-byte aligned");
+        }
+
+        self.rsp = rsp;
+    }
+
+    /// Sets the stack pointer without validation.
+    ///
+    /// # Safety
+    /// - `rsp` must lie within the stack
+    /// - `rsp` must be 16-byte aligned
+    pub unsafe fn set_rsp_unchecked(&mut self, rsp: usize) {
+        self.rsp = rsp;
+    }
+
+    // -------------------------------------------------------------------------
+    // Stack-relative helpers
+    // -------------------------------------------------------------------------
+
+    /// Returns how many bytes are currently used on the stack.
+    ///
+    /// This assumes a downward-growing stack.
+    #[inline]
+    pub fn used(&self) -> usize {
+        self.stack.top() as usize - self.rsp
+    }
+
+    /// Returns how many bytes remain available on the stack.
+    #[inline]
+    pub fn remaining(&self) -> usize {
+        self.rsp - self.stack.base() as usize
+    }
+
+    /// Returns whether the stack pointer is within bounds.
+    #[inline]
+    pub fn rsp_in_bounds(&self) -> bool {
+        let rsp = self.rsp;
+        let base = self.stack.base() as usize;
+        let top  = self.stack.top() as usize;
+
+        rsp >= base && rsp <= top
+    }
+
+    // -------------------------------------------------------------------------
+    // Ownership utilities
+    // -------------------------------------------------------------------------
+
+    /// Consumes the tracked stack and returns the underlying stack.
+    ///
+    /// The stack pointer is discarded.
+    pub fn into_stack(self) -> S {
+        self.stack
+    }
+
+    /// Maps the underlying stack to another stack type.
+    ///
+    /// Useful for wrapping, e.g. `AllocatedStack -> DynStack`.
+    pub fn map<T: Stack>(self, f: impl FnOnce(S) -> T) -> Tracked<T> {
+        let rsp = self.rsp;
+        let stack = f(self.stack);
+        unsafe { Tracked::new_unchecked(stack, rsp) }
+    }
+}
+
+impl<S: Stack + Debug> Debug for Tracked<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Tracked")
+            .field("stack", &self.stack)
+            .field("rsp", &format_args!("{:#x}", self.rsp))
+            .finish()
+    }
+}
