@@ -28,4 +28,7 @@ pub const DEBUG_PORT: Port<u8, Write> = Port::new(0xE9);
 /// Port used for reading key input.
 pub const KEYBOARD_READ: Port<u8, Read> = Port::new(0x60);
 
+/// Port for sending keyboard commands
+/// 
+/// this is handled by the keyboard handler thread - so you don't need to use this
 pub const KEYBOARD_WRITE: Port<u8, Write> = Port::new(0x64);
