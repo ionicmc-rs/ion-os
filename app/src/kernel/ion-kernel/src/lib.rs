@@ -61,6 +61,7 @@ pub mod serial;
 pub mod test;
 pub mod text;
 pub mod thread;
+pub mod stack;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {
