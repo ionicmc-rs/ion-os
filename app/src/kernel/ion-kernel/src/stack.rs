@@ -69,7 +69,7 @@ impl DynStack {
     /// # Safety
     /// base must be valid for reads and writes
     pub unsafe fn new(base: *mut u8, size: usize) -> Result<Self, PointerError> {
-        if !base.cast::<usize>().is_aligned() {
+        if (base as usize) & !0xF != 0 {
             Err(PointerError::Misaligned)
         } else if base.is_null() {
             Err(PointerError::Null)
@@ -82,11 +82,11 @@ impl DynStack {
     /// 
     /// # Safety
     /// pointer must be non-null, aligned, and valid for reads and writes.
-    pub unsafe fn new_unchecked(base: *mut u8, size: usize) -> Self {
+    pub const unsafe fn new_unchecked(base: *mut u8, size: usize) -> Self {
         Self { base, size }
     }
 
-    pub fn from_slice(slice: &[u8]) -> Self {
+    pub const fn from_slice(slice: &[u8]) -> Self {
         Self { base: slice.as_ptr().cast_mut(), size: slice.len() }
     }
 
@@ -99,6 +99,9 @@ impl DynStack {
     /// panics if `by` is greater than the stack size.
     #[track_caller]
     pub fn shrink(&mut self, by: usize) {
+        if by > self.size {
+            panic!("attempted to shrink stack size beyond limits.")
+        }
         self.size -= by;
         self.size = align_up(self.size as u64, 16) as usize;
     }
@@ -152,7 +155,7 @@ impl DynStack {
     /// returns wether the given address is a part of this stack.
     pub fn contains(&self, addr: usize) -> bool {
         self.base as usize <= addr 
-        && addr <= self.top() as usize
+        && addr < self.top() as usize
     }
 
     /// convenience function to avoid redundant conversion from `*<const/mut> T` to
@@ -180,9 +183,46 @@ impl DynStack {
     // writing
 
     /// Copies this stack to `other`
+    /// 
+    /// # Panics
+    /// panics if the other stack is smaller than self.
+    /// # See also
+    /// [`DynStack::write_to_truncate`] -> truncates excess data
+    /// [`DynStack::write_to_exact`] -> writes only if both stacks match
     pub fn write_to(&self, other: &mut DynStack) {
+        if other.size < self.size {
+            panic!("cannot write to a smaller stack.");
+        }
+
         // Safety: stacks are valid by invariant.
         unsafe { self.base.copy_to(other.base, self.size) };
+    }
+
+    /// Copies this stack to `other`, panicking if the sizes are not the same
+    /// 
+    /// # Panics
+    /// panics if the other stack is smaller than self.
+    /// # See also
+    /// [`DynStack::write_to`] -> panics if writing is not possible
+    /// [`DynStack::write_to_truncate`] -> writes, removing excess bytes.
+    pub fn write_to_exact(&self, other: &mut DynStack) {
+        if self.size != other.size {
+            panic!("cannot write with size mismatch: {} != {}", self.size, other.size)
+        }
+        // Safety: stacks are valid by invariant.
+        unsafe { self.base.copy_to(other.base, other.size) };
+    }
+
+    /// Copies this stack to `other`, panicking if the sizes are not the same
+    /// 
+    /// # Panics
+    /// panics if the other stack is smaller than self.
+    /// # See also
+    /// [`DynStack::write_to`] -> panics if writing is not possible
+    /// [`DynStack::write_to_exact`] -> writes only if both stacks match
+    pub fn write_to_truncate(&self, other: &mut DynStack) {
+        // Safety: invariants ensure this is safe
+        unsafe { self.base.copy_to(other.base, other.size) };
     }
 
     /// Copies this stack to `other`
@@ -198,6 +238,16 @@ impl DynStack {
         other.write_to(self);
     }
 
+    /// Copies from `other` to self, truncating excess bytes.
+    pub fn copy_from_truncate(&mut self, other: &DynStack) {
+        other.write_to_truncate(self);
+    }
+
+    /// Copies from `other` to self, panicking if their sizes don't match
+    pub fn copy_from_exact(&mut self, other: &DynStack) {
+        other.write_to_exact(self);
+    }
+
     /// Copies from `other` to self
     /// 
     /// # Safety
@@ -206,5 +256,3 @@ impl DynStack {
         unsafe { other.copy_to(self.base, self.size) };
     }
 }
-
-// static stack
