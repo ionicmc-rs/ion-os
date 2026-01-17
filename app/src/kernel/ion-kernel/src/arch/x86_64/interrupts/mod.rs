@@ -138,11 +138,11 @@ impl Drop for InterruptGuard {
 
 mod double_fault;
 /// GDT
-pub mod gdt;
+mod gdt;
 /// Keyboard Interrupt Handling.
 pub mod keyboard;
 mod page_fault;
-pub mod pic8259;
+mod pic8259;
 mod timer;
 pub use timer::ticks;
 mod gp;

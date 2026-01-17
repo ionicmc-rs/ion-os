@@ -8,9 +8,10 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use core::{alloc::Layout, cmp};
-use x86_64::{VirtAddr, align_up, registers::model_specific::FsBase};
 
-use crate::{serial_println, thread};
+use linked_list_allocator::align_up;
+
+use crate::{arch, serial_println, thread};
 
 unsafe extern "C" {
     static __tdata_start: u8;
@@ -73,7 +74,7 @@ pub unsafe fn alloc_thread_self(
     let alloc_align = cmp::max(tls_align, tcb_align);
 
     // Round TLS block to TLS alignment
-    let tls_rounded = align_up(tls_size as u64, tls_align as u64) as usize;
+    let tls_rounded = align_up(tls_size as *mut u8, tls_align) as usize;
 
     let total_size = tls_rounded + tcb_size;
     assert!(total_size <= 4096);
@@ -118,5 +119,5 @@ pub unsafe fn alloc_thread_self(
 
 #[inline(always)]
 pub unsafe fn install_tls(thread_self: *mut ThreadSelf) {
-    FsBase::write(VirtAddr::new(thread_self as u64));
+    arch::tls::write_ptr(thread_self.cast());
 }

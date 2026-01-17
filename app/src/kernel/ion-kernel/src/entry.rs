@@ -3,7 +3,7 @@
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{event::{self}, arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, log::error, stack};
+use crate::{event, arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, log::error};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -15,6 +15,7 @@ use crate::{
         sync::{Mutex, MutexGuard},
     },
 };
+use crate::stack;
 
 #[allow(static_mut_refs)]
 fn handle_kbd() -> ! {
@@ -66,7 +67,6 @@ fn handle_kbd() -> ! {
         }
     }
 }
-
 /// final init.
 pub fn kernel_main() {
     // keyboard input

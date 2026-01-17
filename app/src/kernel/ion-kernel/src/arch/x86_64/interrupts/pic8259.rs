@@ -52,6 +52,7 @@ impl InterruptIndex {
         self as u8
     }
 
+    #[allow(unused)]
     /// Converts the index to a usize
     pub fn as_usize(self) -> usize {
         usize::from(self.as_u8())
