@@ -1,5 +1,5 @@
 //! x86_64 port I/O
-#![allow(missing_docs, unsafe_op_in_unsafe_fn, clippy::missing_safety_doc)]
+#![allow(missing_docs, missing_debug_implementations, unsafe_op_in_unsafe_fn, clippy::missing_safety_doc, private_bounds)]
 
 use core::{arch::asm, marker::PhantomData};
 
