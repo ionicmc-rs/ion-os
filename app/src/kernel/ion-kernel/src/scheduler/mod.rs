@@ -12,14 +12,11 @@ use core::{
 use alloc::{boxed::Box, collections::vec_deque::VecDeque, vec::Vec};
 
 use crate::{
-    hlt_loop,
-    arch::interrupts::InterruptGuard,
-    serial_println,
-    thread::{
+    address_space::kernel_address_space, arch::interrupts::InterruptGuard, hlt_loop, serial_println, thread::{
         self, State, Thread, ThreadID,
         build::TPriority,
         tls::{ThreadSelf, install_tls},
-    },
+    }
 };
 
 /// The global Scheduler
@@ -161,7 +158,7 @@ macro_rules! queue_fn {
     };
 }
 fn idle_thread() -> Thread {
-    Thread::new(idle_entry, 0, 16 * 1024)
+    Thread::new(idle_entry, 0, 16 * 1024, unsafe { kernel_address_space() })
 }
 
 impl Queues {

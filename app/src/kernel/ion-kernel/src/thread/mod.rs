@@ -10,13 +10,11 @@ use core::sync::atomic::{AtomicU64, Ordering};
 #[cfg(debug_assertions)]
 use crate::scheduler::idle_entry;
 use crate::{
-    scheduler::{self, SCHEDULER, WakeEvent},
-    serial_println,
-    thread::{
+    address_space::AddressSpace, scheduler::{self, SCHEDULER, WakeEvent}, serial_println, thread::{
         context::Context,
         stack::ThreadStack,
         tls::{TlsAllocation, alloc_thread_self},
-    },
+    }
 };
 use crate::arch;
 
@@ -56,7 +54,7 @@ impl Drop for Thread {
 }
 
 impl Thread {
-    pub fn new(entry: extern "C" fn(usize) -> !, arg: usize, stack: usize) -> Self {
+    pub fn new(entry: extern "C" fn(usize) -> !, arg: usize, stack: usize, addr_space: AddressSpace) -> Self {
         // use critical moment to prevent alloc from rescheduling.
         self::critical_moment_raw(|| {
             serial_println!("creating stack.");
@@ -72,7 +70,7 @@ impl Thread {
             let (raw_ptr, guard) = unsafe { alloc_thread_self(stack.ptr(), stack.size()) };
 
             Self {
-                ctx: Context::new(entry, arg, (stack.ptr() as usize) + stack.size()),
+                ctx: Context::new(entry, arg, (stack.ptr() as usize) + stack.size(), addr_space),
                 id,
                 tls: raw_ptr as usize,
                 _stack: stack,

@@ -23,6 +23,10 @@ context_switch:
     mov     [rdi + 0x28], rbx
     mov     [rdi + 0x30], rbp
 
+    ; load address space
+    mov     rax, [rdi + 0x38]   ; load PML4 phys addr
+    mov     cr3, rax            ; switch address space
+
     ; -------------------------
     ; Restore new context
     ; -------------------------
@@ -34,9 +38,17 @@ context_switch:
     mov     rbx, [rsi + 0x28]
     mov     rbp, [rsi + 0x30]
 
+
+
     ret
 
 context_load:
+
+    ; load address space
+    mov     rax, [rdi + 0x38]   ; load PML4 phys addr
+    mov     cr3, rax            ; switch address space
+
+    ; load context
     mov     rsp, [rdi + 0x00]
     mov     r15, [rdi + 0x08]
     mov     r14, [rdi + 0x10]
@@ -55,8 +67,6 @@ thread_trampoline:
     mov al, 'T'
     out 0xE9, al
 
-
     mov rdi, r12
-    ; interrupts on the new thread.
     call r15
     ud2

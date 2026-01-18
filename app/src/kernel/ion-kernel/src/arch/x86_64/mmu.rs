@@ -3,14 +3,17 @@
 use x86_64::registers::control::Cr3;
 use crate::arch::{VirtAddr, defs};
 
-const ENTRY_PRESENT: u64 = 1 << 0;
-const ENTRY_WRITABLE: u64 = 1 << 1;
-const ENTRY_HUGE: u64 = 1 << 7;
+/// represents the flag for a present entry
+pub const ENTRY_PRESENT: u64 = 1 << 0;
+/// represents the flag for a writable entry
+pub const ENTRY_WRITABLE: u64 = 1 << 1;
+/// represents the flag for a "huge" page (2 MiB)
+pub const ENTRY_HUGE: u64 = 1 << 7;
 
 /// Raw page-table pointer (identity-mapped)
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct PageTable(*mut u64);
+pub struct PageTable(pub *mut u64);
 
 /// # Safety
 /// - Paging must be active
