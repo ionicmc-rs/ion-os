@@ -62,6 +62,7 @@ pub mod thread;
 pub mod stack;
 pub mod arch;
 pub mod address_space;
+pub mod privilege;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {

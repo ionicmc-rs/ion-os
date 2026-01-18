@@ -3,10 +3,7 @@ use core::fmt::Display;
 use alloc::{boxed::Box, format};
 
 use crate::{
-    hlt_loop,
-    scheduler::{self, SCHEDULER},
-    serial_println,
-    thread::{self, Thread, ThreadID, build::TPriority},
+    address_space::kernel_address_space, hlt_loop, scheduler::{self, SCHEDULER}, serial_println, thread::{self, Thread, ThreadID, build::TPriority}
 };
 
 /// Handle used to retrieve the result of a spawned thread.
@@ -118,7 +115,10 @@ pub fn spawn<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
         hlt_loop()
     }
     serial_println!("creating thread.");
-    let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size);
+    // Note: do not support user threads in spawn - user threads must be built via builder.
+
+    // Safety: We fulfill all requirements
+    let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size, unsafe { kernel_address_space() });
     let id = thread.id();
     serial_println!("queuing");
     SCHEDULER.queue(thread);
@@ -172,7 +172,7 @@ pub fn spawn_at<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
         hlt_loop()
     }
     serial_println!("creating thread.");
-    let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size);
+    let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size, unsafe { kernel_address_space() });
     let id = thread.id();
     serial_println!("queuing");
     SCHEDULER.queue_at(prio, thread);

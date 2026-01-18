@@ -7,8 +7,7 @@ use alloc::{
 };
 
 use crate::{
-    hlt_loop,
-    thread::{self, JoinHandle, Thread},
+    address_space::{AddressSpace, kernel_address_space}, hlt_loop, thread::{self, JoinHandle, Thread}
 };
 
 struct ThreadMetadata {
@@ -32,13 +31,13 @@ pub enum TPriority {
     Low,
 }
 
-#[derive(Default)]
 pub struct ThreadBuilder<T: Send + 'static> {
     name: Option<String>,
     func: Option<Box<dyn FnOnce() -> T + Send + 'static>>,
     safe: bool,
     stack: usize,
     priority: TPriority,
+    addr_space: AddressSpace
 }
 
 impl<T: Send + 'static> Debug for ThreadBuilder<T> {
@@ -51,13 +50,14 @@ impl<T: Send + 'static> Debug for ThreadBuilder<T> {
 }
 
 impl<T: Send + 'static> ThreadBuilder<T> {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             name: None,
             func: None,
             safe: true,
             stack: 16 * 1024,
             priority: TPriority::Med,
+            addr_space: unsafe { kernel_address_space() }
         }
     }
 
@@ -112,6 +112,8 @@ impl<T: Send + 'static> ThreadBuilder<T> {
     }
 
     /// Builds the thread, queueing it into the scheduler.
+    /// 
+    /// this an alias for `spawn` that simply does not return the value.
     pub fn build(self) {
         _ = self.spawn();
     }
@@ -146,9 +148,12 @@ impl<T: Send + 'static> ThreadBuilder<T> {
         };
         let boxed = Box::new(meta);
 
-        Thread::new(thread_entry::<T>, Box::into_raw(boxed) as usize, self.stack)
+        Thread::new(thread_entry::<T>, Box::into_raw(boxed) as usize, self.stack, self.addr_space)
     }
 
+    /// spawns the thread.
+    /// 
+    /// note: this discards address space, but this will be changed!
     #[must_use = "if you do not need the return value, use `build` instead."]
     pub fn spawn(self) -> JoinHandle<T> {
         super::spawn_at(

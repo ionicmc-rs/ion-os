@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use crate::{hlt_loop, serial_println};
+use crate::{address_space::AddressSpace, hlt_loop, serial_println};
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -8,18 +8,21 @@ pub struct Context {
     /// Stack pointer
     pub rsp: usize,
 
-    /// Callee-saved registers (System V ABI)
+    // Callee-saved registers (System V ABI)
     pub r15: u64,
     pub r14: u64,
     pub r13: u64,
     pub r12: u64,
     pub rbx: u64,
     pub rbp: u64,
+
+    /// Represents the address space this thread can use.
+    pub addr_space: AddressSpace
 }
 
 impl Context {
     /// Create a fresh context that will start executing `entry(arg)`
-    pub fn new(entry: extern "C" fn(usize) -> !, arg: usize, stack_top: usize) -> Self {
+    pub fn new(entry: extern "C" fn(usize) -> !, arg: usize, stack_top: usize, addr_space: AddressSpace) -> Self {
         serial_println!("creating and aligning stack");
 
         // SysV ABI: stack must be 16-byte aligned *before call*
@@ -39,12 +42,15 @@ impl Context {
 
         Self {
             rsp,
+
             r15: entry as *const () as u64, // entry function
             r12: arg as u64,                // argument
             r14: 0,
             r13: 0,
             rbx: 0,
             rbp: 0,
+
+            addr_space
         }
     }
 
