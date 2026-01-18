@@ -9,18 +9,20 @@ use linked_list_allocator::LockedHeap;
 
 use crate::thread;
 
-/// Virtual start of the heap.
-///
-/// This address must be mapped by the architecture MMU code
-/// before calling [`init_heap`].
-pub const HEAP_START: usize = 0x_4444_4444_0000;
+unsafe extern "C" {
+    static __kernel_end: u8;
+}
+
+const HEAP_ALIGN: usize = 2 * 1024 * 1024;
 
 /// Size of the heap in bytes.
 pub const HEAP_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
 
+/// gets heap's start
 #[inline]
-fn heap_start() -> usize {
-    linked_list_allocator::align_up(HEAP_START as *mut u8, 16) as usize
+pub fn heap_start() -> usize {
+    const TEMP_HEAP_START: usize = 1024 * 1024 * 1024; // 1 GiB
+    linked_list_allocator::align_up(TEMP_HEAP_START as *mut u8, HEAP_ALIGN) as usize
 }
 
 #[inline]

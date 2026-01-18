@@ -49,7 +49,7 @@ SECTIONS
         __bss_end = .;
     }: load
     /tls/ : { }
-
+    __kernel_end = .;
     __tls_start = ADDR(.tdata);
     __tls_end   = ADDR(.tbss) + SIZEOF(.tbss);
 }
