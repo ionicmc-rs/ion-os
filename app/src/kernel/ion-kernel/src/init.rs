@@ -19,7 +19,7 @@ use core::fmt::Display;
 
 use crossbeam_queue::ArrayQueue;
 
-use crate::{arch::{self, frame_allocator::BootInfoFrameAllocator, interrupts::{self, keyboard::SC_QUEUE}}, c_lib::BootInfo, lib_alloc::{HEAP_SIZE, HEAP_START, init_heap}, serial_println};
+use crate::{arch::{self, interrupts::{self, keyboard::SC_QUEUE}}, c_lib::BootInfo, lib_alloc::init_heap, serial_println};
 
 /// An error while Initializing the Kernel
 ///
@@ -79,10 +79,10 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
 
     // allocation
 
-    let mut mapper = unsafe { arch::mmu::init() };
-    let mut f_alloc = unsafe { BootInfoFrameAllocator::init(boot_info.mem_map_addr) };
+    // let mut mapper = unsafe { arch::mmu::init() };
+    unsafe { arch::frame_allocator::init_global_frame_allocator(boot_info.mem_map_addr) };
 
-    unsafe { arch::mmu::map_kernel_heap(&mut mapper, &mut f_alloc, HEAP_START, HEAP_SIZE) };
+    unsafe { arch::mmu::init_kernel_heap() };
 
     unsafe { init_heap() };
 
