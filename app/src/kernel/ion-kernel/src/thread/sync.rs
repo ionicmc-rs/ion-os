@@ -176,7 +176,9 @@ impl<T> Mutex<T> {
     }
 
     pub fn lock(&'static self) -> MutexGuard<'static, T> {
-        thread::atomic_block_until(&self.locked);
+        if self.is_locked() {
+            thread::atomic_block_until(&self.locked);
+        }
         if self.poisoned.load(Ordering::Acquire) {
             // thread holding mutex panicked, we must panic too.
             panic!("attempted to lock a poisoned mutex");

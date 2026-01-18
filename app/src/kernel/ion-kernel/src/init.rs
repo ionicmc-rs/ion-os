@@ -19,7 +19,7 @@ use core::fmt::Display;
 
 use crossbeam_queue::ArrayQueue;
 
-use crate::{arch::{self, interrupts::{self, keyboard::SC_QUEUE}}, c_lib::BootInfo, lib_alloc::init_heap, serial_println};
+use crate::{arch::{self, interrupts::{self, keyboard::SC_QUEUE}}, c_lib::BootInfo, lib_alloc::init_heap, privilege::init_users, serial_println};
 
 /// An error while Initializing the Kernel
 ///
@@ -87,6 +87,8 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
     unsafe { init_heap() };
 
     unsafe { SC_QUEUE.write(ArrayQueue::new(100)) };
+
+    init_users();
 
     x86_64::instructions::interrupts::enable();
 
