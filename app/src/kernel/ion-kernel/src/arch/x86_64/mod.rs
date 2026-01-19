@@ -16,3 +16,5 @@ pub mod frame_allocator;
 pub mod mmu;
 /// Ports
 pub mod port;
+/// Syscall **implementation**
+pub mod syscall;

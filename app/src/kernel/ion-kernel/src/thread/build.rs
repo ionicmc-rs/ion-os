@@ -7,7 +7,7 @@ use alloc::{
 };
 
 use crate::{
-    address_space::{AddressSpace, kernel_address_space}, hlt_loop, thread::{self, JoinHandle, Thread}
+    address_space::{AddressSpace, kernel_address_space}, arch, hlt_loop, thread::{self, JoinHandle, Thread}
 };
 
 struct ThreadMetadata {
@@ -178,24 +178,39 @@ impl<T: Send + 'static> ThreadBuilder<T> {
 
 /// Note: calling this function before the first thread is initialized causes page faults.
 pub fn panicking() -> bool {
+    if arch::tls::read_ptr().is_null() {
+        return false;
+    }
     unsafe { THREAD_DATA.panicking }
 }
 
 pub fn preemption_safe() -> bool {
+    if arch::tls::read_ptr().is_null() {
+        return false;
+    }
     unsafe { THREAD_DATA.safe }
 }
 
 #[allow(static_mut_refs)]
 pub fn name() -> String {
+    if arch::tls::read_ptr().is_null() {
+        return Default::default();
+    }
     unsafe { THREAD_DATA.name.clone() }
 }
 
 pub fn set_name(s: impl Into<String>) {
+    if arch::tls::read_ptr().is_null() {
+        return;
+    }
     unsafe { THREAD_DATA.name = s.into() };
 }
 
 /// # Safety
 /// must only be called from panic handler.
 pub unsafe fn set_panic() {
+    if arch::tls::read_ptr().is_null() {
+        return;
+    }
     unsafe { THREAD_DATA.panicking = true }
 }

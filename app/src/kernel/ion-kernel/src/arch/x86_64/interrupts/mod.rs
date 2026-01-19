@@ -139,6 +139,9 @@ impl Drop for InterruptGuard {
 mod double_fault;
 /// GDT
 mod gdt;
+
+pub use gdt::selectors as gdt_selectors;
+
 /// Keyboard Interrupt Handling.
 pub mod keyboard;
 mod page_fault;
