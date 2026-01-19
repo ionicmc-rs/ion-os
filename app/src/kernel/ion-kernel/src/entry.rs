@@ -68,8 +68,15 @@ fn handle_kbd() -> ! {
         }
     }
 }
+
+#[thread_local]
+static __TLOCAL: usize = 0;
+
 /// final init.
 pub fn kernel_main() {
+
+    assert_eq!(__TLOCAL, 0, "tls is not setup correctly");
+
     #[cfg(debug_assertions)]
     event::add_key_listener(|ev| {
         if ev.state != KeyState::Up {
@@ -81,9 +88,20 @@ pub fn kernel_main() {
     ThreadBuilder::<!>::new()
         .with_name("keyboard_handler")
         .with_priority(TPriority::High)
-        .with_stack(8 * 4096)
+        .with_stack(16 * 1024)
         .with_entry(handle_kbd)
         .build();
+
+    thread::spawn(|| {
+        unsafe {
+            core::arch::asm!(
+                "syscall",
+                in("rax") 1,
+                in("rsi") 42
+            )
+        }
+    }, 8 * 1024);
+
     cfg_if::cfg_if! {
         if #[cfg(feature = "test")] {
             use crate::stack;
