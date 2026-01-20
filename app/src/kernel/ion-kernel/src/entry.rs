@@ -93,13 +93,10 @@ pub fn kernel_main() {
         .build();
 
     thread::spawn(|| {
-        unsafe {
-            core::arch::asm!(
-                "syscall",
-                in("rax") 1,
-                in("rsi") 42
-            )
+        unsafe extern "C" {
+            safe fn usr_test_start() -> !;
         }
+        usr_test_start()
     }, 8 * 1024);
 
     cfg_if::cfg_if! {

@@ -42,6 +42,23 @@ unsafe fn next_table(entry: u64) -> *mut u64 {
     (entry & 0x000f_ffff_ffff_f000) as *mut u64
 }
 
+
+bitflags::bitflags! {
+    /// Flags for page tables
+    pub struct PageTableFlags: u64 {
+        /// Page is 2MiB
+        const HUGE_PAGE = ENTRY_HUGE;
+        /// Page accessible by users
+        /// 
+        /// never apply on kernel-private data
+        const USER_PAGE = 1 << 2;
+        /// Page can be written to
+        const WRITABLE = ENTRY_PRESENT;
+        /// Page is present
+        const PRESENT = ENTRY_PRESENT;
+    }
+}
+
 /// Map one 2 MiB page.
 ///
 /// # Safety
@@ -54,7 +71,7 @@ pub unsafe fn map_2mib(
     pml4: &mut PageTable,
     virt: VirtAddr,
     phys: usize,
-    writable: bool,
+    flags: PageTableFlags,
 ) {
     let v = virt.0;
 
@@ -69,7 +86,11 @@ pub unsafe fn map_2mib(
     let l3e = l3.add(pdpt_index(v));
     if *l3e & ENTRY_PRESENT == 0 {
         let pd = alloc_zeroed_page_table();
-        *l3e = (pd as u64) | ENTRY_PRESENT | ENTRY_WRITABLE;
+        if flags & PageTableFlags::USER_PAGE == PageTableFlags::from_bits_truncate(1 << 2) {
+            *l3e = (pd as u64) | ENTRY_PRESENT | ENTRY_WRITABLE | 1 << 2;
+        } else {
+            *l3e = (pd as u64) | ENTRY_PRESENT | ENTRY_WRITABLE;
+        }
     }
 
 
@@ -78,12 +99,9 @@ pub unsafe fn map_2mib(
 
     assert!(*pde & ENTRY_PRESENT == 0, "PDE already mapped");
 
-    let mut flags = ENTRY_PRESENT | ENTRY_HUGE;
-    if writable {
-        flags |= ENTRY_WRITABLE;
-    }
+    let flags = PageTableFlags::PRESENT | PageTableFlags::HUGE_PAGE | flags;
 
-    *pde = (phys as u64) | flags;
+    *pde = (phys as u64) | flags.bits();
 
     // Invalidate TLB for this page
     core::arch::asm!("invlpg [{}]", in(reg) v, options(nostack, preserves_flags));
@@ -121,7 +139,7 @@ pub unsafe fn init_kernel_heap() {
             &mut pml4,
             VirtAddr(virt as defs::PointerTy),
             phys,
-            true, // writable
+            PageTableFlags::WRITABLE, // writable
         );
 
         virt += 2 * 1024 * 1024;
