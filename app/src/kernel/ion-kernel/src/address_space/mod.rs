@@ -8,7 +8,7 @@ pub struct AddressSpace {
     pml4: *mut u64,
 }
 
-use crate::arch::{self, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, active_pml4}};
+use crate::arch::{self, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4}};
 
 /// Gets the current kernel address space
 /// # Safety
@@ -53,12 +53,12 @@ pub unsafe fn map_into_space(
     space: &AddressSpace,
     virt: VirtAddr,
     phys: usize,
-    writable: bool,
+    flags: PageTableFlags,
 ) {
     unsafe { arch::mmu::map_2mib(
         &mut PageTable(space.pml4),
         virt,
         phys,
-        writable,
+        flags,
     ) };
 }

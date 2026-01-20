@@ -1,4 +1,4 @@
-use crate::{arch::syscall::parse::Syscall, hlt_loop, log::info, thread};
+use crate::{arch::syscall::parse::Syscall, hlt_loop, log::info, serial_println, thread};
 
 /// Represents inputs to a syscall
 #[repr(C)]
@@ -31,6 +31,9 @@ pub extern "C" fn syscall_dispatch(
     frame: *const SyscallFrame,
 ) -> u64 {
     let frame = unsafe { &*frame };
+
+    serial_println!("syscall command received: {}", frame.rax);
+    serial_println!("full frame: {frame:#?}");
 
     match Syscall::parse(frame.clone()) {
         Syscall::Ack => {

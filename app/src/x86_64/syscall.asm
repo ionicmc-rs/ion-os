@@ -12,10 +12,11 @@ syscall_entry:
     mov [rsp + 5*8], r8
     mov [rsp + 6*8], r9
 
+    mov rdi, rsp        ; &SyscallFrame
+
     push rcx
     push r11
 
-    mov rdi, rsp        ; &SyscallFrame
     call syscall_dispatch
 
     pop r11
