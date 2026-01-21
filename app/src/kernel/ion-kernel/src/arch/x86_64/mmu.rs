@@ -56,6 +56,7 @@ bitflags::bitflags! {
         const WRITABLE = ENTRY_PRESENT;
         /// Page is present
         const PRESENT = ENTRY_PRESENT;
+        const NO_EXECUTE = 1 << 63;
     }
 }
 
@@ -71,8 +72,11 @@ pub unsafe fn map_2mib(
     pml4: &mut PageTable,
     virt: VirtAddr,
     phys: usize,
-    flags: PageTableFlags,
+    mut flags: PageTableFlags,
 ) {
+    // temporary
+    flags &= !PageTableFlags::NO_EXECUTE;
+
     let v = virt.0;
 
     debug_assert!(v % (2 * 1024 * 1024) == 0);
@@ -86,14 +90,12 @@ pub unsafe fn map_2mib(
     let l3e = l3.add(pdpt_index(v));
     if *l3e & ENTRY_PRESENT == 0 {
         let pd = alloc_zeroed_page_table();
-        if flags & PageTableFlags::USER_PAGE == PageTableFlags::from_bits_truncate(1 << 2) {
+        if flags & PageTableFlags::USER_PAGE == PageTableFlags::from_bits_truncate(4) {
             *l3e = (pd as u64) | ENTRY_PRESENT | ENTRY_WRITABLE | 1 << 2;
         } else {
             *l3e = (pd as u64) | ENTRY_PRESENT | ENTRY_WRITABLE;
         }
     }
-
-
     let l2 = next_table(*l3e);
     let pde = l2.add(pd_index(v));
 

@@ -5,7 +5,7 @@ use pc_keyboard::KeyState;
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{address_space, arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, event, log::error};
+use crate::{arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, event, log::error, scheduler};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -26,17 +26,14 @@ fn handle_kbd() -> ! {
             thread::block_until_true(|| {
                 !sc_q.is_empty()
             });
-            serial_println!("scancode has new keys");
 
             let sc = if let Some(v) =  sc_q.pop() {
                 v
             } else {
-                serial_println!("nothing");
                 thread::yield_now();
                 continue;
             };
 
-            serial_println!("adding byte: ");
             let ev: pc_keyboard::KeyEvent = match KEYBOARD
                 .lock()
                 .add_byte(sc)
@@ -54,17 +51,13 @@ fn handle_kbd() -> ! {
                 }
             };
 
-            serial_println!("running hooks");
             event::run_kbd_hooks(ev.clone());
             
-            serial_println!("running once hooks");
             event::run_kbd_once_hooks(ev);
 
-            serial_println!("running wakers");
             event::wake_kbd_wakers();
 
-            // serial_println!("waking keyboard waiters");
-            // unsafe { scheduler::wake_kbd() };
+            unsafe { scheduler::wake_kbd() };
         }
     }
 }
@@ -91,23 +84,6 @@ pub fn kernel_main() {
         .with_stack(16 * 1024)
         .with_entry(handle_kbd)
         .build();
-
-    unsafe extern "C" {
-        safe fn usr_test_start() -> !;
-    }
-    serial_println!("getting addr space");
-    let space = unsafe { address_space::create_address_space() };
-    serial_println!("got address space");
-
-    let user = ThreadBuilder::new()
-        .with_addr_space(space)
-        .with_name("user_test")
-        .with_entry(|| usr_test_start())
-        .with_stack(16 * 1024)
-        .raw();
-
-    use crate::scheduler::SCHEDULER;
-    SCHEDULER.queue(user);
 
     cfg_if::cfg_if! {
         if #[cfg(feature = "test")] {
