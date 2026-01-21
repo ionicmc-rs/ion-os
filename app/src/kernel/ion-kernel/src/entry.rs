@@ -5,7 +5,7 @@ use pc_keyboard::KeyState;
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{event, arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, log::error};
+use crate::{address_space, arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, event, log::error};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -92,12 +92,22 @@ pub fn kernel_main() {
         .with_entry(handle_kbd)
         .build();
 
-    thread::spawn(|| {
-        unsafe extern "C" {
-            safe fn usr_test_start() -> !;
-        }
-        usr_test_start()
-    }, 8 * 1024);
+    unsafe extern "C" {
+        safe fn usr_test_start() -> !;
+    }
+    serial_println!("getting addr space");
+    let space = unsafe { address_space::create_address_space() };
+    serial_println!("got address space");
+
+    let user = ThreadBuilder::new()
+        .with_addr_space(space)
+        .with_name("user_test")
+        .with_entry(|| usr_test_start())
+        .with_stack(16 * 1024)
+        .raw();
+
+    use crate::scheduler::SCHEDULER;
+    SCHEDULER.queue(user);
 
     cfg_if::cfg_if! {
         if #[cfg(feature = "test")] {

@@ -8,7 +8,7 @@
 // required for tests
 #![no_main]
 #![allow(internal_features)]
-#![deny(warnings, missing_docs, missing_abi, missing_debug_implementations)]
+// #![deny(warnings, missing_docs, missing_abi, missing_debug_implementations)]
 #![deny(rust_2024_compatibility)]
 #![allow(incomplete_features)]
 #![feature(

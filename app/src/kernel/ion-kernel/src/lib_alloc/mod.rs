@@ -3,8 +3,9 @@
 //! Typically, you don't use this module directly;
 //! instead, use [`alloc`] types like `Box`, `Vec`, etc.
 
-use core::{alloc::GlobalAlloc, fmt};
+use core::{alloc::GlobalAlloc, fmt, ptr::NonNull};
 
+use alloc::alloc::{AllocError, Allocator};
 use linked_list_allocator::LockedHeap;
 
 use crate::thread;
@@ -95,6 +96,19 @@ unsafe impl GlobalAlloc for RescheduleAlloc {
     }
 }
 
+unsafe impl Allocator for RescheduleAlloc {
+    fn allocate(&self, layout: core::alloc::Layout) -> Result<core::ptr::NonNull<[u8]>, alloc::alloc::AllocError> {
+        let alloc = unsafe { self.alloc(layout) };
+        
+        let ptr = NonNull::new(alloc).ok_or(AllocError)?;
+        Ok(NonNull::slice_from_raw_parts(ptr, layout.size()))
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: core::alloc::Layout) {
+        unsafe { self.dealloc(ptr.as_ptr(), layout) };
+    }
+}
+
 /// Global kernel allocator.
 ///
 /// Used implicitly by `Box`, `Vec`, etc.
@@ -103,3 +117,4 @@ pub static GLOBAL_ALLOC: RescheduleAlloc = RescheduleAlloc::empty();
 
 #[cfg(feature = "test")]
 pub mod tests;
+pub mod user;

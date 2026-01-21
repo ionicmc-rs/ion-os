@@ -2,13 +2,26 @@
 
 /// Represents a paging configuration
 // Note: this is handle, and thus can be copied/cloned
-#[derive(Debug, Clone, Copy)]
-#[repr(transparent)]
+#[derive(Debug, Clone)]
+#[repr(C)]
 pub struct AddressSpace {
     pml4: *mut u64,
+    user_alloc: Option<Arc<RescheduleAlloc>>
 }
 
-use crate::arch::{self, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4}};
+use alloc::sync::Arc;
+
+use crate::{arch::{self, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4}}, lib_alloc::{ self, RescheduleAlloc, user::reserve_space_for_addr}};
+
+impl AddressSpace {
+    pub fn ptr(&self) -> *mut u64 {
+        self.pml4
+    }
+
+    pub fn allocator(&self) -> Option<Arc<RescheduleAlloc>> {
+        self.user_alloc.clone()
+    }
+}
 
 /// Gets the current kernel address space
 /// # Safety
@@ -18,6 +31,7 @@ use crate::arch::{self, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY
 pub unsafe fn kernel_address_space() -> AddressSpace {
     AddressSpace {
         pml4: unsafe { active_pml4().0 },
+        user_alloc: None
     }
 }
 
@@ -43,7 +57,10 @@ pub unsafe fn create_address_space() -> AddressSpace {
         }
     }
 
-    AddressSpace { pml4 }
+    let mut space = AddressSpace { pml4, user_alloc: None };
+    let alloc = reserve_space_for_addr(&space);
+    space.user_alloc = Some(alloc.into());
+    space
 }
 
 /// maps inside this space

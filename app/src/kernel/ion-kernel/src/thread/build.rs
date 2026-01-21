@@ -1,24 +1,22 @@
 use core::fmt::Debug;
 
 use alloc::{
-    boxed::Box,
-    format,
-    string::{String, ToString as _},
+    alloc::{Allocator, Global}, boxed::Box, format, string::{String, ToString as _}, sync::Arc, vec::Vec
 };
 
 use crate::{
-    address_space::{AddressSpace, kernel_address_space}, arch, hlt_loop, thread::{self, JoinHandle, Thread}
+    address_space::{AddressSpace, kernel_address_space}, arch, hlt_loop, lib_alloc::RescheduleAlloc, serial_println, thread::{self, JoinHandle, Thread}
 };
 
 struct ThreadMetadata {
-    name: String,
+    name: Option<Vec<u8, Arc<dyn Allocator>>>,
     panicking: bool,
     safe: bool,
 }
 
 #[thread_local]
 static mut THREAD_DATA: ThreadMetadata = ThreadMetadata {
-    name: String::new(),
+    name: None,
     panicking: false,
     safe: true,
 };
@@ -48,6 +46,47 @@ impl<T: Send + 'static> Debug for ThreadBuilder<T> {
             .finish()
     }
 }
+
+struct Meta<T: Send + 'static> {
+    func: Box<dyn FnOnce() -> T, Arc<dyn Allocator>>,
+    name: Vec<u8, Arc<dyn Allocator>>,
+    safe: bool,
+    alloc: Arc<dyn Allocator>,
+}
+
+
+extern "C" fn thread_entry<T: Send + 'static>(arg: usize) -> ! {
+    // Reconstruct the box WITH the correct allocator
+    let meta_ptr = arg as *mut Meta<T>;
+
+    let boxed: Box<Meta<T>, Arc<dyn Allocator>> = unsafe {
+        let alloc = (*meta_ptr).alloc.clone();
+        Box::from_raw_in(meta_ptr, alloc)
+    };
+
+    // FULL MOVE OUT of the box
+    let Meta {
+        func,
+        name,
+        safe,
+        alloc: _, // allocator already used
+    } = *boxed;
+
+    // boxed is consumed here; no partial moves exist
+
+    unsafe {
+        THREAD_DATA.name = Some(name);
+        THREAD_DATA.safe = safe;
+    }
+
+    // Call FnOnce — consumes it
+    func();
+
+    // All remaining fields are dropped naturally here
+
+    thread::exit_current();
+}
+
 
 impl<T: Send + 'static> ThreadBuilder<T> {
     pub fn new() -> Self {
@@ -111,6 +150,11 @@ impl<T: Send + 'static> ThreadBuilder<T> {
         self
     }
 
+    pub fn with_addr_space(mut self, space: AddressSpace) -> Self {
+        self.addr_space = space;
+        self
+    }
+
     /// Builds the thread, queueing it into the scheduler.
     /// 
     /// this an alias for `spawn` that simply does not return the value.
@@ -118,38 +162,47 @@ impl<T: Send + 'static> ThreadBuilder<T> {
         _ = self.spawn();
     }
 
-    pub fn raw(self) -> Thread {
-        struct Meta<T: Send + 'static> {
-            func: Box<dyn FnOnce() -> T>,
-            name: String,
-            safe: bool,
-        }
-        extern "C" fn thread_entry<T: Send + 'static>(arg: usize) -> ! {
-            let meta = unsafe { (arg as *const Meta<T>).read() };
+    pub fn raw(mut self) -> Thread {
+        let alloc: Arc<dyn Allocator> =
+            if let Some(v) = self.addr_space.allocator() {
+                serial_println!("user space detected");
+                v
+            } else {
+                Arc::new(Global)
+            };
 
-            unsafe {
-                THREAD_DATA.name = meta.name;
-                THREAD_DATA.safe = meta.safe;
-            }
+        let name = self.name.unwrap_or("<unnamed>".to_string());
+        let name = name.as_bytes().to_vec_in(alloc.clone());
 
-            (meta.func)();
 
-            // drop the box
-            drop(unsafe { Box::from_raw(arg as *mut Meta<T>) });
+        serial_println!("retrieved name");
 
-            thread::exit_current();
-            hlt_loop()
-        }
+        // Re-home closure (unsized-safe)
+        let func = self.func.take().expect("function should be provided");
+        let raw = Box::into_raw(func);
+        let func = unsafe { Box::from_raw_in(raw, alloc.clone()) };
+
+
+        serial_println!("retrieved func");
 
         let meta = Meta {
-            func: self.func.expect("function should be provided"),
-            name: self.name.unwrap_or("<unnamed>".to_string()),
+            func,
+            name,
             safe: self.safe,
+            alloc: alloc.clone(),
         };
-        let boxed = Box::new(meta);
 
-        Thread::new(thread_entry::<T>, Box::into_raw(boxed) as usize, self.stack, self.addr_space)
+        let boxed = Box::new_in(meta, alloc.clone());
+
+        Thread::new(
+            thread_entry::<T>,
+            Box::into_raw_with_allocator(boxed).0 as usize,
+            self.stack,
+            self.addr_space,
+        )
     }
+
+
 
     /// spawns the thread.
     /// 
@@ -158,10 +211,14 @@ impl<T: Send + 'static> ThreadBuilder<T> {
     pub fn spawn(self) -> JoinHandle<T> {
         super::spawn_at(
             move || {
-                let id = thread::current().unwrap().id().0;
                 unsafe {
-                    THREAD_DATA.name = self.name.unwrap_or(format!("<id {id}>"));
+                    let name = self.name.unwrap_or("<unnamed>".to_string());
+
+                    let name: Vec<u8, Arc<dyn Allocator>> = name.as_bytes().to_vec_in(Arc::new(Global));
+                    
+                    THREAD_DATA.name = Some(name);
                     THREAD_DATA.safe = self.safe;
+
                 }
 
                 if let Some(func) = self.func {
@@ -192,9 +249,9 @@ pub fn preemption_safe() -> bool {
 }
 
 #[allow(static_mut_refs)]
-pub fn name() -> String {
+pub fn name() -> Option<Vec<u8, Arc<dyn Allocator>>> {
     if arch::tls::read_ptr().is_null() {
-        return Default::default();
+        return None;
     }
     unsafe { THREAD_DATA.name.clone() }
 }
@@ -203,7 +260,10 @@ pub fn set_name(s: impl Into<String>) {
     if arch::tls::read_ptr().is_null() {
         return;
     }
-    unsafe { THREAD_DATA.name = s.into() };
+    let bytes = s.into().into_bytes();
+    let mut vec: Vec<_, Arc<dyn Allocator>> = Vec::new_in(Arc::new(Global));
+    vec.extend(bytes);
+    unsafe { THREAD_DATA.name = Some(vec) };
 }
 
 /// # Safety

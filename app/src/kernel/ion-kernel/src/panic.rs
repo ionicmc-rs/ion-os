@@ -1,7 +1,7 @@
 //! panicking.
 use core::{cell::Cell, panic::PanicInfo, sync::atomic::compiler_fence};
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{borrow::Cow, boxed::Box, string::String, vec::Vec};
 use x86_64::registers::model_specific::FsBase;
 
 use crate::{
@@ -57,7 +57,10 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
     unsafe { thread::build::set_panic() };
     let loc = info.location().unwrap();
     let message = info.message();
-    let tname = thread::name();
+    let tname = thread::name().map(|v|
+        String::from_utf8(v.to_vec()).unwrap()
+    )
+    .unwrap_or_else(|| "<unnamed>".into());
     match info.can_unwind() {
         true => serial_println!("(unwind) thread `{tname}` panicked at {loc}"),
         false => serial_println!("(abort) thread `{tname}` panicked at {loc}"),

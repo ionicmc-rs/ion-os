@@ -577,12 +577,13 @@ pub fn current() -> Option<&'static Thread> {
     SCHEDULER.current()
 }
 
-pub fn exit_current() {
+pub fn exit_current() -> ! {
     if let Some(v) = SCHEDULER.current_mut() {
         v.set_state(State::Terminated)
     }
     wake_waiters_of(thread::id());
     SCHEDULER.schedule(ScheduleReason::Exit);
+    hlt_loop()
 }
 
 pub fn sleep_current(ticks: u64) {
@@ -625,7 +626,7 @@ pub fn reschedule_if_needed() {
     SCHEDULER.reschedule_if_needed();
 }
 
-pub fn critical_moment<R>(f: impl Fn() -> R) -> R {
+pub fn critical_moment<R>(f: impl FnOnce() -> R) -> R {
     let mut buf = MaybeUninit::uninit();
     SCHEDULER.critical_moment(f, &mut buf);
 
@@ -633,7 +634,7 @@ pub fn critical_moment<R>(f: impl Fn() -> R) -> R {
     unsafe { buf.assume_init() }
 }
 
-pub fn critical_moment_raw<R>(f: impl Fn() -> R) -> R {
+pub fn critical_moment_raw<R>(f: impl FnOnce() -> R) -> R {
     let mut buf = MaybeUninit::uninit();
     SCHEDULER.critical_moment_raw(f, &mut buf);
 
