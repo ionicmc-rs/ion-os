@@ -1,4 +1,4 @@
-use crate::{arch::syscall::parse::Syscall, hlt_loop, log::info, serial_println, thread};
+use crate::{arch::syscall::parse::{ProcessCommand, Syscall, ThreadCommand}, hlt_loop, log::info, serial_println, thread};
 
 /// Represents inputs to a syscall
 #[repr(C)]
@@ -14,7 +14,7 @@ pub struct SyscallFrame {
     pub r9:  u64,
 }
 
-const UNKNOWN_MAGIC_VAL: u64 = 0xab07;
+const UNKNOWN_MAGIC_VAL: u64 = 0xab07df;
 
 fn set_metadata(val: u64) {
     unsafe {
@@ -40,10 +40,27 @@ pub extern "C" fn syscall_dispatch(
             set_metadata(0);
             0
         },
-        Syscall::Exit(code) => {
-            info!("process <TID {}> exited with code {code}", thread::id().0);
-            thread::exit_current();
-            hlt_loop()
+        Syscall::Process(v) => {
+            match v {
+                ProcessCommand::Exit(code) => {
+                    info!("process <TID {}> exited with code {code}", thread::id().0);
+                    thread::exit_current();
+                }
+                ProcessCommand::Unknown => {
+                    set_metadata(UNKNOWN_MAGIC_VAL);
+                    frame.rax
+                }
+            }
+        }
+
+        Syscall::Thread(v) => match v {
+            ThreadCommand::ExitCurrent => {
+                thread::exit_current();
+            }
+            ThreadCommand::Unknown => {
+                set_metadata(UNKNOWN_MAGIC_VAL);
+                frame.rax
+            }
         }
 
         // Unknown syscall policy:
