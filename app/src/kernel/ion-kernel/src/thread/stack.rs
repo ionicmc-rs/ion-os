@@ -1,6 +1,6 @@
-use core::alloc::Layout;
+use core::{alloc::Layout, ptr::NonNull};
 
-use alloc::alloc::{alloc_zeroed, dealloc, handle_alloc_error};
+use alloc::alloc::{Allocator, handle_alloc_error};
 
 use crate::{c_lib::libc, lib_alloc::is_heap_addr};
 
@@ -17,28 +17,25 @@ use crate::{c_lib::libc, lib_alloc::is_heap_addr};
 /// # Examples
 /// no examples are provided - use the [`thread api`](super) for threads.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ThreadStack {
+pub struct ThreadStack<A: Allocator> {
     base: *mut u8,
+    alloc: A,
     size: usize,
     #[cfg(debug_assertions)]
     should_drop: bool,
 }
 
-impl ThreadStack {
-    pub fn of_size(size: usize) -> ThreadStack {
+impl<A: Allocator> ThreadStack<A> {
+    pub fn of_size(size: usize, alloc: A) -> ThreadStack<A> {
         let layout = Layout::from_size_align(size, 16)
             .expect("Invalid thread stack size - must be usable with an alignment of 16");
 
-        let alloc = unsafe { alloc_zeroed(layout) };
-
-        if alloc.is_null() || !is_heap_addr(alloc as usize) {
-            libc::set_errno(5); // alloc failure
-            handle_alloc_error(layout);
-        }
+        let allocated = alloc.allocate_zeroed(layout).unwrap_or_else(|_| handle_alloc_error(layout)).as_ptr();
 
         ThreadStack {
-            base: alloc,
+            base: allocated as *mut u8,
             size,
+            alloc,
             #[cfg(debug_assertions)]
             should_drop: true,
         }
@@ -59,7 +56,7 @@ impl ThreadStack {
     pub const ALIGNMENT: usize = 16;
 }
 
-impl Drop for ThreadStack {
+impl<A: Allocator> Drop for ThreadStack<A> {
     fn drop(&mut self) {
         unsafe {
             // Safety: if the layout fails here, that means this `ThreadStack` was created illegally.
@@ -71,7 +68,7 @@ impl Drop for ThreadStack {
                 );
             }
             // Safety: if this fails here, that means this `ThreadStack` was created with an allocation error, which should not happen
-            dealloc(self.base, layout);
+            self.alloc.deallocate(NonNull::new(self.base).unwrap(), layout);
         };
     }
 }

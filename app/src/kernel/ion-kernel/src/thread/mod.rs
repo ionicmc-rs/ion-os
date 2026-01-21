@@ -24,6 +24,7 @@ pub mod pool;
 pub mod stack;
 pub mod sync;
 
+use alloc::{alloc::{Allocator, Global}, sync::Arc};
 pub use join::{JoinError, JoinErrorKind, JoinHandle, spawn, spawn_at};
 
 pub use crate::scheduler::{
@@ -42,7 +43,7 @@ pub struct Thread {
     tls: usize,
 
     /// owned memory to ensure [`Drop`] runs on the allocation
-    _stack: ThreadStack,
+    _stack: ThreadStack<Arc<dyn Allocator>>, // this is a little fishy....
     // guards against forgetting to drop the allocation.
     _tls_guard: TlsAllocation, // No metadata storage here, we do that with thread local storage.
 }
@@ -58,7 +59,13 @@ impl Thread {
         // use critical moment to prevent alloc from rescheduling.
         self::critical_moment_raw(|| {
             serial_println!("creating stack.");
-            let mut stack = ThreadStack::of_size(stack);
+            let alloc: Arc<dyn Allocator> = if let Some(v) = addr_space.allocator() {
+                v
+            } else {
+                Arc::new(Global)
+            };
+            serial_println!("retrieved alloc");
+            let mut stack = ThreadStack::of_size(stack, alloc);
             serial_println!("created stack.");
             let id = ThreadID(NEXT_ID.fetch_add(1, Ordering::Relaxed));
 
