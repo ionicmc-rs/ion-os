@@ -1,11 +1,11 @@
 use core::fmt::Debug;
 
 use alloc::{
-    alloc::{Allocator, Global}, boxed::Box, format, string::{String, ToString as _}, sync::Arc, vec::Vec
+    alloc::{Allocator, Global}, boxed::Box, string::{String, ToString as _}, sync::Arc, vec::Vec
 };
 
 use crate::{
-    address_space::{AddressSpace, kernel_address_space}, arch, hlt_loop, lib_alloc::RescheduleAlloc, serial_println, thread::{self, JoinHandle, Thread, ThreadID}
+    address_space::{AddressSpace, kernel_address_space}, arch, serial_println, thread::{self, JoinHandle, Thread, ThreadID}
 };
 
 struct ThreadMetadata {

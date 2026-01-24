@@ -2,8 +2,6 @@ use core::{alloc::Layout, ptr::NonNull};
 
 use alloc::alloc::{Allocator, handle_alloc_error};
 
-use crate::{c_lib::libc, lib_alloc::is_heap_addr};
-
 /// A stack meant for a thread.
 ///
 /// Currently, these threads are unguarded, this is not planned for user threads.

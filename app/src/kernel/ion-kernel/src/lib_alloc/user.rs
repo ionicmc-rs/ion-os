@@ -1,6 +1,6 @@
-use core::{alloc::{GlobalAlloc, Layout}, ptr};
+use core::{alloc::{ Layout}, ptr};
 
-use crate::{address_space::{self, AddressSpace, kernel_address_space}, arch::{VirtAddr, defs, frame_allocator::alloc_2mib_frame, mmu::{PageTable, PageTableFlags, map_2mib}}, lib_alloc::RescheduleAlloc, serial_println};
+use crate::{address_space::{self, AddressSpace}, arch::{VirtAddr, defs, frame_allocator::alloc_2mib_frame, mmu::PageTableFlags}, lib_alloc::RescheduleAlloc, serial_println};
 
 use core::ptr::NonNull;
 use alloc::{alloc::{AllocError, Allocator}, boxed::Box};

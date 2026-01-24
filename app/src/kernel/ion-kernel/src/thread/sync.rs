@@ -36,10 +36,8 @@
 //! [^1]: using these structures on (thread) local variables has no effect.
 
 use core::{
-    any::type_name, cell::UnsafeCell, fmt::{Debug, Display}, ops::{Deref, DerefMut}, sync::atomic::{AtomicBool, Ordering}
+    cell::UnsafeCell, fmt::{Debug, Display}, ops::{Deref, DerefMut}, sync::atomic::{AtomicBool, Ordering}
 };
-
-use alloc::string::String;
 
 use crate::{panic, thread};
 

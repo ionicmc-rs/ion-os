@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use crate::{address_space::AddressSpace, hlt_loop, serial_println};
+use crate::{address_space::AddressSpace, serial_println};
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -107,7 +107,6 @@ impl Context {
 extern "C" fn thread_exit() -> ! {
     serial_println!("thread exited");
     crate::scheduler::exit_current();
-    hlt_loop()
 }
 
 unsafe extern "C" {

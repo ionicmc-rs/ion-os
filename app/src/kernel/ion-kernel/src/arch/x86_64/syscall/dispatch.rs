@@ -1,4 +1,4 @@
-use crate::{arch::syscall::parse::{ProcessCommand, Syscall, ThreadCommand}, hlt_loop, log::info, serial_println, thread};
+use crate::{arch::syscall::parse::{ProcessCommand, Syscall, ThreadCommand}, log::info, serial_println, thread};
 
 /// Represents inputs to a syscall
 #[repr(C)]
