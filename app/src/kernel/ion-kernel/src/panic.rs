@@ -1,7 +1,7 @@
 //! panicking.
 use core::{cell::Cell, panic::PanicInfo, sync::atomic::compiler_fence};
 
-use alloc::{borrow::Cow, boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 use x86_64::registers::model_specific::FsBase;
 
 use crate::{

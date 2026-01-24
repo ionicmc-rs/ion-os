@@ -451,6 +451,7 @@ fn check_tools(minimal: bool, vm: Option<Vm>, verbose: bool) -> Result<()> {
 
         
 
+        #[allow(clippy::if_same_then_else)]
         match buf.as_str().trim() {
             "1" => {
                 if minimal {

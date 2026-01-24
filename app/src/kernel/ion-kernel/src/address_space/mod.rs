@@ -11,7 +11,7 @@ pub struct AddressSpace {
 
 use alloc::sync::Arc;
 
-use crate::{arch::{self, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4}}, lib_alloc::{ self, RescheduleAlloc, user::reserve_space_for_addr}};
+use crate::{arch::{self, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4}}, lib_alloc::{RescheduleAlloc, user::reserve_space_for_addr}};
 
 impl AddressSpace {
     pub fn ptr(&self) -> *mut u64 {

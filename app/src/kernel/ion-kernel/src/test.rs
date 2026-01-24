@@ -21,7 +21,7 @@ use core::any::{Any, TypeId, type_name};
 use alloc::{format, vec};
 
 use crate::{
-    hlt_loop, serial_print, serial_println,
+    serial_print, serial_println,
     thread::{self, JoinErrorKind, ThreadBuilder},
 };
 
@@ -60,7 +60,6 @@ impl TestInfo<'_> {
 
         thread::exit_current();
 
-        hlt_loop();
     }
 }
 
