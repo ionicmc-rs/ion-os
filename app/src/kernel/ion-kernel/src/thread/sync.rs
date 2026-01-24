@@ -36,11 +36,10 @@
 //! [^1]: using these structures on (thread) local variables has no effect.
 
 use core::{
-    cell::UnsafeCell,
-    fmt::Display,
-    ops::{Deref, DerefMut},
-    sync::atomic::{AtomicBool, Ordering},
+    any::type_name, cell::UnsafeCell, fmt::{Debug, Display}, ops::{Deref, DerefMut}, sync::atomic::{AtomicBool, Ordering}
 };
+
+use alloc::string::String;
 
 use crate::{panic, thread};
 
@@ -48,6 +47,34 @@ pub struct Mutex<T: ?Sized> {
     locked: AtomicBool,
     poisoned: AtomicBool,
     value: UnsafeCell<T>,
+}
+
+impl<T: Debug> Debug for Mutex<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        struct DebugTag(&'static str);
+
+        impl core::fmt::Debug for DebugTag {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.write_str(self.0)
+            }
+        }
+
+        let mut ds = f.debug_struct(core::any::type_name::<Self>());
+
+        match self.try_lock() {
+            Ok(v) => {
+                ds.field("data", &*v);
+            }
+            Err(TryLockError::Locked) => {
+                ds.field("data", &DebugTag("{{ locked }}"));
+            }
+            Err(TryLockError::Poisoned) => {
+                ds.field("data", &DebugTag("{{ poisoned }}"));
+            }
+        }
+
+        ds.finish()
+    }
 }
 
 #[derive(Debug, Clone)]

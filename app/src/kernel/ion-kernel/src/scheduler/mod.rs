@@ -12,7 +12,7 @@ use core::{
 use alloc::{boxed::Box, collections::vec_deque::VecDeque, vec::Vec};
 
 use crate::{
-    address_space::kernel_address_space, arch::interrupts::InterruptGuard, hlt_loop, serial_println, thread::{
+    address_space::kernel_address_space, arch::interrupts::InterruptGuard, hlt_loop, process::{self, CURRENT_PROCESS, PROCESSES}, serial_println, thread::{
         self, State, Thread, ThreadID,
         build::TPriority,
         tls::{ThreadSelf, install_tls},
@@ -326,6 +326,23 @@ impl Queues {
         self.idle.take()
     }
 
+    pub fn by_id(&mut self, id: ThreadID) -> Option<Thread> {
+        macro_rules! check_queue {
+            ($q:expr_2021, $id:expr) => {
+                if let Some(pos) = $q.0.iter().position(|p| p.id() == $id) {
+                    return $q.0.remove(pos);
+                }
+            };
+        }
+        check_queue!(self.high, id);
+        check_queue!(self.med, id);
+        check_queue!(self.low, id);
+        if let Some(pos) = self.non_running.0.iter().position(|p| p.1.id() == id) {
+            return self.non_running.0.remove(pos).map(|v| v.1);
+        }
+        None
+    }
+
 }
 
 macro_rules! unsafe_cell_ref {
@@ -571,6 +588,10 @@ impl Scheduler {
     pub fn current_mut(&self) -> Option<&mut Thread> {
         unsafe_cell_ref!(mut self.current).as_mut().map(|(t, _)| t)
     }
+
+    pub fn kill(&self, id: ThreadID) {
+        _ = unsafe_cell_ref!(mut self.queues).by_id(id);
+    }
 }
 
 pub fn current() -> Option<&'static Thread> {
@@ -582,6 +603,23 @@ pub fn exit_current() -> ! {
         v.set_state(State::Terminated)
     }
     wake_waiters_of(thread::id());
+    if let Some(v) = unsafe { CURRENT_PROCESS } {
+        let locked = PROCESSES.lock();
+        thread::critical_moment_raw(|| {
+            locked.with_mut(v, |p| {
+                if let Some(idx) = p.threads.iter().position(|&t| t == thread::id()) {
+                    p.threads.remove(idx);
+                }
+
+                if p.threads.is_empty() {
+                    // Safety: this wont exit the current threads if 
+                    // threads is empty
+                    process::exit_proc(p.pid);
+                }
+                // do not use `p` here anymore.
+            })
+        });
+    }
     SCHEDULER.schedule(ScheduleReason::Exit);
     hlt_loop()
 }
@@ -668,6 +706,13 @@ fn wake_waiters_of(id: ThreadID) {
     serial_println!("waking waiters of id {id:?}");
     SCHEDULER.wake_waiters_of(id);
 }
+
+pub unsafe fn kill(id: ThreadID) {
+    debug_assert_ne!(id, thread::id(), "killing the current thread causes a page fault");
+    serial_println!("[killed] thread id {id:?} was killed");
+    SCHEDULER.kill(id);
+}
+
 #[allow(unused)]
 enum ScheduleReason {
     Yield,
