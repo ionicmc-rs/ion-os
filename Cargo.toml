@@ -2,6 +2,6 @@
 members = [
     "xtask",
     "app/src/kernel/ion-kernel"
-]
+, "app/src/kernel/ion_api"]
 
 resolver = "3"

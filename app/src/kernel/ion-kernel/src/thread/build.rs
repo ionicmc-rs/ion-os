@@ -5,7 +5,7 @@ use alloc::{
 };
 
 use crate::{
-    address_space::{AddressSpace, kernel_address_space}, arch, hlt_loop, lib_alloc::RescheduleAlloc, serial_println, thread::{self, JoinHandle, Thread}
+    address_space::{AddressSpace, kernel_address_space}, arch, hlt_loop, lib_alloc::RescheduleAlloc, serial_println, thread::{self, JoinHandle, Thread, ThreadID}
 };
 
 struct ThreadMetadata {
@@ -158,10 +158,13 @@ impl<T: Send + 'static> ThreadBuilder<T> {
     /// Builds the thread, queueing it into the scheduler.
     /// 
     /// this an alias for `spawn` that simply does not return the value.
-    pub fn build(self) {
-        _ = self.spawn();
+    /// 
+    /// this *does* return the id, however, as that is often needed
+    pub fn build(self) -> ThreadID {
+        self.spawn().id()
     }
 
+    #[must_use = "This method does not queue the thread - not using causes drops"]
     pub fn raw(mut self) -> Thread {
         let alloc: Arc<dyn Allocator> =
             if let Some(v) = self.addr_space.allocator() {

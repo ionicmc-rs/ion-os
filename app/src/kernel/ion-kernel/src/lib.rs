@@ -29,7 +29,8 @@
     ptr_metadata,
     thread_local,
     const_convert,
-    never_type
+    never_type,
+    formatting_options
 )]
 #![test_runner(test::run_tests)] // this is unused but silences errors.
 
@@ -63,6 +64,7 @@ pub mod stack;
 pub mod arch;
 pub mod address_space;
 pub mod privilege;
+pub mod process;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {

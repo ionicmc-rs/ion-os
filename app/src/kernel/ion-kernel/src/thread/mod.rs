@@ -31,6 +31,7 @@ pub use crate::scheduler::{
     atomic_block_until, block_until, block_until_end_of, block_until_key_input, block_until_true,
     critical_moment, critical_moment_raw, current, exit_current, has_panicked, remove_panic_id,
     request_reschedule, reschedule_if_needed, start, yield_now,
+    kill
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

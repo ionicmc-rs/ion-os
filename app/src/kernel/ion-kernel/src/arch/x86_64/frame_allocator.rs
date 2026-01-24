@@ -1,10 +1,10 @@
 //! x86_64 physical frame allocator (2 MiB frames only)
 
 use core::ptr::NonNull;
-use crate::c_lib::{MultibootMemory, USABLE_ENTRY};
+use crate::{arch::defs::PAGE_SIZE, c_lib::{MultibootMemory, USABLE_ENTRY}, serial_println};
 
 /// 2 MiB (Size of one Frame, subject to change)
-pub const FRAME_SIZE: usize = 2 * 1024 * 1024;
+pub const FRAME_SIZE: usize = PAGE_SIZE;
 
 /// Frame allocator which uses boot info
 #[derive(Debug)]
@@ -18,6 +18,17 @@ impl BootInfoFrameAllocator {
     /// - memory_map must be valid
     /// - frames must not be in use
     pub unsafe fn init(memory_map: NonNull<MultibootMemory>) -> Self {
+        let count = unsafe { memory_map.as_ref() }
+            .entries
+            .iter()
+            .filter(|e| e.entry_type == USABLE_ENTRY)
+            .flat_map(|e| {
+                let start = align_up(e.start_addr(), FRAME_SIZE);
+                let end = align_down(e.end_addr(), FRAME_SIZE);
+                (start..end).step_by(FRAME_SIZE)
+            })
+            .count();
+        serial_println!("max frame count: {count}");
         Self { memory_map, next: 0 }
     }
 

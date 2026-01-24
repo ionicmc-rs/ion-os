@@ -5,7 +5,7 @@ use pc_keyboard::KeyState;
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, event, log::error, scheduler};
+use crate::{address_space, arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, event, log::error, process, scheduler};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -63,12 +63,12 @@ fn handle_kbd() -> ! {
 }
 
 #[thread_local]
-static __TLOCAL: usize = 0;
+static __TLOCAL: usize = 0xdeadbeef;
 
+const X: spin::Mutex<i32> = spin::Mutex::new(0);
 /// final init.
 pub fn kernel_main() {
-
-    assert_eq!(__TLOCAL, 0, "tls is not setup correctly");
+    assert_eq!(__TLOCAL, 0xdeadbeef, "tls is not setup correctly");
 
     #[cfg(debug_assertions)]
     event::add_key_listener(|ev| {
@@ -84,6 +84,24 @@ pub fn kernel_main() {
         .with_stack(16 * 1024)
         .with_entry(handle_kbd)
         .build();
+
+    let tid = ThreadBuilder::new()
+        .with_addr_space(unsafe { address_space::create_address_space() })
+        .with_name("proc_test")
+        .with_stack(16 * 1024)
+        .with_entry(|| {
+            serial_println!("were in a proc!");
+            loop {
+                thread::yield_now();
+            }
+        })
+        .build();
+
+    let pid = process::spawn_proc("proc", 0, tid, None);
+    process::dump();
+    thread::yield_now();
+    process::exit_proc(pid);
+    process::dump();
 
     cfg_if::cfg_if! {
         if #[cfg(feature = "test")] {
@@ -114,7 +132,6 @@ pub fn kernel_main() {
             ]);
         } else {
             thread::exit_current();
-            hlt_loop()
         }
     }
 }

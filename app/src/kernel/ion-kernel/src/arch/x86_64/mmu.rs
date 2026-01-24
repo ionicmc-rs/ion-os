@@ -45,6 +45,7 @@ unsafe fn next_table(entry: u64) -> *mut u64 {
 
 bitflags::bitflags! {
     /// Flags for page tables
+    #[derive(PartialEq, Clone, Copy)]
     pub struct PageTableFlags: u64 {
         /// Page is 2MiB
         const HUGE_PAGE = ENTRY_HUGE;

@@ -72,6 +72,10 @@ impl<T: Send + 'static> JoinHandle<T> {
             .as_ref()
             .ok_or(JoinError(self.id, JoinErrorKind::Unfinished))
     }
+
+    pub fn id(&self) -> ThreadID {
+        self.id
+    }
 }
 
 pub fn spawn<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
