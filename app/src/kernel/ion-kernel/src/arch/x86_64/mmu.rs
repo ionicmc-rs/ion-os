@@ -1,7 +1,7 @@
 //! x86_64 MMU (2 MiB huge pages only)
 
 use x86_64::registers::control::Cr3;
-use crate::arch::{VirtAddr, defs};
+use crate::arch::{PhysAddr, VirtAddr, defs};
 
 /// represents the flag for a present entry
 pub const ENTRY_PRESENT: u64 = 1 << 0;
@@ -54,9 +54,10 @@ bitflags::bitflags! {
         /// never apply on kernel-private data
         const USER_PAGE = 1 << 2;
         /// Page can be written to
-        const WRITABLE = ENTRY_PRESENT;
+        const WRITABLE = ENTRY_WRITABLE;
         /// Page is present
         const PRESENT = ENTRY_PRESENT;
+        const NO_CACHE = 1 << 4;
         const NO_EXECUTE = 1 << 63;
     }
 }
@@ -72,7 +73,7 @@ bitflags::bitflags! {
 pub unsafe fn map_2mib(
     pml4: &mut PageTable,
     virt: VirtAddr,
-    phys: usize,
+    phys: PhysAddr,
     mut flags: PageTableFlags,
 ) {
     // temporary
@@ -81,7 +82,7 @@ pub unsafe fn map_2mib(
     let v = virt.0;
 
     debug_assert!(v % (2 * 1024 * 1024) == 0);
-    debug_assert!(phys % (2 * 1024 * 1024) == 0);
+    debug_assert!(phys.0 % (2 * 1024 * 1024) == 0);
 
     let l4 = pml4.0;
     let l4e = l4.add(pml4_index(v));
@@ -104,7 +105,7 @@ pub unsafe fn map_2mib(
 
     let flags = PageTableFlags::PRESENT | PageTableFlags::HUGE_PAGE | flags;
 
-    *pde = (phys as u64) | flags.bits();
+    *pde = (phys.0 as u64) | flags.bits();
 
     // Invalidate TLB for this page
     core::arch::asm!("invlpg [{}]", in(reg) v, options(nostack, preserves_flags));
@@ -141,10 +142,52 @@ pub unsafe fn init_kernel_heap() {
         map_2mib(
             &mut pml4,
             VirtAddr(virt as defs::PointerTy),
-            phys,
+            PhysAddr(phys as defs::PointerTy),
             PageTableFlags::WRITABLE, // writable
         );
 
         virt += 2 * 1024 * 1024;
     }
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+pub unsafe fn virt_to_phys(virt: VirtAddr) -> Option<PhysAddr> {
+    let addr = virt.0 as u64;
+    
+    // Get the physical root from CR3 (just like active_pml4 does)
+    let (frame, _) = x86_64::registers::control::Cr3::read();
+    let pml4_ptr = frame.start_address().as_u64() as *const u64;
+    
+    // Level 4: PML4
+    let pml4e = *pml4_ptr.add(pml4_index(addr));
+    if pml4e & ENTRY_PRESENT == 0 { return None; }
+
+    // Level 3: PDPT
+    let pdpt_ptr = next_table(pml4e) as *const u64;
+    let pdpte = *pdpt_ptr.add(pdpt_index(addr));
+    if pdpte & ENTRY_PRESENT == 0 { return None; }
+
+    // Level 2: Page Directory
+    let pd_ptr = next_table(pdpte) as *const u64;
+    let pde = *pd_ptr.add(pd_index(addr));
+    if pde & ENTRY_PRESENT == 0 { return None; }
+
+    // Check if this is a 2MiB Huge Page (Your driver uses these!)
+    if pde & ENTRY_HUGE != 0 {
+        let phys_base = pde & 0x000f_ffff_fffe_0000; // Mask for 2MiB alignment
+        let offset = addr & 0x1F_FFFF;
+        return Some(PhysAddr(phys_base | offset));
+    }
+
+    // Level 1: Page Table (Standard 4KiB page)
+    // Note: Based on your map_2mib, you likely don't have level 1 tables,
+    // but we include this for completeness.
+    let pt_ptr = next_table(pde) as *const u64;
+    let pt_idx = ((addr >> 12) & 0x1ff) as usize;
+    let pte = *pt_ptr.add(pt_idx);
+    if pte & ENTRY_PRESENT == 0 { return None; }
+
+    let phys_base = pte & 0x000f_ffff_ffff_f000;
+    let offset = addr & 0xFFF;
+    Some(PhysAddr(phys_base | offset))
 }

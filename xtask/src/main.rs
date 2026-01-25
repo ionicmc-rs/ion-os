@@ -42,6 +42,9 @@ enum Cmd {
         /// Sets the virtual machine to run the tests.
         #[arg(long, value_enum, default_value = "qemu", global = true)]
         vm: Vm,
+        /// Wether or not build.
+        #[arg(long, name = "no-build")]
+        no_build: bool,
     },
     /// Run the output ISO.
     Run {
@@ -132,11 +135,13 @@ fn main() -> Result<()> {
 
     match cli.command {
         Cmd::Build { release, test } => build(&cli, test, release),
-        Cmd::Test { vm } => {
-            build(&cli, true, false)?;
-            println!(
-                "build complete, you may need to change the permissions of kernel.iso before executing."
-            );
+        Cmd::Test { vm , no_build} => {
+            if !no_build {
+                build(&cli, true, false)?;
+                println!(
+                    "build complete, you may need to change the permissions of kernel.iso before executing."
+                );
+            }
             run_vm(vm, cli.arch, true)
         }
         Cmd::Run {
@@ -146,10 +151,10 @@ fn main() -> Result<()> {
         } => {
             if !no_build {
                 build(&cli, false, release)?;
+                println!(
+                    "build complete, you may need to change the permissions of kernel.iso before executing."
+                );
             }
-            println!(
-                "build complete, you may need to change the permissions of kernel.iso before executing."
-            );
             run_vm(vm, cli.arch, false)
         }
         Cmd::Doctor {
@@ -358,6 +363,14 @@ fn run_qemu(iso: &str) -> Result<()> {
         "stdio",
         "-device",
         "isa-debug-exit,iobase=0xf4,iosize=0x04",
+        "-drive",
+        "file=dist/disk.img,if=none,id=disk0",
+        "-device", 
+        "virtio-blk-pci,drive=disk0,disable-legacy=on",
+        "-machine",
+        "q35",
+        "-d",
+        "cpu_reset"
     ]);
 
     let status = cmd.status()?.code();

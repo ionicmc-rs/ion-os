@@ -27,7 +27,7 @@ pub fn heap_start() -> usize {
 }
 
 #[inline]
-fn heap_end() -> usize {
+pub fn heap_end() -> usize {
     heap_start() + HEAP_SIZE
 }
 

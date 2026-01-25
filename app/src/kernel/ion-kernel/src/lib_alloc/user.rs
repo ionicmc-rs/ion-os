@@ -1,6 +1,6 @@
 use core::{alloc::{ Layout}, ptr};
 
-use crate::{address_space::{self, AddressSpace}, arch::{VirtAddr, defs, frame_allocator::alloc_2mib_frame, mmu::PageTableFlags}, lib_alloc::RescheduleAlloc, serial_println};
+use crate::{address_space::{self, AddressSpace}, arch::{PhysAddr, VirtAddr, defs, frame_allocator::alloc_2mib_frame, mmu::PageTableFlags}, lib_alloc::RescheduleAlloc, serial_println};
 
 use core::ptr::NonNull;
 use alloc::{alloc::{AllocError, Allocator}, boxed::Box};
@@ -209,7 +209,7 @@ pub fn reserve_space_for_addr(
         address_space::map_into_space(
             space,
             VirtAddr(base as defs::PointerTy),
-            phys,
+            PhysAddr(phys as defs::PointerTy),
             PageTableFlags::USER_PAGE | PageTableFlags::WRITABLE,
         );
     }

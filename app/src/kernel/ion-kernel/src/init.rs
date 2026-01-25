@@ -19,7 +19,7 @@ use core::fmt::Display;
 
 use crossbeam_queue::ArrayQueue;
 
-use crate::{arch::{self, interrupts::{self, keyboard::SC_QUEUE}, syscall::init_syscalls}, c_lib::BootInfo, lib_alloc::{init_heap, user::init_user_data}, privilege::init_users, serial_println};
+use crate::{arch::{self, interrupts::{self, keyboard::SC_QUEUE}, syscall::init_syscalls}, c_lib::BootInfo, disk, lib_alloc::{init_heap, user::init_user_data}, privilege::init_users, serial_println};
 
 /// An error while Initializing the Kernel
 ///
@@ -72,8 +72,7 @@ impl InitErr {
 /// returns the first error, as an [`InitErr`]
 #[allow(static_mut_refs)]
 pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
-    // serial_println!("Now Initializing GDT and TSS.");
-    // interrupts::init_gdt_tss();
+    // interrupts
     serial_println!("Now Initializing IDT.");
     interrupts::init_interrupt_operations();
 
@@ -90,11 +89,19 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
     serial_println!("initializing user data heap...");
     unsafe { init_user_data() };
     serial_println!("heaps have been initialized");
+    
+    // keyboard
 
     unsafe { SC_QUEUE.write(ArrayQueue::new(100)) };
 
+    // user
+
     init_users();
     unsafe { init_syscalls() };
+
+    // disk
+
+    disk::init();
 
     x86_64::instructions::interrupts::enable();
 

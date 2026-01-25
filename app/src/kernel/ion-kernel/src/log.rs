@@ -5,7 +5,7 @@ use core::fmt;
 
 use x86_64::instructions::interrupts;
 
-use crate::text::{Color, print, println, query_print_color, set_print_color};
+use crate::{serial_println, text::{Color, print, println, set_print_color}};
 
 /// Log levels
 ///
@@ -33,7 +33,7 @@ pub fn log(level: Level, args: fmt::Arguments) {
             return;
         }
         let loc = core::panic::Location::caller();
-        let (fore, back) = query_print_color().tupled();
+        let (fore, back) = (Color::White, Color::Black);
         print!("[");
         let col = match level {
             Level::Debug => Color::Green,
@@ -48,7 +48,8 @@ pub fn log(level: Level, args: fmt::Arguments) {
 
         set_print_color(fore, back);
         println!(" {}] {}", loc, args);
-    })
+        serial_println!("[{level:?} {loc}] {args}")
+    });
 }
 
 /// Info log

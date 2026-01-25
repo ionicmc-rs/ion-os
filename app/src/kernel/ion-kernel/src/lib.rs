@@ -65,6 +65,7 @@ pub mod arch;
 pub mod address_space;
 pub mod privilege;
 pub mod process;
+pub mod disk;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {

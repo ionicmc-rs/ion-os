@@ -9,9 +9,11 @@ pub struct AddressSpace {
     user_alloc: Option<Arc<RescheduleAlloc>>
 }
 
+use core::{cell::OnceCell};
+
 use alloc::sync::Arc;
 
-use crate::{arch::{self, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4}}, lib_alloc::{RescheduleAlloc, user::reserve_space_for_addr}};
+use crate::{arch::{self, PhysAddr, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4}}, lib_alloc::{RescheduleAlloc, user::reserve_space_for_addr}};
 
 impl AddressSpace {
     pub fn ptr(&self) -> *mut u64 {
@@ -23,16 +25,24 @@ impl AddressSpace {
     }
 }
 
+struct KernelSpace(OnceCell<AddressSpace>);
+
+unsafe impl Sync for KernelSpace {}
+
+static KERNEL_SPACE: KernelSpace = KernelSpace(OnceCell::new());
+
 /// Gets the current kernel address space
 /// # Safety
 /// See [`active_pml4`]
 /// 
 /// Additionally, this must be called early on, before any other address spaces are used.
 pub unsafe fn kernel_address_space() -> AddressSpace {
-    AddressSpace {
-        pml4: unsafe { active_pml4().0 },
-        user_alloc: None
-    }
+    KERNEL_SPACE.0.get_or_init(|| {
+        AddressSpace {
+            pml4: unsafe { active_pml4().0 },
+            user_alloc: None
+        }
+    }).clone() // clone is cheap - pointers are Copy and Arc increases ref count
 }
 
 /// Creates a new address space, empty and unpaged.
@@ -69,7 +79,7 @@ pub unsafe fn create_address_space() -> AddressSpace {
 pub unsafe fn map_into_space(
     space: &AddressSpace,
     virt: VirtAddr,
-    phys: usize,
+    phys: PhysAddr,
     flags: PageTableFlags,
 ) {
     unsafe { arch::mmu::map_2mib(
