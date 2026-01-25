@@ -1,11 +1,12 @@
 //! Main entry point
 
 
+use alloc::string::String;
 use pc_keyboard::KeyState;
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{address_space, arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, event, log::error, process, scheduler};
+use crate::{address_space, arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, disk::{self, DiskId, default_drivers}, event, io::{SeekFrom, buf_read}, log::error, process, scheduler};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -85,23 +86,17 @@ pub fn kernel_main() {
         .with_entry(handle_kbd)
         .build();
 
-    let tid = ThreadBuilder::new()
-        .with_addr_space(unsafe { address_space::create_address_space() })
-        .with_name("proc_test")
-        .with_stack(16 * 1024)
-        .with_entry(|| {
-            serial_println!("were in a proc!");
-            loop {
-                thread::yield_now();
-            }
-        })
-        .build();
+    let disk = disk::get_disk(0);
+    
+    disk.seek(SeekFrom::Start(512));
 
-    let pid = process::spawn_proc("proc", 0, tid, None);
-    process::dump();
-    thread::yield_now();
-    process::exit_proc(pid);
-    process::dump();
+    let mut buf = *b"IonOS";
+    disk.write(&buf);
+
+    disk.seek(SeekFrom::Start(512));
+    disk.read(&mut buf);
+
+    serial_println!("{buf:?}");
 
     cfg_if::cfg_if! {
         if #[cfg(feature = "test")] {
@@ -129,6 +124,17 @@ pub fn kernel_main() {
                 &stack::tests::tracked_set_rsp_rejects_invalid,
                 &stack::tests::tracked_unchecked_preserves_rsp,
                 &stack::tests::tracked_used_remaining_correct,
+                &default_drivers::test::disk_cross_sector_read,
+                &default_drivers::test::disk_large_read,
+                &default_drivers::test::disk_many_small_reads,
+                &default_drivers::test::disk_mbr_signature,
+                &default_drivers::test::disk_repeatable_reads,
+                &default_drivers::test::disk_seek_before_start_panics,
+                &default_drivers::test::disk_seek_current_backward,
+                &default_drivers::test::disk_seek_current_forward,
+                &default_drivers::test::disk_smoke_read,
+                &default_drivers::test::disk_smoke_seek,
+                &default_drivers::test::disk_unaligned_seek_then_read,
             ]);
         } else {
             thread::exit_current();

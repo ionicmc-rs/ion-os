@@ -21,8 +21,7 @@ use core::any::{Any, TypeId, type_name};
 use alloc::{format, vec};
 
 use crate::{
-    serial_print, serial_println,
-    thread::{self, JoinErrorKind, ThreadBuilder},
+    log::error, serial_print, serial_println, thread::{self, JoinErrorKind, ThreadBuilder}
 };
 
 /// Info Passed to Tests
@@ -121,6 +120,7 @@ pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
                     options: options_ptr,
                 })
             })
+            .with_stack(64 * 1024)
             .spawn();
 
         match thread.join() {
@@ -157,7 +157,7 @@ pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
                 }
                 JoinErrorKind::Unset => {
                     if !options.ignored {
-                        panic!("internal error: thread exited prematurely.")
+                        error!("Thread exited prematurely")
                     }
                     serial_println!("[IGNORED]");
                     ignore_count += 1;

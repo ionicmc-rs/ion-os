@@ -15,6 +15,8 @@ pub enum PointerWidth {
 
 use core::fmt::Debug;
 
+use crate::arch::defs;
+
 /// A Physical Address
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PhysAddr(pub crate::arch::defs::PointerTy);
@@ -22,6 +24,26 @@ pub struct PhysAddr(pub crate::arch::defs::PointerTy);
 /// A Virtual Address
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VirtAddr(pub crate::arch::defs::PointerTy);
+
+impl VirtAddr {
+    pub fn new(addr: defs::PointerTy) -> Self {
+        Self(addr)
+    }
+
+    pub fn as_inner(self) -> defs::PointerTy {
+        self.0
+    }
+}
+
+impl PhysAddr {
+    pub fn new(addr: defs::PointerTy) -> Self {
+        Self(addr)
+    }
+
+    pub fn as_inner(self) -> defs::PointerTy {
+        self.0
+    }
+}
 
 /// Trait for paging
 pub trait Paging: Debug {
