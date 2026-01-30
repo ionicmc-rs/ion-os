@@ -1,6 +1,6 @@
 // pointers
 
-use crate::arch::{PointerWidth, port::{Port, Read, Write}};
+use crate::arch::{PointerWidth, port::{Port, PortData, Read, ReadWrite, Write}};
 
 /// The width of pointers.
 pub const POINTER_WIDTH_RAW: u8 = 64; // pointer width cannot exceed 8 bits, as it is only 16, 32 or 64 (well, for now)
@@ -23,12 +23,16 @@ pub const ARCH_NAME: &str = "x86_64";
 // Ports
 
 /// Debug port used in qemu
-pub const DEBUG_PORT: Port<u8, Write> = Port::new(0xE9);
+pub const DEBUG_PORT: WritePort<u8> = Port::new(0xE9);
 
 /// Port used for reading key input.
-pub const KEYBOARD_READ: Port<u8, Read> = Port::new(0x60);
+pub const KEYBOARD_READ: ReadPort<u8> = Port::new(0x60);
 
 /// Port for sending keyboard commands
 /// 
 /// this is handled by the keyboard handler thread - so you don't need to use this
-pub const KEYBOARD_WRITE: Port<u8, Write> = Port::new(0x64);
+pub const KEYBOARD_WRITE: WritePort<u8> = Port::new(0x64);
+
+pub type WritePort<T: PortData> = Port<T, Write>;
+pub type ReadPort<T: PortData> = Port<T, Read>;
+pub type RWPort<T: PortData> = Port<T, ReadWrite>;

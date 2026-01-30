@@ -374,6 +374,12 @@ pub enum ErrorKind {
     /// more general form of [`InvalidInput`](ErrorKind::InvalidInput)
     InvalidData,
 
+    /// Inode (or fs component in general) was expected to be a directory, but was not.
+    NotADirectory,
+
+    /// Inode (or fs component in general) was expected to not be a directory, but was.
+    IsADirectory,
+
     /// Timed Out.
     TimedOut,
 
@@ -436,6 +442,8 @@ impl ErrorKind {
             InProgress => "in progress",
             Interrupted => "interrupted",
             InvalidData => "invalid data",
+            NotADirectory => "not a directory",
+            IsADirectory => "is a directory",
             InvalidInput => "invalid input",
             MemoryError => "memory error",
             NotFound => "resource not found",

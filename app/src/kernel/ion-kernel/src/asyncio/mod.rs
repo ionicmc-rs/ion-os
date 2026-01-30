@@ -13,13 +13,16 @@ use alloc::boxed::Box;
 use pc_keyboard::KeyEvent;
 
 use crate::event::{self, reg_kbd_waker};
+use crate::log;
 use crate::thread::{self, JoinHandle};
 
 /// Runs the given future, blocking when it is pending.
 pub fn run_future<F, T>(future: F) -> T
 where
-    F: Future<Output = T> + 'static,
+    F: Future<Output = T>,
 {
+    let prev = thread::kill_safe();
+    thread::set_kill_safe(false);
     let mut future = Box::pin(future);
 
     let awoken = AtomicBool::new(false);
@@ -30,8 +33,18 @@ where
     loop {
         awoken.store(false, Ordering::SeqCst);
         match future.as_mut().poll(&mut cx) {
-            Poll::Ready(v) => break v,
-            Poll::Pending => thread::block_until(awoken.as_ptr()),
+            Poll::Ready(v) => {
+                log::trace!("future completed");
+                thread::set_kill_safe(prev);
+                break v
+            }
+            // if this thread is killed the pointer becomes invalid - so there should be some warning
+            Poll::Pending => {
+                if awoken.load(Ordering::SeqCst) {
+                    continue;
+                }
+                thread::block_until(awoken.as_ptr());
+            }
         }
     }
 }

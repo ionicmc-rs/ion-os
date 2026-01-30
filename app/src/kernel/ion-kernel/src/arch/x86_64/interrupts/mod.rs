@@ -4,11 +4,10 @@
 //!
 //! These things are handled in Ion OS's initialization, so you wouldn't typically have to see them.
 
-use crate::{c_lib::libc, arch::interrupts::pic8259::InterruptIndex, serial_println, text::println};
+use crate::{arch::interrupts::pic8259::InterruptIndex, c_lib::libc, hlt_loop, serial_println, text::println};
 use lazy_static::lazy_static;
 use x86_64::{
-    instructions::interrupts,
-    structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
+    instructions::interrupts, set_general_handler, structures::idt::{InterruptDescriptorTable, InterruptStackFrame}
 };
 
 // tools
@@ -58,6 +57,24 @@ macro set_index($idt:expr_2021, $($index:ident$((unsafe $stack:literal))? => $ha
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
+
+        fn general_handler(
+            stack_frame: InterruptStackFrame,
+            index: u8,
+            error_code: Option<u64>,
+        ) {            
+            todo!("handle irq {}\n\nerr code: {error_code:?}\n\n{stack_frame:#?}", index)
+        }
+
+        extern "x86-interrupt" fn temporary_ud_handler(
+            stack_frame: InterruptStackFrame,
+        ) {
+            serial_println!("invalid opcode exception\n{:#?}", stack_frame);
+            hlt_loop(); // temp
+        }
+
+        set_general_handler!(&mut idt, general_handler);
+
         idt.breakpoint.set_handler_fn(breakpoint_handler);
         unsafe {
             idt.page_fault.set_handler_fn(page_fault::page_fault)
@@ -65,6 +82,7 @@ lazy_static! {
             idt.double_fault.set_handler_fn(double_fault::double_fault)
                 .set_stack_index(double_fault::DOUBLE_FAULT_IST_INDEX);
         }
+        idt.invalid_opcode.set_handler_fn(temporary_ud_handler);
         idt.general_protection_fault.set_handler_fn(gp::protection_fault);
         // Hardware Interrupts.
 

@@ -1,12 +1,11 @@
 //! Main entry point
 
-
 use alloc::string::String;
 use pc_keyboard::KeyState;
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{address_space, arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, disk::{self, DiskId, default_drivers}, event, io::{SeekFrom, buf_read}, log::error, process, scheduler};
+use crate::{arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, asyncio, disk::{DiskId, write_at}, event, io::{self, Read, concurrent::write}, log::{self, error, info}, scheduler, vfs::{self, fd::open, fs::{IonFSVersion, alloc::{alloc_data, alloc_inode_table}, parse::{alloc_inode, read_inode, write_inode}}, structures::InodeKind}};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -64,9 +63,8 @@ fn handle_kbd() -> ! {
 }
 
 #[thread_local]
-static __TLOCAL: usize = 0xdeadbeef;
+static __TLOCAL: u64 = 0xdeadbeef;
 
-const X: spin::Mutex<i32> = spin::Mutex::new(0);
 /// final init.
 pub fn kernel_main() {
     assert_eq!(__TLOCAL, 0xdeadbeef, "tls is not setup correctly");
@@ -78,25 +76,107 @@ pub fn kernel_main() {
         }
     });
 
-    // keyboard input
-    ThreadBuilder::<!>::new()
-        .with_name("keyboard_handler")
-        .with_priority(TPriority::High)
-        .with_stack(16 * 1024)
-        .with_entry(handle_kbd)
-        .build();
+    // // keyboard input
+    // ThreadBuilder::<!>::new()
+    //     .with_name("keyboard_handler")
+    //     .with_priority(TPriority::High)
+    //     .with_stack(16 * 1024)
+    //     .with_entry(handle_kbd)
+    //     .build();
 
-    let disk = disk::get_disk(0);
-    
-    disk.seek(SeekFrom::Start(512));
+    // the above thread causes a #GP, #DF, or even a triple fault on QEMU.
+    // so for now, we don't run it.
+    // obviously, its crucial for keyboard input to work, so this must be fixed later.
 
-    let mut buf = *b"IonOS";
-    disk.write(&buf);
+    let disk0 = crate::disk::get_disk(DiskId::new(0).unwrap());
 
-    disk.seek(SeekFrom::Start(512));
-    disk.read(&mut buf);
+    asyncio::run_future((async || {        
+        let mut root = read_inode(disk0, 0).await.unwrap();
+        log::debug!("Root inode: {:#?}", root);
+        if root.kind() != InodeKind::Directory {
+            error!("Root inode is not a directory!");
+            return;
+        }
 
-    serial_println!("{buf:?}");
+        // Only initialize filesystem if root has no data allocated
+        // (meaning xtask hasn't created it yet)
+        if root.data_offset() == 0 {
+            let data = alloc_data(disk0, 512).await.unwrap();
+
+            root.set_total_data_size(512);
+            root.set_data_offset(data);
+            root.set_kind(InodeKind::Directory);
+
+            // Foo
+
+            let foo_idx = alloc_inode(disk0).await.unwrap();
+            let mut foo_inode = read_inode(disk0, foo_idx).await.unwrap();
+            let foo_data = alloc_data(disk0, 13).await.unwrap();
+
+
+            foo_inode.set_data_offset(foo_data);
+            foo_inode.set_kind(InodeKind::File);
+            foo_inode.set_total_data_size(13);
+            
+            foo_inode.write_as_file(disk0, b"Hello, world!").await.unwrap();
+
+            write_inode(disk0, foo_idx, &foo_inode).await.unwrap();
+
+            // Bar
+
+            let bar_idx = alloc_inode(disk0).await.unwrap();
+            let mut bar_inode = read_inode(disk0, bar_idx).await.unwrap();
+            let bar_data = alloc_data(disk0, 13).await.unwrap();
+
+            bar_inode.set_data_offset(bar_data);
+            bar_inode.set_kind(InodeKind::File);
+            bar_inode.set_total_data_size(13);
+            
+            bar_inode.write_as_file(disk0, b"world, Hello?").await.unwrap();
+
+            write_inode(disk0, bar_idx, &bar_inode).await.unwrap();
+
+            // Foobar directory
+
+            let foobar_idx = alloc_inode(disk0).await.unwrap();
+            let mut foobar_inode = read_inode(disk0, foobar_idx).await.unwrap();
+            let foobar_data = alloc_data(disk0, 512).await.unwrap();
+
+            foobar_inode.set_data_offset(foobar_data);
+            foobar_inode.set_kind(InodeKind::Directory);
+            foobar_inode.set_total_data_size(512);
+
+            foobar_inode.write_as_dir(disk0, &[
+                (b"foo.txt", foo_idx),
+                (b"bar.txt", bar_idx),
+            ]).await.unwrap();
+
+            write_inode(disk0, foobar_idx, &foobar_inode).await.unwrap();
+
+            // Write root directory with foobar subdirectory
+
+            root.write_as_dir(disk0, &[
+                (b"foobar", foobar_idx),
+            ]).await.unwrap();
+
+            write_inode(disk0, 0, &root).await.unwrap();
+        }
+
+        log::debug!("Attempting to read @/main.txt");
+        let mut foo = io::fs::OpenOptions::new()
+            .read(true)
+            .open("@/main.txt")
+            .await
+            .unwrap();
+
+        let mut buf = String::new();
+
+        use io::concurrent::read::AsyncRead;
+
+        foo.async_read_to_string(&mut buf).await.unwrap();
+        log::info!("Read from @/main.txt: \n{}", buf);
+    })());
+
 
     cfg_if::cfg_if! {
         if #[cfg(feature = "test")] {
@@ -124,17 +204,6 @@ pub fn kernel_main() {
                 &stack::tests::tracked_set_rsp_rejects_invalid,
                 &stack::tests::tracked_unchecked_preserves_rsp,
                 &stack::tests::tracked_used_remaining_correct,
-                &default_drivers::test::disk_cross_sector_read,
-                &default_drivers::test::disk_large_read,
-                &default_drivers::test::disk_many_small_reads,
-                &default_drivers::test::disk_mbr_signature,
-                &default_drivers::test::disk_repeatable_reads,
-                &default_drivers::test::disk_seek_before_start_panics,
-                &default_drivers::test::disk_seek_current_backward,
-                &default_drivers::test::disk_seek_current_forward,
-                &default_drivers::test::disk_smoke_read,
-                &default_drivers::test::disk_smoke_seek,
-                &default_drivers::test::disk_unaligned_seek_then_read,
             ]);
         } else {
             thread::exit_current();

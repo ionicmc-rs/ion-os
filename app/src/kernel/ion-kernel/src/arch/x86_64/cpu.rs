@@ -1,26 +1,75 @@
 use x86_64::instructions;
 
 
-/// relaxes the CPU (halts on x86)
+/// Spin Loop Hint to the CPU
 #[inline]
 pub fn relax() {
-    instructions::hlt();
+    core::arch::x86_64::_mm_pause();
 }
 
-/// spins forever (core::hint::spin_loop)
+/// spins forever, [`relax`]ing the CPU each iteration
+/// 
+/// This is not usually what you want - this does not halt the CPU. see [`spin_forever`] for that.
 #[inline]
 pub fn spin() -> ! {
     loop {
-        core::hint::spin_loop();
+        relax();
+    }
+}
+
+/// Halts the CPU forever
+/// 
+/// use [`spin`] to spin without halting
+#[inline]
+pub fn spin_forever() -> ! {
+    loop {
+        instructions::hlt();
     }
 }
 
 /// does nothing
 /// 
 /// useful for bypassing llvm optimizations
+/// 
+/// On `x86_64` this emits a `nop` instruction
 #[inline]
 pub fn nop() {
     instructions::nop();
+}
+
+/// Jumps to the given address
+/// 
+/// This function *may* return if the jumped-to code is exactly after this function call.
+/// 
+/// However, the behavior of this function is unspecified/unknown if the jumped-to code
+/// ever returns to the caller of this function, as Rust may have made optimizations based on the assumption
+/// (in some cases, adding a `ud2` instruction after this function call) that this function never returns.
+/// # Safety
+/// Jumping to an invalid address is undefined behavior.
+/// 
+/// Calling this with a function pointer is safe, as long as the function does not return.
+#[inline]
+pub unsafe fn jump(addr: usize) -> ! {
+    unsafe {
+        core::arch::asm!(
+            "jmp {0}",
+            in(reg) addr,
+            options(noreturn)
+        );
+    }
+}
+
+/// Creates a CPU memory fence
+/// 
+/// This does **not** create a compiler fence - only a CPU fence.
+#[inline]
+pub fn fence() {
+    unsafe {
+        core::arch::asm!(
+            "mfence",
+            options(nostack, preserves_flags)
+        );
+    }
 }
 
 /// returns the core's id

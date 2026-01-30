@@ -66,6 +66,7 @@ pub mod address_space;
 pub mod privilege;
 pub mod process;
 pub mod disk;
+pub mod vfs;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {
@@ -191,8 +192,6 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 
     let boot_info = boot_info.into_inner();
 
-    serial_println!("{:?}", boot_info);
-
     let boot_info = boot_info
         .unwrap_or_else(|_| {
             let err = Error::last_os_err();
@@ -210,19 +209,20 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
         Ok(()) => {
             info!("Initialized Ion OS basics");
         }
-        Err(e) => x86_64::instructions::interrupts::without_interrupts(|| {
+        Err(e) => {
             trace!("Handling Init Err: {e}");
             if e.is_fatal() {
                 panic!("Error while initializing Ion OS: {e}")
             }
-        }),
+        }
     }
 
     // this is the main thread.
     thread::init();
     ThreadBuilder::new()
         .with_name("main")
-        .with_entry(|| kernel_main())
+        .with_entry(kernel_main)
+        .with_stack(64 * 1024)
         .build();
 
     // from this point onwards - execution is passed to interrupt handlers and whatever threads we have now (and whatever threads we make.)
@@ -235,7 +235,5 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 ///
 /// Only used in panics, and the Rust Kernel Entry.
 pub fn hlt_loop() -> ! {
-    loop {
-        x86_64::instructions::hlt();
-    }
+    arch::cpu::spin()
 }

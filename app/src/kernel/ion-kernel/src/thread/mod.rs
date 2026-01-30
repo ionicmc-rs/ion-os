@@ -186,4 +186,4 @@ pub fn init() {
 pub mod build;
 pub mod tls;
 
-pub use build::{ThreadBuilder, name, panicking, preemption_safe, set_name};
+pub use build::{ThreadBuilder, name, panicking, kill_safe, set_name, TPriority, set_kill_safe};

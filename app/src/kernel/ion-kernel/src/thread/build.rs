@@ -11,14 +11,14 @@ use crate::{
 struct ThreadMetadata {
     name: Option<Vec<u8, Arc<dyn Allocator>>>,
     panicking: bool,
-    safe: bool,
+    kill_safe: bool,
 }
 
 #[thread_local]
 static mut THREAD_DATA: ThreadMetadata = ThreadMetadata {
     name: None,
     panicking: false,
-    safe: true,
+    kill_safe: false, // should likely not be TLS
 };
 
 #[derive(Default)]
@@ -42,7 +42,7 @@ impl<T: Send + 'static> Debug for ThreadBuilder<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ThreadBuilder")
             .field("name", &self.name)
-            .field("preemption_safe", &self.safe)
+            .field("kill_safe", &self.safe)
             .finish()
     }
 }
@@ -76,7 +76,7 @@ extern "C" fn thread_entry<T: Send + 'static>(arg: usize) -> ! {
 
     unsafe {
         THREAD_DATA.name = Some(name);
-        THREAD_DATA.safe = safe;
+        THREAD_DATA.kill_safe = safe;
     }
 
     // Call FnOnce — consumes it
@@ -220,7 +220,7 @@ impl<T: Send + 'static> ThreadBuilder<T> {
                     let name: Vec<u8, Arc<dyn Allocator>> = name.as_bytes().to_vec_in(Arc::new(Global));
                     
                     THREAD_DATA.name = Some(name);
-                    THREAD_DATA.safe = self.safe;
+                    THREAD_DATA.kill_safe = self.safe;
 
                 }
 
@@ -244,11 +244,15 @@ pub fn panicking() -> bool {
     unsafe { THREAD_DATA.panicking }
 }
 
-pub fn preemption_safe() -> bool {
+pub fn kill_safe() -> bool {
     if arch::tls::read_ptr().is_null() {
         return false;
     }
-    unsafe { THREAD_DATA.safe }
+    unsafe { THREAD_DATA.kill_safe }
+}
+
+pub fn set_kill_safe(safe: bool) {
+    unsafe { THREAD_DATA.kill_safe = safe }
 }
 
 #[allow(static_mut_refs)]

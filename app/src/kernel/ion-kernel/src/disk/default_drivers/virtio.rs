@@ -12,7 +12,7 @@ use crate::arch::frame_allocator::alloc_2mib_frame;
 use crate::arch::mmu::{PageTable, PageTableFlags, map_2mib, virt_to_phys};
 use crate::arch::{PhysAddr, VirtAddr, defs};
 use crate::address_space::{kernel_address_space, map_into_space};
-use crate::io::{Read, Write, Seek, BufRead, Result, Error, ErrorKind};
+use crate::io::{Error, ErrorKind, Result};
 use crate::lib_alloc::user::USER_DATA_BASE;
 
 /* ============================ PCI ============================ */
@@ -162,7 +162,6 @@ pub struct VirtioBlk {
 
     last_used: u16,
     capacity: u64,
-    cursor: u64,
 
     // DMA Scratchpad
     dma_virt: *mut u8,
@@ -188,7 +187,7 @@ unsafe fn map_mmio_frame(phys: u64) -> *mut u8 {
     let base = MMIO_BASE.load(Ordering::Acquire);
     let base = if base == 0 {
         let computed =
-            align_up(heap_end() as *mut u8, 2 * 1024 * 1024) as u64;
+            align_up((heap_end()) as *mut u8, 2 * 1024 * 1024) as u64;
         MMIO_BASE.store(computed, Ordering::Release);
         computed
     } else {
@@ -196,6 +195,8 @@ unsafe fn map_mmio_frame(phys: u64) -> *mut u8 {
     };
 
     let virt = base + MMIO_NEXT.fetch_add(2 * 1024 * 1024, Ordering::Relaxed);
+
+    serial_println!("Mapping MMIO frame: phys={:#x} -> virt={:#x}", phys, virt);
 
     map_2mib(
         &mut PageTable(kernel_address_space().ptr()),
@@ -249,6 +250,7 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
         let cfg_type = pci_read_u8(bus, slot, 0, cap + 3);
         let bar_idx  = pci_read_u8(bus, slot, 0, cap + 4);
         let offset   = pci_read_u32(bus, slot, 0, cap + 8);
+        #[allow(unused)]
         let length   = pci_read_u32(bus, slot, 0, cap + 12); // Useful for debug
         let next     = pci_read_u8(bus, slot, 0, cap + 1);
 
@@ -383,7 +385,6 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
 
     let scratch_phys = alloc_2mib_frame();
 
-
     map_into_space(
         &kernel_address_space(), 
         VirtAddr::new(SCRATCH_REGION as defs::PointerTy), 
@@ -400,7 +401,6 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
         used: used_ptr,
         last_used: 0,
         capacity: 0, // TODO: Read capacity from Device Config (struct at VIRTIO_PCI_CAP_DEVICE)
-        cursor: 0,
 
         dma_phys: scratch_phys as u64,
         dma_virt: SCRATCH_REGION as *mut u8,
@@ -443,7 +443,7 @@ unsafe fn negotiate_features(common: *mut VirtioPciCommonCfg) {
     }
 }
 
-use crate::disk::{BlockDevice, register_disk};
+use crate::disk::{AsyncBlockDevice, register_disk};
 use crate::lib_alloc::{heap_end};
 use crate::serial_println;
 
@@ -461,7 +461,7 @@ pub fn probe_and_register() {
 impl VirtioBlk {
     /// Dispatches a request to the device and returns the slot index used.
     /// This does NOT wait for the device to finish.
-    pub unsafe fn submit_async(&mut self, sector: u64, buf_phys: u64, write: bool) -> Result<usize> {
+    unsafe fn submit_async(&mut self, sector: u64, buf_phys: u64, write: bool) -> Result<usize> {
         // 1. Find a free slot
         let slot = self.slot_in_use.iter().position(|&usage| !usage)
             .ok_or_else(|| Error::new(ErrorKind::Other, "No free VirtIO slots"))?;
@@ -520,14 +520,14 @@ impl VirtioBlk {
     }
 
     /// Checks if a specific slot has completed.
-    pub unsafe fn poll_slot(&mut self, slot: usize) -> bool {
+    unsafe fn poll_slot(&mut self, slot: usize) -> bool {
         let stat_ptr = self.dma_virt.add(slot * 64 + 32);
         // If the status is no longer 0xFF, the device has written to it.
         read_volatile(stat_ptr) != 0xFF
     }
     
     /// Releases the slot for reuse and returns if the operation was successful.
-    pub unsafe fn complete_slot(&mut self, slot: usize) -> Result<()> {
+    unsafe fn complete_slot(&mut self, slot: usize) -> Result<()> {
         let stat_ptr = self.dma_virt.add(slot * 64 + 32);
         let status = read_volatile(stat_ptr);
         
@@ -546,7 +546,7 @@ impl VirtioBlk {
 
     /// Returns a Future that resolves when the read is complete.
     /// This is the primary entry point for async disk I/O.
-    pub fn read_async(&mut self, sector: u64, buf_phys: u64) -> Result<VirtioFuture> {
+    fn read_async(&mut self, sector: u64, buf_phys: u64) -> Result<VirtioFuture> {
         unsafe {
             // Reuses the established async submission logic
             let slot = self.submit_async(sector, buf_phys, false)?;
@@ -555,68 +555,49 @@ impl VirtioBlk {
     }
 }
 
+impl VirtioBlk {
+    /// synchronously does block I/O
+    unsafe fn do_block_io(
+        &mut self,
+        block: u64,
+        buf_phys: u64,
+        write: bool,
+    ) -> Result<()> {
+        let slot = self.submit_async(block, buf_phys, write)?;
+        while !self.poll_slot(slot) {
+            core::hint::spin_loop();
+        }
+        self.complete_slot(slot)
+    }
+}
+
 /* ====================== Trait Impl =========================== */
 
 unsafe impl Send for VirtioBlk {}
 unsafe impl Sync for VirtioBlk {}
 
-impl BlockDevice for VirtioBlk {
-    fn block_size(&self) -> usize { 512 }
-    fn block_count(&self) -> u64 { self.capacity }
-}
-
-impl Read for VirtioBlk {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let mut done = 0;
-        while done < buf.len() {
-            let virt = VirtAddr::new(buf[done..].as_ptr() as defs::PointerTy);
-            let phys = unsafe { virt_to_phys(virt) }
-                .ok_or_else(|| Error::new(ErrorKind::Other, "Buffer not mapped"))?;
-
-            unsafe {
-                let slot = self.submit_async(self.cursor / 512, phys.0, false)?;
-                while !self.poll_slot(slot) {
-                    core::hint::spin_loop();
-                }
-                self.complete_slot(slot)?;
-            }
-            self.cursor += 512;
-            done += 512;
+impl VirtioBlk {
+    fn check_block_buf(&self, len: usize) -> Result<()> {
+        if len != self.block_size() {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "buffer size must equal block size",
+            ));
         }
-        Ok(done)
+        Ok(())
     }
-}
 
-impl Write for VirtioBlk {
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        let mut done = 0;
-        while done < buf.len() {
-            let virt = VirtAddr::new(buf[done..].as_ptr() as defs::PointerTy);
-            let phys = unsafe { virt_to_phys(virt) }
-                .ok_or_else(|| Error::new(ErrorKind::Other, "Buffer not mapped"))?;
-
-            unsafe {
-                let slot = self.submit_async(self.cursor / 512, phys.0, true)?;
-                while !self.poll_slot(slot) {
-                    core::hint::spin_loop();
-                }
-                self.complete_slot(slot)?;
-            }
-            self.cursor += 512;
-            done += 512;
-        }
-        Ok(done)
-    }
-}
-
-impl Seek for VirtioBlk {
-    fn seek(&mut self, pos: crate::io::SeekFrom) -> Result<u64> {
-        match pos {
-            crate::io::SeekFrom::Start(x) => self.cursor = x,
-            crate::io::SeekFrom::Current(x) => self.cursor = (self.cursor as i64 + x) as u64,
-            crate::io::SeekFrom::End(x) => self.cursor = (self.capacity * 512) as i64 as u64 + x as u64,
-        }
-        Ok(self.cursor)
+    unsafe fn submit_block_async(
+        &mut self,
+        block: u64,
+        phys: u64,
+        write: bool,
+    ) -> Result<VirtioFuture<'_>> {
+        let slot = self.submit_async(block, phys, write)?;
+        Ok(VirtioFuture {
+            dev: self,
+            slot
+        })
     }
 }
 
@@ -645,5 +626,57 @@ impl<'a> Future for VirtioFuture<'a> {
                 Poll::Pending
             }
         }
+    }
+}
+
+impl AsyncBlockDevice for VirtioBlk {
+    fn block_size(&self) -> usize {
+        512
+    }
+
+    fn block_count(&self) -> u64 {
+        self.capacity
+    }
+
+    fn read_block_async<'a>(
+        &'a mut self,
+        block: u64,
+        buf: &'a mut [u8],
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
+        Box::pin(async move {
+            self.check_block_buf(buf.len())?;
+
+            let virt = VirtAddr::new(buf.as_ptr() as defs::PointerTy);
+            let phys = unsafe {
+                virt_to_phys(virt)
+                    .ok_or_else(|| Error::new(ErrorKind::Other, "buffer not mapped"))?
+            };
+
+            unsafe {
+                self.submit_block_async(block, phys.0, false)?
+            }
+            .await
+        })
+    }
+
+    fn write_block_async<'a>(
+        &'a mut self,
+        block: u64,
+        buf: &'a [u8],
+    ) -> Pin<Box<dyn core::future::Future<Output = Result<()>> + 'a>> {
+        Box::pin(async move {
+            self.check_block_buf(buf.len())?;
+
+            let virt = VirtAddr::new(buf.as_ptr() as defs::PointerTy);
+            let phys = unsafe {
+                virt_to_phys(virt)
+                    .ok_or_else(|| Error::new(ErrorKind::Other, "buffer not mapped"))?
+            };
+
+            unsafe {
+                self.submit_block_async(block, phys.0, true)?
+            }
+            .await
+        })
     }
 }
