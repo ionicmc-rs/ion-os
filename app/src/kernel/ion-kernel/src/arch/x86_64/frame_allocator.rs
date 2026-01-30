@@ -1,7 +1,7 @@
 //! x86_64 physical frame allocator (2 MiB frames only)
 
 use core::ptr::NonNull;
-use crate::{arch::defs::PAGE_SIZE, c_lib::{MultibootMemory, USABLE_ENTRY}, serial_println};
+use crate::{arch::defs::PAGE_SIZE, c_lib::{MultibootMemory, USABLE_ENTRY}};
 
 /// 2 MiB (Size of one Frame, subject to change)
 pub const FRAME_SIZE: usize = PAGE_SIZE;
@@ -10,7 +10,9 @@ pub const FRAME_SIZE: usize = PAGE_SIZE;
 #[derive(Debug)]
 pub struct BootInfoFrameAllocator {
     memory_map: NonNull<MultibootMemory>,
-    next: usize,
+    // Pre-filled free-list of frame physical addresses (pointer to backing array)
+    frames: *mut usize,
+    count: usize,
 }
 
 impl BootInfoFrameAllocator {
@@ -18,36 +20,72 @@ impl BootInfoFrameAllocator {
     /// - memory_map must be valid
     /// - frames must not be in use
     pub unsafe fn init(memory_map: NonNull<MultibootMemory>) -> Self {
-        let count = unsafe { memory_map.as_ref() }
-            .entries
-            .iter()
-            .filter(|e| e.entry_type == USABLE_ENTRY)
-            .flat_map(|e| {
-                let start = align_up(e.start_addr(), FRAME_SIZE);
-                let end = align_down(e.end_addr(), FRAME_SIZE);
-                (start..end).step_by(FRAME_SIZE)
-            })
-            .count();
-        serial_println!("max frame count: {count}");
-        Self { memory_map, next: 0 }
+        let mem = unsafe { memory_map.as_ref() };
+
+        // Static backing for frame list. MAX_FRAMES covers up to 8 GiB (4096 * 2MiB).
+        const MAX_FRAMES: usize = 4096;
+        static mut FRAME_BACKING: [usize; MAX_FRAMES] = [0; MAX_FRAMES];
+
+        let mut idx: usize = 0;
+        for e in mem.entries.iter().filter(|e| e.entry_type == USABLE_ENTRY) {
+            let start = align_up(e.start_addr(), FRAME_SIZE);
+            let end = align_down(e.end_addr(), FRAME_SIZE);
+            let mut a = start;
+            while a < end {
+                if idx < MAX_FRAMES {
+                    unsafe { FRAME_BACKING[idx] = a; }
+                    idx += 1;
+                }
+                a += FRAME_SIZE;
+            }
+        }
+
+        // Provide the backing pointer (use raw pointer API to avoid creating
+        // a mutable reference to a mutable static under the rust_2024 rules)
+        let frames = unsafe { core::ptr::addr_of_mut!(FRAME_BACKING) as *mut usize };
+
+        Self { memory_map, frames, count: idx }
     }
 
     /// Allocate one 2 MiB physical frame.
     pub fn alloc_frame(&mut self) -> Option<usize> {
-        let mem = unsafe { self.memory_map.as_ref() };
-
-        let addr = mem.entries.iter()
-            .filter(|e| e.entry_type == USABLE_ENTRY)
-            .flat_map(|e| {
-                let start = align_up(e.start_addr(), FRAME_SIZE);
-                let end = align_down(e.end_addr(), FRAME_SIZE);
-                (start..end).step_by(FRAME_SIZE)
-            })
-            .nth(self.next)?;
-
-        self.next += 1;
+        if self.count == 0 {
+            return None;
+        }
+        // Pop from end for LIFO allocation
+        self.count -= 1;
+        let addr = unsafe { *self.frames.add(self.count) };
         Some(addr)
     }
+
+        /// Deallocate a previously allocated 2 MiB physical frame.
+        ///
+        /// If the frame is already freed or the backing array is full, this will
+        /// either return silently (if already freed) or panic when out of space.
+        pub fn dealloc_2mib_frame(addr: usize) {
+            let mut guard = FRAME_ALLOCATOR.lock();
+            let alloc = guard
+                .as_mut()
+                .expect("frame allocator not initialized");
+
+            // Check for duplicates
+            for i in 0..alloc.0.count {
+                let existing = unsafe { *alloc.0.frames.add(i) };
+                if existing == addr {
+                    // already freed
+                    return;
+                }
+            }
+
+            // push back if space
+            const MAX_FRAMES: usize = 4096;
+            if alloc.0.count < MAX_FRAMES {
+                unsafe { *alloc.0.frames.add(alloc.0.count) = addr; }
+                alloc.0.count += 1;
+            } else {
+                panic!("frame backing full on dealloc");
+            }
+        }
 }
 
 #[inline]
@@ -94,8 +132,33 @@ pub fn alloc_2mib_frame() -> usize {
     let alloc = guard
         .as_mut()
         .expect("frame allocator not initialized");
-
     alloc.0
         .alloc_frame()
         .expect("out of physical memory")
+}
+
+/// Public wrapper to deallocate a previously allocated 2 MiB physical frame.
+pub fn dealloc_2mib_frame(addr: usize) {
+    let mut guard = FRAME_ALLOCATOR.lock();
+    let alloc = guard
+        .as_mut()
+        .expect("frame allocator not initialized");
+
+    // Check for duplicates
+    for i in 0..alloc.0.count {
+        let existing = unsafe { *alloc.0.frames.add(i) };
+        if existing == addr {
+            // already freed
+            return;
+        }
+    }
+
+    // push back if space
+    const MAX_FRAMES: usize = 4096;
+    if alloc.0.count < MAX_FRAMES {
+        unsafe { *alloc.0.frames.add(alloc.0.count) = addr; }
+        alloc.0.count += 1;
+    } else {
+        panic!("frame backing full on dealloc");
+    }
 }

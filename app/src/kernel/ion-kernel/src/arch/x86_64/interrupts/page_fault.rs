@@ -8,7 +8,8 @@ pub(super) extern "x86-interrupt" fn page_fault(
     // disable interrupts as soon as we can to prevent thread switching.
     x86_64::instructions::interrupts::disable();
     let addr = Cr2::read();
-    panic!("Page Fault @ {:?} ec={:?}\n{:#?}", addr, error, frame);
+    let tls = crate::arch::tls::read_ptr();
+    panic!("Page Fault @ {:?} (tls: {tls:?}) ec={:?}\n{:#?}", addr, error, frame);
 }
 
 pub const PAGE_FAULT_IST_INDEX: u16 = 1;

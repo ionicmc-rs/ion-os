@@ -23,6 +23,7 @@ pub mod read;
 pub mod seek;
 pub mod tools;
 pub mod write;
+pub mod fs;
 
 #[allow(unused)]
 pub use buf_read::*;
@@ -36,3 +37,5 @@ pub use seek::*;
 pub use tools::*;
 #[allow(unused)]
 pub use write::*;
+#[allow(unused)]
+pub use fs::*;

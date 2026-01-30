@@ -625,10 +625,16 @@ pub fn exit_current() -> ! {
 }
 
 pub fn sleep_current(ticks: u64) {
+    if ticks == 0 {
+        return;
+    }
     SCHEDULER.schedule(ScheduleReason::Sleep(ticks));
 }
 
 pub fn block_until(ptr: *const bool) {
+    if unsafe { *ptr } {
+        return;
+    }
     SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::Raw(ptr)));
 }
 
@@ -641,10 +647,16 @@ pub fn block_until_key_input() {
 }
 
 pub fn block_until_true(f: impl Fn() -> bool + 'static) {
+    if f() {
+        return;
+    }
     SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::FnYieldTrue(Box::new(f))));
 }
 
 pub fn atomic_block_until(atomic: &'static AtomicBool) {
+    if atomic.load(Ordering::SeqCst) {
+        return;
+    }
     SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::Atomic(atomic)));
 }
 

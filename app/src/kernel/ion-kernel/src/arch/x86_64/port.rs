@@ -84,7 +84,10 @@ pub unsafe fn io_wait() {
 
 trait Access {}
 
-trait PortData: Copy {
+/// Trait for types that can be read/written to ports
+/// 
+/// Such types 
+pub trait PortData {
     unsafe fn write(&self, port: u16);
     unsafe fn read(port: u16) -> Self;
 }
@@ -200,9 +203,9 @@ impl<T: PortData, A: WriteAccess + ReadAccess> Port<T, A> {
     /// the value, and wether or not the port was written to.
     /// # Safety
     /// same as [`read`](Self::read) and [`write`](Self::write)
-    pub unsafe fn read_and_write_if(&self, val: T, predicate: impl FnOnce(T) -> bool) -> (T, bool) {
+    pub unsafe fn read_and_write_if(&self, val: T, predicate: impl FnOnce(&T) -> bool) -> (T, bool) {
         let read = self.read();
-        let pred = predicate(read);
+        let pred = predicate(&read);
 
         if pred {
             self.write(val);

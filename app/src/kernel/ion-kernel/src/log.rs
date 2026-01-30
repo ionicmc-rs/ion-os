@@ -5,7 +5,7 @@ use core::fmt;
 
 use x86_64::instructions::interrupts;
 
-use crate::{serial_println, text::{Color, print, println, set_print_color}};
+use crate::{serial_println, text::{Color, print, println, set_print_color}, thread};
 
 /// Log levels
 ///
@@ -24,15 +24,12 @@ pub enum Level {
     Error,
 }
 
-/// Low‑level logging function: forwards to println
-#[inline]
 #[track_caller]
-pub fn log(level: Level, args: fmt::Arguments) {
-    interrupts::without_interrupts(|| {
+pub fn log(level: Level, args: fmt::Arguments, loc: core::panic::Location) {
+    thread::critical_moment(|| {
         if !cfg!(debug_assertions) && level == Level::Debug {
             return;
         }
-        let loc = core::panic::Location::caller();
         let (fore, back) = (Color::White, Color::Black);
         print!("[");
         let col = match level {
@@ -54,25 +51,25 @@ pub fn log(level: Level, args: fmt::Arguments) {
 
 /// Info log
 pub macro info($($args:tt)*) {
-    $crate::log::log($crate::log::Level::Info, format_args!($($args)*))
+    $crate::log::log($crate::log::Level::Info, format_args!($($args)*), *::core::panic::Location::caller())
 }
 
 /// Warn log
 pub macro warn($($args:tt)*) {
-    $crate::log::log($crate::log::Level::Warn, format_args!($($args)*))
+    $crate::log::log($crate::log::Level::Warn, format_args!($($args)*), *::core::panic::Location::caller())
 }
 
 /// Trace log
 pub macro trace($($args:tt)*) {
-    $crate::log::log($crate::log::Level::Trace, format_args!($($args)*))
+    $crate::log::log($crate::log::Level::Trace, format_args!($($args)*), *::core::panic::Location::caller())
 }
 
 /// Error log
 pub macro error($($args:tt)*) {
-    $crate::log::log($crate::log::Level::Error, format_args!($($args)*))
+    $crate::log::log($crate::log::Level::Error, format_args!($($args)*), *::core::panic::Location::caller())
 }
 
 /// Debug log, will not show in release.
 pub macro debug($($args:tt)*) {
-    $crate::log::log($crate::log::Level::Debug, format_args!($($args)*))
+    $crate::log::log($crate::log::Level::Debug, format_args!($($args)*), *::core::panic::Location::caller())
 }

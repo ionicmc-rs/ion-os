@@ -111,18 +111,62 @@ pub unsafe fn map_2mib(
     core::arch::asm!("invlpg [{}]", in(reg) v, options(nostack, preserves_flags));
 }
 
-use crate::arch::frame_allocator::alloc_2mib_frame;
+use crate::arch::frame_allocator::{alloc_2mib_frame, dealloc_2mib_frame};
+use spin::Mutex;
 
-unsafe fn alloc_zeroed_page_table() -> *mut u64 {
-    let phys = alloc_2mib_frame();
-    let ptr = phys as *mut u64;
+/// A simple page table allocator that subdivides 2 MiB frames into 4 KiB page tables
+/// One frame can hold 512 page tables (2 MiB / 4 KiB = 512)
+struct PageTableAllocator {
+    /// Current frame's base address (physical)
+    current_frame: usize,
+    /// Number of page tables allocated from current frame
+    count_in_frame: usize,
+}
 
-    // Zero 4 KiB (512 entries)
-    for i in 0..512 {
-        unsafe { ptr.add(i).write(0) };
+// SAFETY: PageTableAllocator only contains usize, which is Send+Sync
+unsafe impl Send for PageTableAllocator {}
+unsafe impl Sync for PageTableAllocator {}
+
+impl PageTableAllocator {
+    const TABLES_PER_FRAME: usize = 512; // 2 MiB / 4 KiB
+    const TABLE_SIZE: usize = 4 * 1024; // 4 KiB
+
+    const fn new() -> Self {
+        Self {
+            current_frame: 0,
+            count_in_frame: Self::TABLES_PER_FRAME, // Force allocation on first call
+        }
     }
 
-    ptr
+    /// Allocate a 4 KiB page table (512 u64 entries), zero-initialized
+    /// Returns a *virtual* pointer (identity-mapped)
+    unsafe fn allocate(&mut self) -> *mut u64 {
+        // Need a new frame?
+        if self.count_in_frame >= Self::TABLES_PER_FRAME {
+            let phys = alloc_2mib_frame();
+            self.current_frame = phys;
+            self.count_in_frame = 0;
+        }
+
+        // Get pointer to this table
+        // SAFETY: frame allocator returns identity-mapped physical addresses
+        let ptr = (self.current_frame + self.count_in_frame * Self::TABLE_SIZE) as *mut u64;
+
+        // Zero it (4 KiB = 512 u64 entries)
+        for i in 0..512 {
+            unsafe { ptr.add(i).write(0) };
+        }
+
+        self.count_in_frame += 1;
+        ptr
+    }
+}
+
+static PAGE_TABLE_ALLOC: Mutex<PageTableAllocator> = Mutex::new(PageTableAllocator::new());
+
+unsafe fn alloc_zeroed_page_table() -> *mut u64 {
+    let mut alloc = PAGE_TABLE_ALLOC.lock();
+    unsafe { alloc.allocate() }
 }
 
 
@@ -190,4 +234,45 @@ pub unsafe fn virt_to_phys(virt: VirtAddr) -> Option<PhysAddr> {
     let phys_base = pte & 0x000f_ffff_ffff_f000;
     let offset = addr & 0xFFF;
     Some(PhysAddr(phys_base | offset))
+}
+
+/// Unmap a 2MiB mapping and return the physical base if it existed.
+/// Safety: paging must be active and page tables identity-mapped.
+#[allow(unsafe_op_in_unsafe_fn)]
+pub unsafe fn unmap_2mib(pml4: &mut PageTable, virt: VirtAddr) -> Option<PhysAddr> {
+    let v = virt.0 as u64;
+    let l4 = pml4.0;
+    let l4e = l4.add(pml4_index(v));
+    if *l4e & ENTRY_PRESENT == 0 { return None; }
+
+    let l3 = next_table(*l4e);
+    let l3e = l3.add(pdpt_index(v));
+    if *l3e & ENTRY_PRESENT == 0 { return None; }
+
+    let l2 = next_table(*l3e);
+    let pde = l2.add(pd_index(v));
+    if *pde & ENTRY_PRESENT == 0 { return None; }
+
+    let pde_val = *pde;
+    if pde_val & ENTRY_HUGE == 0 { return None; }
+
+    let phys_base = (pde_val & 0x000f_ffff_fffe_0000) as usize;
+
+    // clear PDE
+    core::ptr::write_volatile(pde, 0u64);
+
+    // Invalidate TLB
+    core::arch::asm!("invlpg [{}]", in(reg) v, options(nostack, preserves_flags));
+
+    Some(PhysAddr(phys_base as defs::PointerTy))
+}
+
+/// Unmap a 2MiB mapping and free its backing physical frame (if it existed)
+pub unsafe fn unmap_and_free_2mib(pml4: &mut PageTable, virt: VirtAddr) -> Option<()> {
+    if let Some(phys) = unsafe { unmap_2mib(pml4, virt) } {
+        dealloc_2mib_frame(phys.as_inner() as usize);
+        Some(())
+    } else {
+        None
+    }
 }

@@ -16,3 +16,9 @@ cfg_if::cfg_if! {
         compile_error!("Unsupported arch used. Please use one of the pre-made targets in `targets/`")
     }
 }
+
+// static assertions
+
+const _: () = {
+    assert!(defs::PAGE_SIZE == 2 * 1024 * 1024, "Page size is not 2 MiB - but that is the only supported page size (for now).");
+};

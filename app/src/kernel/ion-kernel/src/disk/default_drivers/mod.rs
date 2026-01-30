@@ -11,7 +11,3 @@ pub fn init() {
     // Order matters later (virtio first is fine)
     virtio::probe_and_register();
 }
-
-#[cfg(feature = "test")]
-#[allow(missing_docs)]
-pub mod test;
