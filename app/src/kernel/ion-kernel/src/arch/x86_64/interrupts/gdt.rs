@@ -24,7 +24,7 @@ use x86_64::{
 use crate::arch::interrupts::double_fault::DOUBLE_FAULT_IST_INDEX;
 use crate::arch::interrupts::page_fault::PAGE_FAULT_IST_INDEX;
 
-/// Size of interrupt stacks (5 pages each).
+/// Size of interrupt stacks (5 KiB each).
 const IST_STACK_SIZE: usize = 4096 * 5;
 
 lazy_static! {

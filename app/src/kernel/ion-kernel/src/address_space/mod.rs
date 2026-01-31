@@ -1,6 +1,10 @@
 //! Tools for separating user and kernel address spaces
+//! 
+//! an [`AddressSpace`] represents a handle to a paging configuration.
+//! 
+//! You can get the current address space from [`crate::thread::current_address_space`]
 
-/// Represents a paging configuration
+/// Represents a handle paging configuration
 // Note: this is handle, and thus can be copied/cloned
 #[derive(Debug, Clone)]
 #[repr(C)]
@@ -16,10 +20,12 @@ use alloc::sync::Arc;
 use crate::{arch::{self, PhysAddr, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4}}, lib_alloc::{RescheduleAlloc, user::reserve_space_for_addr}};
 
 impl AddressSpace {
+    /// returns the raw PML4 pointer
     pub fn ptr(&self) -> *mut u64 {
         self.pml4
     }
 
+    /// returns a clone of the user allocator, if any
     pub fn allocator(&self) -> Option<Arc<RescheduleAlloc>> {
         self.user_alloc.clone()
     }
@@ -32,6 +38,8 @@ unsafe impl Sync for KernelSpace {}
 static KERNEL_SPACE: KernelSpace = KernelSpace(OnceCell::new());
 
 /// Gets the current kernel address space
+/// 
+/// Note: this is cached after the first call.
 /// # Safety
 /// See [`active_pml4`]
 /// 

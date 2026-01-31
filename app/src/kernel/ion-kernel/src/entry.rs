@@ -165,7 +165,7 @@ pub fn kernel_main() {
         log::debug!("Attempting to read @/main.txt");
         let mut foo = io::fs::OpenOptions::new()
             .read(true)
-            .open("@/main.txt")
+            .open("@/nested/new.txt")
             .await
             .unwrap();
 

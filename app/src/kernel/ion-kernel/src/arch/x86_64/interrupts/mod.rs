@@ -66,13 +66,6 @@ lazy_static! {
             todo!("handle irq {}\n\nerr code: {error_code:?}\n\n{stack_frame:#?}", index)
         }
 
-        extern "x86-interrupt" fn temporary_ud_handler(
-            stack_frame: InterruptStackFrame,
-        ) {
-            serial_println!("invalid opcode exception\n{:#?}", stack_frame);
-            hlt_loop(); // temp
-        }
-
         set_general_handler!(&mut idt, general_handler);
 
         idt.breakpoint.set_handler_fn(breakpoint_handler);
@@ -82,7 +75,6 @@ lazy_static! {
             idt.double_fault.set_handler_fn(double_fault::double_fault)
                 .set_stack_index(double_fault::DOUBLE_FAULT_IST_INDEX);
         }
-        idt.invalid_opcode.set_handler_fn(temporary_ud_handler);
         idt.general_protection_fault.set_handler_fn(gp::protection_fault);
         // Hardware Interrupts.
 

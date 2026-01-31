@@ -4,7 +4,7 @@ use x86_64::structures::idt::InterruptStackFrame;
 
 use crate::{
     arch::interrupts::pic8259::handlers::notify, scheduler,
-    serial_println, /* scheduler, serial_println */
+    serial_println,
 };
 
 // pub extern "x86-interrupt" fn timer_isr_entry(_: InterruptStackFrame) {
@@ -32,8 +32,6 @@ pub extern "x86-interrupt" fn timer_isr(_stack_frame: InterruptStackFrame) {
     if t.is_multiple_of(50) {
         serial_println!("reached notable tick: {t}");
     }
-    let gs = x86_64::registers::model_specific::GsBase::read();
-    // serial_println!("INT ENTRY GS = {:#x}", gs);
 
     scheduler::request_reschedule();
     scheduler::wake_done();

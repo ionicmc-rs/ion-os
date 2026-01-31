@@ -6,7 +6,7 @@ use crate::{arch::syscall::parse::{ProcessCommand, Syscall, ThreadCommand}, log:
 #[allow(missing_docs)]
 pub struct SyscallFrame {
     pub rax: u64, // syscall number
-    pub rdi: u64,
+    pub rdi: u64, // sub command
     pub rsi: u64,
     pub rdx: u64,
     pub r10: u64,

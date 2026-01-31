@@ -764,6 +764,7 @@ fn check_docker_daemon(verbose: bool) -> Result<()> {
 
 // mkfs
 
+/// TODO: make dynamic
 const BLOCK_SIZE: usize = 512;
 
 const SUPER_MAGIC: u32 = 0xab87beef;
@@ -800,7 +801,7 @@ fn write_alloc_block(file: &mut std::fs::File) -> Result<()> {
     buf[4..8].copy_from_slice(&VERSION);
     buf[8..16].copy_from_slice(&4u64.to_le_bytes()); // next free block (after root data at block 3)
     buf[16..24].copy_from_slice(&1u64.to_le_bytes()); // inode block count
-    buf[24..32].copy_from_slice(&2u64.to_le_bytes()); // inode block 0 offset
+    buf[24..32].copy_from_slice(&2u64.to_le_bytes()); // inode block #1
 
     let mut inode_table_buf = vec![0u8; BLOCK_SIZE];
 
@@ -815,10 +816,11 @@ fn write_alloc_block(file: &mut std::fs::File) -> Result<()> {
         /* data_size */   0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 512 bytes
         /* data_offset */ 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // block 3 = byte offset 1536
         /* size */        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0 bytes used initially
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // index 0
     ];
 
     // warn: change when inode size changes
-    inode_table_buf[4 .. 4 + 26]
+    inode_table_buf[4 .. 4 + 34]
         .copy_from_slice(&root_inode_bytes);
 
     // Write empty root directory data block
@@ -874,7 +876,7 @@ fn fs_read(path: &std::path::Path, read_inodes: &[u64]) -> Result<()> {
 
     println!("[fs] Superblock:");
     println!("  Magic: {:#x}", magic);
-    println!("  Version: {}.{}.{}.{}", version[0], version[1], version[2], version[3]);
+    println!("  Version: {}.{}.{}", version[0], version[1], u16::from_le_bytes([version[2], version[3]]));
 
     // Read allocation block
     let mut alloc_block = vec![0u8; BLOCK_SIZE];
@@ -901,7 +903,7 @@ fn fs_read(path: &std::path::Path, read_inodes: &[u64]) -> Result<()> {
     println!("  Inode Block Count: {}", inode_block_count);
 
     // Read inode blocks and display structure
-    let inodes_per_block = (BLOCK_SIZE - 4) / 26; // (512 - 4 header) / 26 bytes per inode
+    let inodes_per_block = (BLOCK_SIZE - 4) / 34; // (512 - 4 header) / 34 bytes per inode
     
     println!("\n[fs] Filesystem Structure:");
     let mut all_inodes: Vec<(u64, Inode)> = Vec::new();
@@ -922,14 +924,14 @@ fn fs_read(path: &std::path::Path, read_inodes: &[u64]) -> Result<()> {
         // Display used inodes
         let mut inode_count = 0;
         for inode_slot in 0..inodes_per_block {
-            let offset = 4 + (inode_slot * 26);
-            if offset + 26 > BLOCK_SIZE {
+            let offset = 4 + (inode_slot * 34);
+            if offset + 34 > BLOCK_SIZE {
                 break;
             }
             
             let used = inode_block[offset] != 0;
             if used {
-                let inode = parse_inode(&inode_block[offset..offset+26])?;
+                let inode = parse_inode(&inode_block[offset..offset+34])?;
                 let global_inode_idx = block_idx * inodes_per_block as u64 + inode_slot as u64;
                 
                 let kind_str = match inode.kind {
@@ -1069,10 +1071,11 @@ struct Inode {
     data_size: u64,
     data_offset: u64,
     size: u64,
+    index: u64
 }
 
 fn parse_inode(buf: &[u8]) -> Result<Inode> {
-    if buf.len() < 26 {
+    if buf.len() < 34 {
         anyhow::bail!("Buffer too small for inode");
     }
     Ok(Inode {
@@ -1081,6 +1084,7 @@ fn parse_inode(buf: &[u8]) -> Result<Inode> {
         data_size: u64::from_le_bytes(buf[2..10].try_into()?),
         data_offset: u64::from_le_bytes(buf[10..18].try_into()?),
         size: u64::from_le_bytes(buf[18..26].try_into()?),
+        index: u64::from_le_bytes(buf[26..34].try_into()?),
     })
 }
 
@@ -1151,8 +1155,8 @@ fn fs_ls(path: &std::path::Path, dir: &str, long: bool, _all: bool) -> Result<()
     };
 
     // Read the target directory inode
-    let target_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (target_inode_idx as usize * 26) as u64;
-    let mut target_inode_buf = vec![0u8; 26];
+    let target_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (target_inode_idx as usize * 34) as u64;
+    let mut target_inode_buf = vec![0u8; 34];
     file.seek(SeekFrom::Start(target_offset))?;
     file.read_exact(&mut target_inode_buf)?;
     let target_inode = parse_inode(&target_inode_buf)?;
@@ -1191,8 +1195,8 @@ fn fs_ls(path: &std::path::Path, dir: &str, long: bool, _all: bool) -> Result<()
         );
 
         // Read the inode to get size and type
-        let entry_inode_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (entry_inode_idx as usize * 26) as u64;
-        let mut entry_inode_buf = vec![0u8; 26];
+        let entry_inode_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (entry_inode_idx as usize * 34) as u64;
+        let mut entry_inode_buf = vec![0u8; 34];
         file.seek(SeekFrom::Start(entry_inode_offset))?;
         file.read_exact(&mut entry_inode_buf)?;
         let entry_inode = parse_inode(&entry_inode_buf)?;
@@ -1240,8 +1244,8 @@ fn fs_cat(path: &std::path::Path, file_path: &str) -> Result<()> {
     let (parent_inode_idx, filename) = parse_path(&mut file, &all_inodes, file_path)?;
 
     // Read parent directory to find the file
-    let parent_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 26) as u64;
-    let mut parent_inode_buf = vec![0u8; 26];
+    let parent_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64;
+    let mut parent_inode_buf = vec![0u8; 34];
     file.seek(SeekFrom::Start(parent_offset))?;
     file.read_exact(&mut parent_inode_buf)?;
     let parent_inode = parse_inode(&parent_inode_buf)?;
@@ -1283,8 +1287,8 @@ fn fs_cat(path: &std::path::Path, file_path: &str) -> Result<()> {
     let target_inode_idx = file_inode_idx.ok_or_else(|| anyhow::anyhow!("File not found: @/{}", file_path))?;
 
     // Read the target file inode
-    let target_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (target_inode_idx as usize * 26) as u64;
-    let mut target_inode_buf = vec![0u8; 26];
+    let target_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (target_inode_idx as usize * 34) as u64;
+    let mut target_inode_buf = vec![0u8; 34];
     file.seek(SeekFrom::Start(target_offset))?;
     file.read_exact(&mut target_inode_buf)?;
     let target_inode = parse_inode(&target_inode_buf)?;
@@ -1337,7 +1341,7 @@ fn fs_port(path: &std::path::Path, dest: &str, files: &[PathBuf], recursive: boo
     }
 
     let inode_block_num = u64::from_le_bytes(alloc_block[24..32].try_into()?);
-    let inodes_per_block = (BLOCK_SIZE - 4) / 26;
+    let inodes_per_block = (BLOCK_SIZE - 4) / 34;
 
     // Normalize destination
     let dest = dest.trim_start_matches('/').trim_end_matches('/');
@@ -1424,15 +1428,16 @@ fn fs_port(path: &std::path::Path, dest: &str, files: &[PathBuf], recursive: boo
                 next_free += 1;
 
                 // Create empty directory inode
-                let mut dir_inode = vec![0u8; 26];
+                let mut dir_inode = vec![0u8; 34];
                 dir_inode[0] = 1; // used
                 dir_inode[1] = 1; // Directory
                 dir_inode[2..10].copy_from_slice(&(BLOCK_SIZE as u64).to_le_bytes());
                 dir_inode[10..18].copy_from_slice(&data_offset.to_le_bytes());
                 dir_inode[18..26].copy_from_slice(&0u64.to_le_bytes()); // size = 0 initially
+                dir_inode[26..34].copy_from_slice(&dir_inode_idx.to_le_bytes()); // index field
 
                 // Write directory inode
-                let inode_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (dir_inode_idx as usize * 26) as u64;
+                let inode_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (dir_inode_idx as usize * 34) as u64;
                 file.seek(SeekFrom::Start(inode_offset))?;
                 file.write_all(&dir_inode)?;
 
@@ -1502,15 +1507,16 @@ fn fs_port(path: &std::path::Path, dest: &str, files: &[PathBuf], recursive: boo
         let file_inode_idx = free_hint as u64;
         free_hint += 1;
 
-        let mut file_inode = vec![0u8; 26];
+        let mut file_inode = vec![0u8; 34];
         file_inode[0] = 1; // used
         file_inode[1] = 0; // File
         file_inode[2..10].copy_from_slice(&(file_size).to_le_bytes());
         file_inode[10..18].copy_from_slice(&data_offset.to_le_bytes());
         file_inode[18..26].copy_from_slice(&file_size.to_le_bytes());
+        file_inode[26..34].copy_from_slice(&file_inode_idx.to_le_bytes());
 
         // Write inode
-        let inode_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (file_inode_idx as usize * 26) as u64;
+        let inode_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (file_inode_idx as usize * 34) as u64;
         file.seek(SeekFrom::Start(inode_offset))?;
         file.write_all(&file_inode)?;
 
@@ -1551,8 +1557,8 @@ fn fs_port(path: &std::path::Path, dest: &str, files: &[PathBuf], recursive: boo
     // Write all directory data and update inodes
     for (dir_inode_idx, dir_data) in dir_data_to_write {
         // Read directory inode
-        let mut dir_inode_buf = vec![0u8; 26];
-        file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (dir_inode_idx as usize * 26) as u64))?;
+        let mut dir_inode_buf = vec![0u8; 34];
+        file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (dir_inode_idx as usize * 34) as u64))?;
         file.read_exact(&mut dir_inode_buf)?;
         let mut dir_inode = parse_inode(&dir_inode_buf)?;
 
@@ -1562,14 +1568,15 @@ fn fs_port(path: &std::path::Path, dest: &str, files: &[PathBuf], recursive: boo
 
         // Update inode size
         dir_inode.size = dir_data.len() as u64;
-        let mut dir_bytes = vec![0u8; 26];
+        let mut dir_bytes = vec![0u8; 34];
         dir_bytes[0] = dir_inode.used as u8;
         dir_bytes[1] = dir_inode.kind;
         dir_bytes[2..10].copy_from_slice(&dir_inode.data_size.to_le_bytes());
         dir_bytes[10..18].copy_from_slice(&dir_inode.data_offset.to_le_bytes());
         dir_bytes[18..26].copy_from_slice(&dir_inode.size.to_le_bytes());
+        dir_bytes[26..34].copy_from_slice(&dir_inode_idx.to_le_bytes());
 
-        file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (dir_inode_idx as usize * 26) as u64))?;
+        file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (dir_inode_idx as usize * 34) as u64))?;
         file.write_all(&dir_bytes)?;
     }
 
@@ -1623,18 +1630,18 @@ fn read_all_inodes(file: &mut std::fs::File, inode_block_num: u64) -> Result<Vec
     file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64))?;
     file.read_exact(&mut inode_block)?;
 
-    let inodes_per_block = (BLOCK_SIZE - 4) / 26;
+    let inodes_per_block = (BLOCK_SIZE - 4) / 34;
     let mut all_inodes = Vec::new();
 
     for inode_slot in 0..inodes_per_block {
-        let offset = 4 + (inode_slot * 26);
-        if offset + 26 > BLOCK_SIZE {
+        let offset = 4 + (inode_slot * 34);
+        if offset + 34 > BLOCK_SIZE {
             break;
         }
         
         let used = inode_block[offset] != 0;
         if used {
-            let inode = parse_inode(&inode_block[offset..offset+26])?;
+            let inode = parse_inode(&inode_block[offset..offset+34])?;
             all_inodes.push((inode_slot as u64, inode));
         }
     }
@@ -1738,7 +1745,7 @@ fn fs_mkdir(path: &std::path::Path, dir_path: &str) -> Result<()> {
     }
 
     let inode_block_num = u64::from_le_bytes(alloc_block[24..32].try_into()?);
-    let inodes_per_block = (BLOCK_SIZE - 4) / 26;
+    let inodes_per_block = (BLOCK_SIZE - 4) / 34;
 
     // Read inode block
     let mut inode_block_buf = vec![0u8; BLOCK_SIZE];
@@ -1773,15 +1780,16 @@ fn fs_mkdir(path: &std::path::Path, dir_path: &str) -> Result<()> {
     next_free += 1;
 
     // Create directory inode
-    let mut dir_inode = vec![0u8; 26];
+    let mut dir_inode = vec![0u8; 34];
     dir_inode[0] = 1; // used
     dir_inode[1] = 1; // Directory
     dir_inode[2..10].copy_from_slice(&(BLOCK_SIZE as u64).to_le_bytes()); // data_size
     dir_inode[10..18].copy_from_slice(&dir_data_offset.to_le_bytes()); // data_offset
     dir_inode[18..26].copy_from_slice(&0u64.to_le_bytes()); // size (0 initially)
+    dir_inode[26..34].copy_from_slice(&new_inode_idx.to_le_bytes()); // index field
 
     // Write inode to inode table
-    let offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (new_inode_idx as usize * 26) as u64;
+    let offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (new_inode_idx as usize * 34) as u64;
     file.seek(SeekFrom::Start(offset))?;
     file.write_all(&dir_inode)?;
 
@@ -1811,14 +1819,15 @@ fn fs_mkdir(path: &std::path::Path, dir_path: &str) -> Result<()> {
 
         // Update parent inode
         parent_inode.size = parent_data.len() as u64;
-        let mut parent_bytes = vec![0u8; 26];
+        let mut parent_bytes = vec![0u8; 34];
         parent_bytes[0] = parent_inode.used as u8;
         parent_bytes[1] = parent_inode.kind;
         parent_bytes[2..10].copy_from_slice(&parent_inode.data_size.to_le_bytes());
         parent_bytes[10..18].copy_from_slice(&parent_inode.data_offset.to_le_bytes());
         parent_bytes[18..26].copy_from_slice(&parent_inode.size.to_le_bytes());
+        parent_bytes[26..34].copy_from_slice(&parent_inode.index.to_le_bytes());
 
-        file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 26) as u64))?;
+        file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64))?;
         file.write_all(&parent_bytes)?;
     }
 
@@ -1892,15 +1901,16 @@ fn fs_touch(path: &std::path::Path, file_path: &str) -> Result<()> {
     next_free += 1;
 
     // Create file inode
-    let mut file_inode = vec![0u8; 26];
+    let mut file_inode = vec![0u8; 34];
     file_inode[0] = 1; // used
     file_inode[1] = 0; // File
     file_inode[2..10].copy_from_slice(&(BLOCK_SIZE as u64).to_le_bytes()); // data_size
     file_inode[10..18].copy_from_slice(&file_data_offset.to_le_bytes()); // data_offset
     file_inode[18..26].copy_from_slice(&0u64.to_le_bytes()); // size (0 initially - empty)
+    file_inode[26..34].copy_from_slice(&new_inode_idx.to_le_bytes()); // index field
 
     // Write inode to inode table
-    let offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (new_inode_idx as usize * 26) as u64;
+    let offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (new_inode_idx as usize * 34) as u64;
     file.seek(SeekFrom::Start(offset))?;
     file.write_all(&file_inode)?;
 
@@ -1930,14 +1940,15 @@ fn fs_touch(path: &std::path::Path, file_path: &str) -> Result<()> {
 
         // Update parent inode
         parent_inode.size = parent_data.len() as u64;
-        let mut parent_bytes = vec![0u8; 26];
+        let mut parent_bytes = vec![0u8; 34];
         parent_bytes[0] = parent_inode.used as u8;
         parent_bytes[1] = parent_inode.kind;
         parent_bytes[2..10].copy_from_slice(&parent_inode.data_size.to_le_bytes());
         parent_bytes[10..18].copy_from_slice(&parent_inode.data_offset.to_le_bytes());
         parent_bytes[18..26].copy_from_slice(&parent_inode.size.to_le_bytes());
+        parent_bytes[26..34].copy_from_slice(&parent_inode.index.to_le_bytes());
 
-        file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 26) as u64))?;
+        file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64))?;
         file.write_all(&parent_bytes)?;
     }
 
@@ -1974,7 +1985,7 @@ fn fs_rm(path: &std::path::Path, path_to_remove: &str) -> Result<()> {
     }
 
     let inode_block_num = u64::from_le_bytes(alloc_block[24..32].try_into()?);
-    let inodes_per_block = (BLOCK_SIZE - 4) / 26;
+    let inodes_per_block = (BLOCK_SIZE - 4) / 34;
 
     // Read all inodes to navigate to parent
     let all_inodes = read_all_inodes(&mut file, inode_block_num)?;
@@ -1983,8 +1994,8 @@ fn fs_rm(path: &std::path::Path, path_to_remove: &str) -> Result<()> {
     let (parent_inode_idx, filename) = parse_path(&mut file, &all_inodes, path_to_remove)?;
 
     // Read parent inode
-    let mut parent_inode_buf = vec![0u8; 26];
-    file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 26) as u64))?;
+    let mut parent_inode_buf = vec![0u8; 34];
+    file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64))?;
     file.read_exact(&mut parent_inode_buf)?;
     let parent_inode = parse_inode(&parent_inode_buf)?;
 
@@ -2049,16 +2060,32 @@ fn fs_rm(path: &std::path::Path, path_to_remove: &str) -> Result<()> {
     // Update parent inode size
     let mut new_parent_inode = parent_inode_buf.clone();
     new_parent_inode[18..26].copy_from_slice(&(new_parent_data.len() as u64).to_le_bytes());
-    file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 26) as u64))?;
+    file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64))?;
     file.write_all(&new_parent_inode)?;
 
     // Mark target inode as unused
     let target_inode_slot = (target_inode_idx % inodes_per_block as u64) as usize;
-    let target_inode_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (target_inode_slot * 26) as u64;
-    let mut target_inode = vec![0u8; 26];
+    let target_inode_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (target_inode_slot * 34) as u64;
+    let mut target_inode = vec![0u8; 34];
     file.seek(SeekFrom::Start(target_inode_offset))?;
     file.read_exact(&mut target_inode)?;
+
     target_inode[0] = 0; // Mark as unused
+
+    let mut inode_block_buf = vec![0u8; BLOCK_SIZE];
+    file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64))?;
+    file.read_exact(&mut inode_block_buf)?;
+
+    let free_hint = u16::from_le_bytes([inode_block_buf[0], inode_block_buf[1]]);
+    let freed = target_inode_slot as u16;
+
+    if freed < free_hint {
+        inode_block_buf[0..2].copy_from_slice(&freed.to_le_bytes());
+        file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64))?;
+        file.write_all(&inode_block_buf[0..4])?;
+    }
+
+
     file.seek(SeekFrom::Start(target_inode_offset))?;
     file.write_all(&target_inode)?;
 
