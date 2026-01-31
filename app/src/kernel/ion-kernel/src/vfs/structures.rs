@@ -2,7 +2,7 @@ use core::{ffi::CStr, fmt::Display};
 
 use alloc::vec::Vec;
 
-use crate::{disk::write_at, io, log, serial_println};
+use crate::{disk::write_at, io::{self, Error}, log, serial_println, vfs::fs::parse::read_alloc_block};
 
 /// One Node in the file system
 #[repr(C)]
@@ -13,10 +13,11 @@ pub struct Inode {
     data_size: u64,
     data_offset: u64,
     // used size rather than allocated
-    size: u64
+    size: u64,
+    index: u64,
 }
 
-pub const INODE_SIZE: usize = 26;
+pub const INODE_SIZE: usize = 34;
 
 #[derive(Debug, Clone, Copy)]
 pub enum InodeParseErr {
@@ -50,8 +51,9 @@ impl Inode {
         let data_size = u64::from_le_bytes(*bytes[2..10].as_array().unwrap());
         let data_offset = u64::from_le_bytes(*bytes[10..18].as_array().unwrap());
         let used_size = u64::from_le_bytes(*bytes[18..26].as_array().unwrap());
+        let index = u64::from_le_bytes(*bytes[26..34].as_array().unwrap());
 
-        Ok(Self { kind, data_size, data_offset, used, size: used_size })
+        Ok(Self { kind, data_size, data_offset, used, size: used_size, index })
     }
 
     pub(super) fn as_bytes(&self) -> [u8; INODE_SIZE] {
@@ -70,23 +72,20 @@ impl Inode {
             res[i+18] = *x;
         }
 
+        for (i, x) in self.index.to_le_bytes().iter().enumerate() {
+            res[i+26] = *x;
+        }
+
         res
     }
 
-    pub(super) fn used() -> Self {
-        Self { used: true, kind: InodeKind::File, data_size: 0, data_offset: 0, size: 0 }
+    pub(super) fn used(idx: u64) -> Self {
+        Self { used: true, kind: InodeKind::File, data_size: 0, data_offset: 0, size: 0, index: idx }
     }
 
     pub(super) fn unused() -> Self {
         // perfectly safe here
         unsafe { core::mem::zeroed() }
-    }
-
-    /// Gets the offset for index n, ensuring the index is valid
-    /// 
-    /// this is the offset from block 1, not block 0
-    pub(super) fn offset_for_index(index: u64) -> u64 {
-        size_of::<Self>() as u64 * index
     }
 
     pub fn is_used(&self) -> bool {
@@ -152,6 +151,13 @@ impl Inode {
     pub fn data_offset(&self) -> u64 {
         self.data_offset
     }
+
+    pub fn index(
+        &self,
+    ) -> u64 {
+        self.index
+    }
+
 
     /// Writes to the inode directory entries.
     /// 

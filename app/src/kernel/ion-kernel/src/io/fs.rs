@@ -4,7 +4,7 @@
 //! and file descriptor system, mimicking the interface of `std::fs`.
 
 use alloc::{string::{String, ToString}, vec::Vec, format};
-use crate::{asyncio, io::{self, concurrent::{read::AsyncRead, seek::AsyncSeek, write::AsyncWrite}}};
+use crate::{asyncio, io::{self, concurrent::{read::AsyncRead, seek::AsyncSeek, write::AsyncWrite}}, vfs::{fd, fs::alloc::alloc_data}};
 use crate::{
     disk::{DiskId, get_disk}, 
     vfs::structures::InodeKind, 
@@ -57,7 +57,7 @@ pub async fn write<C: AsRef<[u8]>>(path: &str, contents: C) -> io::Result<()> {
     let (parent_path, filename) = split_path_into_parent_and_name(path)?;
     
     // Resolve parent directory
-    let parent = crate::vfs::resolve_path(disk, parent_path).await?;
+    let mut parent = crate::vfs::resolve_path(disk, parent_path).await?;
     
     if parent.kind() != InodeKind::Directory {
         return Err(io::Error::new(
@@ -70,8 +70,22 @@ pub async fn write<C: AsRef<[u8]>>(path: &str, contents: C) -> io::Result<()> {
     let file_inode_idx = if let Some(idx) = crate::vfs::lookup_in_dir(&parent, disk, filename).await? {
         idx
     } else {
-        // Create new inode
-        alloc_inode(disk).await?
+        let new = alloc_inode(disk).await?;
+
+            let mut entries = parent.read_dir(disk).await?;
+            entries.push((filename.as_bytes().to_vec(), new));
+
+            parent.write_as_dir(
+                disk,
+                &entries.iter()
+                    .map(|(n, i)| (n.as_slice(), *i))
+                    .collect::<Vec<_>>()
+            ).await?;
+
+            let pindex = parent.index();
+
+            write_inode(disk, pindex, &parent).await?;
+            new
     };
     
     // Read inode
@@ -144,9 +158,9 @@ pub async fn create_dir(path: &str) -> io::Result<()> {
         ));
     }
     
-    let (parent_path, _) = split_path_into_parent_and_name(&path)?;
+    let (parent_path, dirname) = split_path_into_parent_and_name(&path)?;
     
-    let parent = crate::vfs::resolve_path(disk, parent_path).await?;
+    let mut parent = crate::vfs::resolve_path(disk, parent_path).await?;
     
     if parent.kind() != InodeKind::Directory {
         return Err(io::Error::new(
@@ -168,6 +182,19 @@ pub async fn create_dir(path: &str) -> io::Result<()> {
     
     write_inode(disk, dir_inode_idx, &dir_inode).await?;
     
+    let mut entries = parent.read_dir(disk).await?;
+    entries.push((dirname.as_bytes().to_vec(), dir_inode_idx));
+
+    parent.write_as_dir(
+        disk,
+        &entries.iter()
+            .map(|(n, i)| (n.as_slice(), *i))
+            .collect::<Vec<_>>()
+    ).await?;
+
+    let pindex = parent.index();
+
+    write_inode(disk, pindex, &parent).await?;
     Ok(())
 }
 
@@ -215,7 +242,10 @@ pub async fn remove_file(path: &str) -> io::Result<()> {
     let mut entries = parent.read_dir(disk).await?;
     entries.retain(|(name, _)| name != filename.as_bytes());
     parent.write_as_dir(disk, &entries.iter().map(|(n, i)| (n.as_slice(), *i)).collect::<Vec<_>>()).await?;
-    write_inode(disk, 0, &parent).await?;  // Simplified: assume parent is root
+
+    let pindex = parent.index();
+
+    write_inode(disk, pindex, &parent).await?;
     
     Ok(())
 }
@@ -312,10 +342,12 @@ pub async fn rename(from: &str, to: &str) -> io::Result<()> {
 }
 
 /// Get metadata about a file
-pub async fn metadata(path: &str) -> io::Result<Metadata> {
+pub async fn metadata(fd: u32) -> io::Result<Metadata> {
     let disk = get_main_disk()?;
-    let inode = crate::vfs::resolve_path(disk, path).await?;
-    
+
+    let inode = fd::inode_index(fd)?;
+    let inode = read_inode(disk, inode).await?;
+
     Ok(Metadata {
         size: inode.size(),
         is_dir: inode.kind() == InodeKind::Directory,
@@ -441,8 +473,25 @@ impl OpenOptions {
         if self.truncate {
             write(path, &[]).await?;
         }
+
+        let inode = crate::vfs::resolve_path_to_index(disk, path).await?;
         
-        Ok(File { path: path.to_string() })
+        let mut flags = fd::OpenFlags::empty();
+
+        if self.read {
+            flags |= fd::OpenFlags::READ;
+        }
+        if self.write {
+            flags |= fd::OpenFlags::WRITE;
+        }
+        if self.append {
+            flags |= fd::OpenFlags::APPEND;
+        }
+        if self.create || self.create_new {
+            flags |= fd::OpenFlags::CREATE;
+        }
+
+        Ok(File { fd: fd::open(inode, flags)? })
     }
 }
 
@@ -455,7 +504,7 @@ impl Default for OpenOptions {
 /// A file that is open and ready for reading/writing
 #[derive(Debug)]
 pub struct File {
-    path: String,
+    fd: u32
 }
 
 impl File {
@@ -477,17 +526,19 @@ impl File {
 
     /// Get metadata about the file
     pub async fn metadata(&self) -> io::Result<Metadata> {
-        metadata(&self.path).await
+        metadata(self.fd).await
     }
 
     /// Read all data from the file
     pub async fn read_all(&self) -> io::Result<Vec<u8>> {
-        read(&self.path).await
+        let mut buf = alloc::vec![0u8; self.metadata().await?.len() as usize];
+        fd::read(self.fd, &mut buf)?;
+        Ok(buf)
     }
 
     /// Write data to the file
-    pub async fn write_all(&mut self, data: &[u8]) -> io::Result<()> {
-        write(&self.path, data).await
+    pub fn write_all(&mut self, data: &[u8]) -> io::Result<u64> {
+        fd::write(self.fd, data)
     }
 }
 
@@ -569,10 +620,7 @@ impl io::Read for File {
 
 impl AsyncRead for File {
     async fn async_read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let data = read(&self.path).await?;
-        let n = core::cmp::min(buf.len(), data.len());
-        buf[..n].copy_from_slice(&data[..n]);
-        Ok(n)
+        Ok(fd::read(self.fd, buf)? as usize)
     }
 }
 
@@ -588,7 +636,7 @@ impl io::Write for File {
 
 impl AsyncWrite for File {
     async fn async_write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        write(&self.path, buf).await?;
+        fd::write(self.fd, buf)?;
         Ok(buf.len())
     }
 }
@@ -604,17 +652,14 @@ impl AsyncSeek for File {
         self.metadata().await.map(|meta| {
             let size = meta.len();
             match from {
-                io::SeekFrom::Start(pos) => Ok(pos),
+                io::SeekFrom::Start(pos) => {
+                    fd::seek(self.fd, pos)
+                },
                 io::SeekFrom::End(offset) => {
-                    if offset < 0 {
-                        Ok(size.saturating_sub((-offset) as u64))
-                    } else {
-                        Ok(size + (offset as u64))
-                    }
+                    fd::seek(self.fd, size.saturating_add(offset as u64))
                 }
-                io::SeekFrom::Current(_offset) => {
-                    // Not implemented: would need to track current position
-                    Err(io::Error::new(io::ErrorKind::Other, "SeekFrom::Current not supported"))
+                io::SeekFrom::Current(offset) => {
+                    fd::seek_relative(self.fd, offset)
                 }
             }
         })?

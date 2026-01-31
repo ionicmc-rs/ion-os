@@ -130,8 +130,8 @@ pub const ION_FS_ALLOC_MAGIC_NUMBER: u32 = 0xab87befd;
 
 pub struct AllocBlock {
     version: IonFSVersion,
-    pub(super) next_free: u64,
-    pub(super) inode_blocks: Vec<u64>
+    pub(in crate::vfs) next_free: u64,
+    pub(in crate::vfs) inode_blocks: Vec<u64>
 }
 
 pub async fn read_alloc_block(disk: &mut dyn disk::AsyncBlockDevice) -> Result<AllocBlock, MetadataParseErr> {
@@ -356,7 +356,7 @@ pub async fn alloc_inode(
         let inode_id =
             block_idx as u64 * per_block as u64 + free_hint as u64;
 
-        let inode = Inode::used(); // or however you create it
+        let inode = Inode::used(inode_id); // or however you create it
 
         unsafe {
             write_inode_unchecked(disk, &alloc, inode_id, &inode).await?;

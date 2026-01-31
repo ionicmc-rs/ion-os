@@ -756,3 +756,10 @@ pub fn close_all() {
     let mut table = GLOBAL_FD_TABLE.lock();
     table.close_all();
 }
+
+/// Get the inode index associated with a file descriptor
+pub fn inode_index(fd: u32) -> io::Result<u64> {
+    let table = GLOBAL_FD_TABLE.lock();
+    let handle = table.get(fd)?;
+    Ok(handle.inode())
+}

@@ -1,11 +1,8 @@
 //! Handles Keyboard inputs
 //!
-//! Currently: The following issues exist:
-//! - FIXME(sync): keyboard inputs are handle synchronously
-//! - FIXME(size): interrupt handler is too big and prone to errors.
-//! - FIXME(scset): Scancode Set is not being queried and set.
-//!
-//! You do not use this module
+//! You do not use this module at all directly.
+//! 
+//! This is handled once in the keyboard handler thread.
 
 use core::{mem::MaybeUninit};
 
