@@ -5,7 +5,7 @@
 )]
 #[cfg(debug_assertions)]
 use core::ptr::fn_addr_eq;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::{fmt::Debug, sync::atomic::{AtomicU64, Ordering}};
 
 #[cfg(debug_assertions)]
 use crate::scheduler::idle_entry;
@@ -27,7 +27,8 @@ pub mod sync;
 use alloc::{alloc::{Allocator, Global}, sync::Arc};
 pub use join::{JoinError, JoinErrorKind, JoinHandle, spawn, spawn_at};
 
-pub use crate::scheduler::{
+#[allow(unused)]
+pub(crate) use crate::scheduler::{
     atomic_block_until, block_until, block_until_end_of, block_until_key_input, block_until_true,
     critical_moment, critical_moment_raw, current, exit_current, has_panicked, remove_panic_id,
     request_reschedule, reschedule_if_needed, start, yield_now,
@@ -47,6 +48,52 @@ pub struct Thread {
     _stack: ThreadStack<Arc<dyn Allocator>>, // this is a little fishy....
     // guards against forgetting to drop the allocation.
     _tls_guard: TlsAllocation, // No metadata storage here, we do that with thread local storage.
+}
+
+impl Debug for Thread {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Thread")
+            .field("id", &self.id)
+            .field("context", &self.ctx)
+            .field("state", &self.state)
+            .field("tls", &self.tls)
+            .field_with("stack", |f| {
+                f.pad(&alloc::format!("{:?} (size: {})", self._stack.ptr(), self._stack.size()))
+            })
+            .finish()
+    }
+}
+
+impl Debug for State {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Blocked(ev) => match ev {
+                WakeEvent::Atomic(_) | WakeEvent::FnYieldTrue(_) => {
+                    f.debug_struct("Blocked").finish()
+                }
+                WakeEvent::EndOf(id) => {
+                    f.debug_tuple("BlockedOnThread")
+                        .field(id)
+                        .finish()
+                }
+                WakeEvent::KeyInput => {
+                    f.debug_struct("BlockedOnKeyInput")
+                        .finish()
+                }
+                WakeEvent::Raw(ptr) => {
+                    f.debug_tuple("BlockedOnPtr")
+                        .field(ptr)
+                        .finish()
+                }
+            }
+            Self::Ready => f.debug_struct("Ready").finish(),
+            Self::Running => f.debug_struct("Running").finish(),
+            Self::Sleeping(tick) => f.debug_struct("Sleeping")
+                .field("until", &tick)
+                .finish(),
+            Self::Terminated => f.debug_struct("Terminated").finish()
+        }
+    }
 }
 
 impl Drop for Thread {

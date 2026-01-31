@@ -12,6 +12,7 @@ use crate::arch::frame_allocator::alloc_2mib_frame;
 use crate::arch::mmu::{PageTable, PageTableFlags, map_2mib, virt_to_phys};
 use crate::arch::{PhysAddr, VirtAddr, defs};
 use crate::address_space::{kernel_address_space, map_into_space};
+use crate::c_lib::libc::{self, OsError};
 use crate::io::{Error, ErrorKind, Result};
 use crate::lib_alloc::user::USER_DATA_BASE;
 
@@ -329,6 +330,7 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
     let q_size = read_volatile(&(*common).queue_size);
     
     if q_size == 0 {
+        libc::set_os_error(OsError::HardwareFail);
         panic!("virtio: queue size is 0 (mapping issue or device error)");
     }
     serial_println!("Queue 0 size: {}", q_size);
@@ -474,6 +476,7 @@ impl VirtioBlk {
         let stat_ptr = self.dma_virt.add(offset + 32);
 
         (*req_ptr).type_ = if write {
+            libc::set_os_error(OsError::Unsupported);
             assert!(offset % 512 == 0, "Cross sector writes are not supported");
             VIRTIO_BLK_T_OUT 
         } else { VIRTIO_BLK_T_IN };
@@ -542,7 +545,6 @@ impl VirtioBlk {
 }
 
 impl VirtioBlk {
-    // ... existing submit_async, poll_slot, complete_slot ...
 
     /// Returns a Future that resolves when the read is complete.
     /// This is the primary entry point for async disk I/O.
@@ -565,7 +567,7 @@ impl VirtioBlk {
     ) -> Result<()> {
         let slot = self.submit_async(block, buf_phys, write)?;
         while !self.poll_slot(slot) {
-            core::hint::spin_loop();
+            crate::arch::cpu::relax();
         }
         self.complete_slot(slot)
     }

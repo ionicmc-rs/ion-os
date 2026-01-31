@@ -21,4 +21,13 @@ cfg_if::cfg_if! {
 
 const _: () = {
     assert!(defs::PAGE_SIZE == 2 * 1024 * 1024, "Page size is not 2 MiB - but that is the only supported page size (for now).");
+    if defs::POINTER_WIDTH_RAW == 64 {
+        assert!(matches!(defs::POINTER_WIDTH, PointerWidth::SixtyFour))
+    } else if defs::POINTER_WIDTH_RAW == 32 {
+        assert!(matches!(defs::POINTER_WIDTH, PointerWidth::ThirtyTwo))
+    } else if defs::POINTER_WIDTH_RAW == 16 {
+        assert!(matches!(defs::POINTER_WIDTH, PointerWidth::Sixteen))
+    } else {
+        panic!("Invalid pointer width selected")
+    }
 };

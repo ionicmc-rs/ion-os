@@ -93,6 +93,7 @@ impl<T: PartialEq + ?Sized> PartialEq<T> for MutexGuard<'_, T> {
         self.deref().eq(other)
     }
 
+    #[allow(clippy::partialeq_ne_impl)]
     fn ne(&self, other: &T) -> bool {
         self.deref().ne(other)
     }
@@ -103,6 +104,7 @@ impl<T: PartialEq + ?Sized> PartialEq for MutexGuard<'_, T> {
         self.deref().eq(other)
     }
 
+    #[allow(clippy::partialeq_ne_impl)]
     fn ne(&self, other: &Self) -> bool {
         self.deref().ne(other)
     }
@@ -211,8 +213,7 @@ impl<T> Mutex<T> {
 
         self.locked.store(true, Ordering::Release);
 
-        let lock = MutexGuard::new(&self.locked, &self.value, &self.poisoned);
-        lock
+        MutexGuard::new(&self.locked, &self.value, &self.poisoned)
     }
 
     pub fn try_lock(&'_ self) -> Result<MutexGuard<'_, T>, TryLockError> {

@@ -81,8 +81,8 @@ pub unsafe fn map_2mib(
 
     let v = virt.0;
 
-    debug_assert!(v % (2 * 1024 * 1024) == 0);
-    debug_assert!(phys.0 % (2 * 1024 * 1024) == 0);
+    debug_assert!(v.is_multiple_of(2 * 1024 * 1024));
+    debug_assert!(phys.0.is_multiple_of(2 * 1024 * 1024));
 
     let l4 = pml4.0;
     let l4e = l4.add(pml4_index(v));
@@ -105,7 +105,7 @@ pub unsafe fn map_2mib(
 
     let flags = PageTableFlags::PRESENT | PageTableFlags::HUGE_PAGE | flags;
 
-    *pde = (phys.0 as u64) | flags.bits();
+    *pde = phys.0 | flags.bits();
 
     // Invalidate TLB for this page
     core::arch::asm!("invlpg [{}]", in(reg) v, options(nostack, preserves_flags));
@@ -173,6 +173,8 @@ unsafe fn alloc_zeroed_page_table() -> *mut u64 {
 use crate::lib_alloc::{HEAP_SIZE, heap_start};
 
 /// initializes the kernel heap
+/// # Safety
+/// must only be called once
 #[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe fn init_kernel_heap() {
     let mut pml4 = active_pml4();
@@ -194,6 +196,8 @@ pub unsafe fn init_kernel_heap() {
     }
 }
 
+/// # Safety
+/// the virtual address must be correct, and the current paging config must be correct (i.e., allow for reading)
 #[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe fn virt_to_phys(virt: VirtAddr) -> Option<PhysAddr> {
     let addr = virt.0 as u64;

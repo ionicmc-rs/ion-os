@@ -31,7 +31,7 @@ impl ThreadPool {
         } else {
             let left = self.queue.len();
             self.queue.push_back(Box::new(f));
-            Err(left as usize)
+            Err(left)
         }
     }
 

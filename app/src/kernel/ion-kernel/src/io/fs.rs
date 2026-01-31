@@ -4,7 +4,7 @@
 //! and file descriptor system, mimicking the interface of `std::fs`.
 
 use alloc::{string::{String, ToString}, vec::Vec, format};
-use crate::{asyncio, io::{self, concurrent::{read::AsyncRead, seek::AsyncSeek, write::AsyncWrite}}, vfs::{fd, fs::alloc::alloc_data}};
+use crate::{asyncio, io::{self, concurrent::{read::AsyncRead, seek::AsyncSeek, write::AsyncWrite}}, vfs::{fd}};
 use crate::{
     disk::{DiskId, get_disk}, 
     vfs::structures::InodeKind, 
@@ -474,7 +474,7 @@ impl OpenOptions {
             write(path, &[]).await?;
         }
 
-        let inode = crate::vfs::resolve_path_to_index(disk, path).await?;
+        let inode = crate::vfs::resolve_path(disk, path).await?;
         
         let mut flags = fd::OpenFlags::empty();
 
@@ -491,7 +491,7 @@ impl OpenOptions {
             flags |= fd::OpenFlags::CREATE;
         }
 
-        Ok(File { fd: fd::open(inode, flags)? })
+        Ok(File { fd: fd::open(DiskId::new(0).unwrap(), inode.index(), flags).await? })
     }
 }
 
@@ -532,13 +532,13 @@ impl File {
     /// Read all data from the file
     pub async fn read_all(&self) -> io::Result<Vec<u8>> {
         let mut buf = alloc::vec![0u8; self.metadata().await?.len() as usize];
-        fd::read(self.fd, &mut buf)?;
+        fd::read(self.fd, &mut buf).await?;
         Ok(buf)
     }
 
     /// Write data to the file
-    pub fn write_all(&mut self, data: &[u8]) -> io::Result<u64> {
-        fd::write(self.fd, data)
+    pub async fn write_all(&mut self, data: &[u8]) -> io::Result<u64> {
+        fd::write(self.fd, data).await
     }
 }
 
@@ -620,7 +620,7 @@ impl io::Read for File {
 
 impl AsyncRead for File {
     async fn async_read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        Ok(fd::read(self.fd, buf)? as usize)
+        Ok(fd::read(self.fd, buf).await? as usize)
     }
 }
 
@@ -636,7 +636,7 @@ impl io::Write for File {
 
 impl AsyncWrite for File {
     async fn async_write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        fd::write(self.fd, buf)?;
+        fd::write(self.fd, buf).await?;
         Ok(buf.len())
     }
 }

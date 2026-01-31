@@ -83,7 +83,6 @@ impl BootInfoInput {
             mem_map_addr: {
                 let data_ptr = self.memory_map_addr as *const MultibootMemoryIntermediate;
                 let header = unsafe { data_ptr.as_ref().unwrap() };
-                serial_println!("Header: {:#?}", header);
                 let entries_len = {
                     (header
                         .size
@@ -106,7 +105,7 @@ impl BootInfoInput {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct SmallPtr<T: ?Sized> {
     ptr: u32,
-    phantom: PhantomData<T>,
+    phantom: PhantomData<*mut T>,
 }
 
 impl<T: ?Sized> Debug for SmallPtr<T> {
@@ -174,7 +173,7 @@ pub struct BootInfo {
     /// pointer to stack top
     pub stack_top: NonNull<()>,
     /// pointer to frame buffer.
-    pub frame_buffer: NonNull<()>,
+    pub frame_buffer: NonNull<MultibootFramebufferTag>,
     /// pointer to memory map.
     pub mem_map_addr: NonNull<MultibootMemory>,
     /// C kernel entry, as a function pointer

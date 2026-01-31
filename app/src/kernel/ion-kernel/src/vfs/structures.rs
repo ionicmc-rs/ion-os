@@ -1,8 +1,8 @@
-use core::{ffi::CStr, fmt::Display};
+use core::fmt::Display;
 
 use alloc::vec::Vec;
 
-use crate::{disk::write_at, io::{self, Error}, log, serial_println, vfs::fs::parse::read_alloc_block};
+use crate::io;
 
 /// One Node in the file system
 #[repr(C)]

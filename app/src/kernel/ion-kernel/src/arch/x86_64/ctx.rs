@@ -12,11 +12,12 @@ use core::arch::asm;
  * ========================================================== */
 
 /// Opaque execution context of the current CPU.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Context {
     regs: Regs,
     ctrl: Ctrl,
-    fpu: Fpu,
+    /// Unused for now
+    _fpu: Fpu,
 }
 
 /// Capture the current execution context.
@@ -49,7 +50,7 @@ impl Context {
  * Private x86_64 implementation
  * ========================================================== */
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Regs {
     rax: u64,
     rbx: u64,
@@ -71,7 +72,7 @@ struct Regs {
     rflags: u64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Ctrl {
     cr0: u64,
     cr2: u64,
@@ -79,7 +80,7 @@ struct Ctrl {
     cr4: u64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Fpu {
     data: [u8; 512],
 }
@@ -92,7 +93,7 @@ fn capture() -> Context {
     Context {
         regs: capture_regs(),
         ctrl: capture_ctrl(),
-        fpu: capture_fpu(),
+        _fpu: capture_fpu(),
     }
 }
 
@@ -134,40 +135,26 @@ fn capture_regs() -> Regs {
 
     unsafe {
         asm!(
-            "mov {0}, rax",
-            "mov {1}, rbx",
-            "mov {2}, rcx",
-            "mov {3}, rdx",
-            "mov {4}, rsi",
-            "mov {5}, rdi",
-            "mov {6}, rbp",
-            "mov {7}, rsp",
-            "mov {8}, r8",
-            "mov {9}, r9",
-            "mov {10}, r10",
-            "mov {11}, r11",
-            "mov {12}, r12",
-            "mov {13}, r13",
-            "mov {14}, r14",
-            "mov {15}, r15",
-            "pushfq; pop {16}",
-            out(reg) r.rax,
-            out(reg) r.rbx,
-            out(reg) r.rcx,
-            out(reg) r.rdx,
-            out(reg) r.rsi,
-            out(reg) r.rdi,
-            out(reg) r.rbp,
-            out(reg) r.rsp,
-            out(reg) r.r8,
-            out(reg) r.r9,
-            out(reg) r.r10,
-            out(reg) r.r11,
-            out(reg) r.r12,
-            out(reg) r.r13,
-            out(reg) r.r14,
-            out(reg) r.r15,
-            out(reg) r.rflags,
+            "mov [{0} + 0x00], rax",
+            "mov [{0} + 0x08], rbx",
+            "mov [{0} + 0x10], rcx",
+            "mov [{0} + 0x18], rdx",
+            "mov [{0} + 0x20], rsi",
+            "mov [{0} + 0x28], rdi",
+            "mov [{0} + 0x30], rbp",
+            "mov [{0} + 0x38], rsp",
+            "mov [{0} + 0x40], r8",
+            "mov [{0} + 0x48], r9",
+            "mov [{0} + 0x50], r10",
+            "mov [{0} + 0x58], r11",
+            "mov [{0} + 0x60], r12",
+            "mov [{0} + 0x68], r13",
+            "mov [{0} + 0x70], r14",
+            "mov [{0} + 0x78], r15",
+            "pushfq",
+            "pop qword ptr [{0} + 0x88]",
+            in(reg) &mut r,
+            options(nostack, preserves_flags),
         );
     }
 

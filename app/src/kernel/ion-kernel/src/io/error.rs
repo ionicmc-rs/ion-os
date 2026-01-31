@@ -49,7 +49,7 @@ pub struct Error {
     data: ErrorData,
 }
 
-/// An I/O error, evaluated at compile type
+/// An I/O error, evaluated at compile time
 pub macro const_err($kind:ident, $msg:literal) {
     $crate::io::Error::from_static_msg($crate::io::ErrorKind::$kind, $msg)
 }
@@ -154,7 +154,7 @@ impl Error {
             ErrorData::Custom(Custom { kind, .. }) => Some(kind),
             ErrorData::Os(code) => decode_os_code(code),
             ErrorData::Simple(kind) => Some(kind),
-            ErrorData::SimpleMessage(..) => None,
+            ErrorData::SimpleMessage(kind, ..) => Some(kind),
         }
     }
 

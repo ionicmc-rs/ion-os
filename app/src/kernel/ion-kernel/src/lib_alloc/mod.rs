@@ -8,7 +8,7 @@ use core::{alloc::GlobalAlloc, fmt, ptr::NonNull};
 use alloc::alloc::{AllocError, Allocator};
 use linked_list_allocator::LockedHeap;
 
-use crate::thread;
+use crate::{c_lib::libc, thread};
 
 unsafe extern "C" {
     static __kernel_end: u8;
@@ -70,7 +70,13 @@ impl RescheduleAlloc {
 unsafe impl GlobalAlloc for RescheduleAlloc {
     #[inline]
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        thread::critical_moment(|| unsafe { self.0.alloc(layout) })
+        let res = thread::critical_moment(|| unsafe { self.0.alloc(layout) });
+
+        if res.is_null() {
+            libc::set_os_error(libc::OsError::AllocFail);
+        }
+
+        res
     }
 
     #[inline]
@@ -82,7 +88,13 @@ unsafe impl GlobalAlloc for RescheduleAlloc {
 
     #[inline]
     unsafe fn alloc_zeroed(&self, layout: core::alloc::Layout) -> *mut u8 {
-        thread::critical_moment(|| unsafe { self.0.alloc_zeroed(layout) })
+        let res = thread::critical_moment(|| unsafe { self.0.alloc_zeroed(layout) });
+
+        if res.is_null() {
+            libc::set_os_error(libc::OsError::AllocFail);
+        }
+
+        res
     }
 
     #[inline]
@@ -92,7 +104,13 @@ unsafe impl GlobalAlloc for RescheduleAlloc {
         layout: core::alloc::Layout,
         new_size: usize,
     ) -> *mut u8 {
-        thread::critical_moment(|| unsafe { self.0.realloc(ptr, layout, new_size) })
+        let res = thread::critical_moment(|| unsafe { self.0.realloc(ptr, layout, new_size) });
+
+        if res.is_null() {
+            libc::set_os_error(libc::OsError::AllocFail);
+        }
+
+        res
     }
 }
 

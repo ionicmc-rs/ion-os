@@ -3,8 +3,6 @@
 //! These are meant for users, but we plan to add a `serial_log`
 use core::fmt;
 
-use x86_64::instructions::interrupts;
-
 use crate::{serial_println, text::{Color, print, println, set_print_color}, thread};
 
 /// Log levels

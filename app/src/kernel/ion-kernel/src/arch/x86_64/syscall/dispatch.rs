@@ -1,4 +1,4 @@
-use crate::{arch::syscall::parse::{ProcessCommand, Syscall, ThreadCommand}, log::info, serial_println, thread};
+use crate::{arch::syscall::parse::{ProcessCommand, Syscall, ThreadCommand}, c_lib::libc::{self, OsError}, log::info, process::{CURRENT_PROCESS, exit_proc}, serial_println, thread};
 
 /// Represents inputs to a syscall
 #[repr(C)]
@@ -27,7 +27,7 @@ fn set_metadata(val: u64) {
 
 #[doc(hidden)]
 #[unsafe(no_mangle)]
-pub extern "C" fn syscall_dispatch(
+pub unsafe extern "C" fn syscall_dispatch(
     frame: *const SyscallFrame,
 ) -> u64 {
     let frame = unsafe { &*frame };
@@ -44,9 +44,19 @@ pub extern "C" fn syscall_dispatch(
             match v {
                 ProcessCommand::Exit(code) => {
                     info!("process <TID {}> exited with code {code}", thread::id().0);
-                    thread::exit_current();
+
+                    let pid = unsafe { CURRENT_PROCESS.unwrap() };
+                    
+                    exit_proc(pid);
+
+                    // if we are still here somehow, then we return an error
+
+                    libc::set_os_error(OsError::ProcessFail);
+
+                    frame.rax
                 }
                 ProcessCommand::Unknown => {
+                    libc::set_os_error(OsError::InvalidInput);
                     set_metadata(UNKNOWN_MAGIC_VAL);
                     frame.rax
                 }
@@ -58,6 +68,7 @@ pub extern "C" fn syscall_dispatch(
                 thread::exit_current();
             }
             ThreadCommand::Unknown => {
+                libc::set_os_error(OsError::InvalidInput);
                 set_metadata(UNKNOWN_MAGIC_VAL);
                 frame.rax
             }
@@ -67,6 +78,9 @@ pub extern "C" fn syscall_dispatch(
         // 0 in rax - main command unknown (rdi irrelevant)
         // 0 in rdi - sub command unknown
 
-        Syscall::Unknown => UNKNOWN_MAGIC_VAL
+        Syscall::Unknown => {
+            libc::set_os_error(OsError::InvalidInput);
+            UNKNOWN_MAGIC_VAL
+        }
     }
 }

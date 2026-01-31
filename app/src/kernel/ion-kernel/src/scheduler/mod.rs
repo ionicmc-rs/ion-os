@@ -631,7 +631,7 @@ pub fn sleep_current(ticks: u64) {
     SCHEDULER.schedule(ScheduleReason::Sleep(ticks));
 }
 
-pub fn block_until(ptr: *const bool) {
+pub(crate) fn block_until(ptr: *const bool) {
     if unsafe { *ptr } {
         return;
     }

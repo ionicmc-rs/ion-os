@@ -4,7 +4,7 @@ use core::fmt::Display;
 
 use alloc::{vec::Vec};
 
-use crate::{disk::{self, read_at, write_at}, io::{self, Error, ErrorKind}, log, vfs::{fs::IonFSVersion, structures::{INODE_SIZE, Inode, InodeKind, InodeParseErr}}};
+use crate::{disk::{self, read_at, write_at}, io::{self, Error, ErrorKind}, log, vfs::{fs::IonFSVersion, structures::{INODE_SIZE, Inode}}};
 
 // Super Blocks
 
@@ -128,6 +128,7 @@ pub async fn write_superblock(disk: &mut dyn disk::AsyncBlockDevice, version: Io
 
 pub const ION_FS_ALLOC_MAGIC_NUMBER: u32 = 0xab87befd;
 
+#[derive(Debug)]
 pub struct AllocBlock {
     version: IonFSVersion,
     pub(in crate::vfs) next_free: u64,
@@ -201,6 +202,7 @@ pub async fn write_alloc_block(disk: &mut dyn disk::AsyncBlockDevice, block: &Al
 
 // Inode Blocks
 
+#[allow(unused)]
 pub struct InodeBlock {
     free_hint: u16,
     nodes: Vec<Inode>
@@ -356,7 +358,7 @@ pub async fn alloc_inode(
         let inode_id =
             block_idx as u64 * per_block as u64 + free_hint as u64;
 
-        let inode = Inode::used(inode_id); // or however you create it
+        let inode = Inode::used(inode_id);
 
         unsafe {
             write_inode_unchecked(disk, &alloc, inode_id, &inode).await?;

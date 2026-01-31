@@ -237,6 +237,8 @@ pub const USER_DATA_SIZE: usize = 4 * 1024 * 1024; // size for user data.
 /// base for user data.
 pub const USER_DATA_BASE: usize = 0x0000_0000_5000_0000;
 
+/// # Safety
+/// must only be called once.
 pub unsafe fn init_user_data() {
     unsafe { *(&raw const USER_DATA as *mut _) = RegionAllocator::init(USER_DATA_BASE, USER_DATA_SIZE); }
 }

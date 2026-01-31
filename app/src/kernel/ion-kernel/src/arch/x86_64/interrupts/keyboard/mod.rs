@@ -10,7 +10,7 @@ use crossbeam_queue::ArrayQueue;
 use x86_64::{ instructions::port::Port, structures::idt::InterruptStackFrame};
 use spin::Mutex;
 use crate::{
-    arch::interrupts::pic8259::handlers::notify, log::warn,
+    arch::interrupts::pic8259::handlers::notify, c_lib::libc::{self, OsError}, log::warn
 };
 
 use pc_keyboard::{
@@ -39,6 +39,7 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: Interrupt
 
     // before interrupts are ever enabled - SC_QUEUE should be enabled.
     if unsafe { SC_QUEUE.assume_init_mut().push(sc) }.is_err() {
+        libc::set_os_error(OsError::MemoryError);
         warn!("keyboard: input dropped due to lack of space.");
     }
     
