@@ -131,7 +131,6 @@ check_multiboot1_mmap:
     mov     [boot_info_data + 0x28], eax
     mov     dword [boot_info_data + 0x2C], 0  ; high dword zero for 64-bit field
 
-    ; Optional: publish framebuffer_addr if bit 12 set (video info)
     mov     eax, [esi + 0x54] ; fb_addr low (if VBE/graphics provided)
     mov     [boot_info_data + 0x20], eax
     mov     dword [boot_info_data + 0x24], 0

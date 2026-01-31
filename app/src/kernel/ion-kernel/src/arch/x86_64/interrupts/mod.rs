@@ -4,7 +4,7 @@
 //!
 //! These things are handled in Ion OS's initialization, so you wouldn't typically have to see them.
 
-use crate::{arch::interrupts::pic8259::InterruptIndex, c_lib::libc, hlt_loop, serial_println, text::println};
+use crate::{arch::interrupts::pic8259::InterruptIndex, c_lib::libc, serial_println, text::println};
 use lazy_static::lazy_static;
 use x86_64::{
     instructions::interrupts, set_general_handler, structures::idt::{InterruptDescriptorTable, InterruptStackFrame}
@@ -113,7 +113,7 @@ pub mod test {
         x86_64::instructions::interrupts::int3();
         // // always passes, which may be a problem...
         // now can check the error code number
-        assert_eq!(libc::get_errno().0, 3)
+        assert_eq!(*libc::get_errno(), 3)
     }
 }
 
@@ -132,6 +132,16 @@ impl InterruptGuard {
     pub fn new() -> Self {
         interrupts::disable();
         Self(())
+    }
+
+    pub fn execute<R>(f: impl FnOnce() -> R) -> R {
+        let guard = Self::new();
+
+        let res = f();
+
+        drop(guard);
+
+        res
     }
 
     /// disables this guard, keeping interrupts off.

@@ -1,93 +1,190 @@
-//! Module for Kernel Errors.
-use x86_64::registers::model_specific::FsBase;
+//! Kernel error / errno support.
+//!
+//! This module provides a libc-compatible `errno` implementation,
+//! supporting both global (kernel / early boot) and thread-local
+//! (user / normal kernel threads) storage.
 
-use crate::serial_println;
+use core::{
+    ffi::{c_char, CStr},
+    ops::Deref,
+};
 
+use crate::{
+    serial_println,
+    thread,
+};
+
+/// Thread-local errno (used when a thread context exists)
 #[thread_local]
-/// Represents the last KERNEL Error.
 static mut ERRNO: i32 = 0;
 
+/// Global errno (used before threading / TLS is initialized)
 static mut GLOBAL_ERRNO: i32 = 0;
 
-/// Returns a pointer to the Err Number
+/// Returns a pointer to the current errno location.
+///
+/// libc ABI compatibility:
+/// ```c
+/// int *__errno_location(void);
+/// ```
 #[unsafe(no_mangle)]
 #[allow(static_mut_refs)]
 pub extern "C" fn __errno_location() -> *mut i32 {
-    if FsBase::read().as_u64() != 0 {
+    if thread::current().is_some() {
         &raw mut ERRNO
     } else {
         &raw mut GLOBAL_ERRNO
     }
 }
 
-use core::{
-    ffi::{CStr, c_char},
-    ops::Deref,
-};
-
-fn read_prefix<'a>(prefix: *const c_char) -> &'a str {
+/// Read a C string prefix safely.
+///
+/// Used by `perror`.
+fn read_prefix(prefix: *const c_char) -> &'static str {
     if prefix.is_null() {
         return "";
     }
-    // Wrap the raw pointer in a CStr
+
     let c_str = unsafe { CStr::from_ptr(prefix) };
-    // Convert to Rust &str (lossy if invalid UTF‑8)
     c_str.to_str().unwrap_or("<invalid utf8>")
 }
 
-/// Prints the error with the given message.
+/// Print a human-readable error message.
 ///
-/// prints: {msg}: {error meaning if found} (os error {code})
+/// libc ABI compatibility:
+/// ```c
+/// void perror(const char *s);
+/// ```
+///
+/// Output format:
+/// `{prefix}: {meaning} (os error {code})`
 #[unsafe(no_mangle)]
-pub extern "C" fn perror(text: *mut c_char) {
-    let string = read_prefix(text);
+pub extern "C" fn perror(text: *const c_char) {
+    let prefix = read_prefix(text);
     let errno = get_errno();
-    if let Some(v) = errno.meaning() {
-        serial_println!("{}: {} (os error {})", string, v, *errno)
+
+    if let Some(meaning) = errno.meaning() {
+        serial_println!(
+            "{}: {} (os error {})",
+            prefix,
+            meaning,
+            errno.0
+        );
     } else {
-        serial_println!("{}: (os error {})", string, *errno)
+        serial_println!(
+            "{}: (os error {})",
+            prefix,
+            errno.0
+        );
     }
 }
 
-/// Set the Error Number
-// Helper for Rust side
-#[allow(static_mut_refs)]
+/// Set errno to a raw value.
+#[inline(always)]
 pub fn set_errno(e: i32) {
     unsafe { *__errno_location() = e };
 }
 
-/// Get Errno
-#[allow(static_mut_refs)]
+/// Set errno from an OS error.
+#[inline(always)]
+pub fn set_os_error(e: OsError) {
+    set_errno(e as i32);
+}
+
+/// Get the current errno.
+#[inline(always)]
 pub fn get_errno() -> ErrCode {
     ErrCode(unsafe { *__errno_location() })
 }
 
-// typing
-
-/// An Error Code
+/// Wrapper type for an error number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ErrCode(pub i32);
+#[repr(transparent)]
+pub struct ErrCode(i32);
+
+/// Kernel / OS error codes.
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OsError {
+    Ok = 0,
+    HardwareFail = 1,
+    MemoryError = 2,
+    CpuException = 3,
+    ProcessFail = 4,
+    AllocFail = 5,
+    InvalidInput = 6,
+    Unsupported = 7,
+    NotFound = 8,
+    PermissionDenied = 9,
+    AlreadyExists = 10,
+    Busy = 11,
+    Timeout = 12,
+    Interrupted = 13,
+    IsADirectory = 14,
+}
+
+impl From<OsError> for ErrCode {
+    #[inline(always)]
+    fn from(e: OsError) -> Self {
+        ErrCode(e as i32)
+    }
+}
 
 impl ErrCode {
-    /// Returns meaning of error codes.
+    /// Return a human-readable meaning for this error code.
     pub const fn meaning(&self) -> Option<&'static str> {
-        // This is the internal unstable API for Error Codes.
         match self.0 {
-            0 => Some("Ok"),
-            1 => Some("Failed"),
-            2 => Some("Memory Error"),
-            3 => Some("CPU Exception"),
-            4 => Some("Process Failure"),
-            5 => Some("Allocation Failure"),
-            6 => Some("Invalid Input"),
-            7 => Some("Unsupported"),
+            x if x == OsError::Ok as i32 => Some("Ok"),
+            x if x == OsError::HardwareFail as i32 => Some("Hardware Fail"),
+            x if x == OsError::MemoryError as i32 => Some("Out of Memory"),
+            x if x == OsError::CpuException as i32 => Some("CPU Exception"),
+            x if x == OsError::ProcessFail as i32 => Some("Process Failure"),
+            x if x == OsError::AllocFail as i32 => Some("Allocation Failure"),
+            x if x == OsError::InvalidInput as i32 => Some("Invalid Input"),
+            x if x == OsError::Unsupported as i32 => Some("Unsupported"),
+            x if x == OsError::NotFound as i32 => Some("Not Found"),
+            x if x == OsError::PermissionDenied as i32 => Some("Permission Denied"),
+            x if x == OsError::AlreadyExists as i32 => Some("Already Exists"),
+            x if x == OsError::Busy as i32 => Some("Busy"),
+            x if x == OsError::Timeout as i32 => Some("Timeout"),
+            x if x == OsError::Interrupted as i32 => Some("Interrupted"),
+            x if x == OsError::IsADirectory as i32 => Some("Is a Directory"),
             _ => None,
         }
+    }
+    
+    /// Converts this error code
+    pub const fn to_os_error(&self) -> Option<OsError> {
+        if self.code() > 14 { // Note: change this every time we add an error
+            panic!("invalid value for error code created")
+        }
+
+        if self.code() < 0 {
+            // codes less than 0 are reserved for user use, and have no specific meaning
+
+            return None;
+        }
+
+        // Safety: we just ensured we are in the valid range
+        unsafe {
+            core::mem::transmute(*self)
+        }
+    }
+
+    #[inline(always)]
+    pub const fn is_ok(self) -> bool {
+        self.0 == 0
+    }
+
+    #[inline(always)]
+    pub const fn code(self) -> i32 {
+        self.0
     }
 }
 
 impl Deref for ErrCode {
     type Target = i32;
+
     fn deref(&self) -> &Self::Target {
         &self.0
     }

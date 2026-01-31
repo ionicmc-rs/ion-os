@@ -10,6 +10,8 @@
 use pc_keyboard::{ScancodeSet1, ScancodeSet2};
 use x86_64::instructions::port::Port;
 
+use crate::c_lib::libc::{self, OsError};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ps2Resp {
     Ack,    // 0xFA
@@ -76,6 +78,8 @@ impl Ps2Io for DefaultIO {
                 return Ok(());
             }
         }
+
+        libc::set_os_error(OsError::Timeout);
         Err(Ps2Error::Timeout)
     }
 
@@ -91,6 +95,8 @@ impl Ps2Io for DefaultIO {
                 return Ok(byte);
             }
         }
+
+        libc::set_os_error(OsError::Timeout);
         Err(Ps2Error::Timeout)
     }
 
@@ -155,8 +161,14 @@ fn send_with_ack<I: Ps2Io>(io: &mut I, byte: u8, max_resends: usize) -> Result<(
                 io.tiny_delay();
                 continue;
             }
-            Some(Ps2Resp::Resend) => return Err(Ps2Error::ResendLimit),
-            None => return Err(Ps2Error::UnexpectedByte(resp)),
+            Some(Ps2Resp::Resend) => return {
+                libc::set_os_error(OsError::Timeout);
+                Err(Ps2Error::ResendLimit)
+            },
+            None => return {
+                libc::set_os_error(OsError::HardwareFail);
+                Err(Ps2Error::UnexpectedByte(resp))
+            },
         }
     }
 }
@@ -185,6 +197,9 @@ pub fn get_scancode_set<I: Ps2Io>(io: &mut I) -> Result<ScancodeSet, Ps2Error> {
     let id = io.read_data()?;
     match map_scancode_id(id) {
         Some(set) => Ok(set),
-        None => Err(Ps2Error::InvalidScancodeId(id)),
+        None => {
+            libc::set_os_error(OsError::HardwareFail);
+            Err(Ps2Error::InvalidScancodeId(id))
+        }
     }
 }

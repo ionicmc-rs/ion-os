@@ -11,7 +11,7 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::c_lib::libc::mem::{free, malloc};
+use crate::c_lib::libc::{self, mem::{free, malloc}};
 
 /// Allocator which uses malloc.
 ///
@@ -26,17 +26,15 @@ unsafe impl Allocator for MallocAllocator {
         layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, alloc::alloc::AllocError> {
         let ptr = unsafe { malloc(layout.size()) };
-        let nn = NonNull::new(ptr).ok_or(AllocError)?;
+        let nn = NonNull::new(ptr).ok_or_else(|| {
+            libc::set_os_error(libc::OsError::AllocFail);
+            AllocError
+        })?;
         // Construct slice pointer with correct length
         Ok(NonNull::slice_from_raw_parts(nn, layout.size()))
     }
 
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: core::alloc::Layout) {
-        let size: usize = unsafe { ptr.sub(size_of::<usize>()).cast().read() };
-        if size != layout.size() {
-            super::error::set_errno(5);
-            panic!("Invalid Layout: {layout:?} - does not match stored metadata.");
-        }
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: core::alloc::Layout) {
         // Safety: Caller ensures pointer comes from this allocator, which always comes from
         // malloc
         unsafe { free(ptr.as_ptr()) };

@@ -1,3 +1,5 @@
+use core::sync::atomic::{Ordering, compiler_fence};
+
 use x86_64::instructions;
 
 
@@ -9,7 +11,7 @@ pub fn relax() {
 
 /// spins forever, [`relax`]ing the CPU each iteration
 /// 
-/// This is not usually what you want - this does not halt the CPU. see [`spin_forever`] for that.
+/// This is not usually what you want - this does not halt the CPU. see [`hlt_loop`] for that.
 #[inline]
 pub fn spin() -> ! {
     loop {
@@ -21,7 +23,7 @@ pub fn spin() -> ! {
 /// 
 /// use [`spin`] to spin without halting
 #[inline]
-pub fn spin_forever() -> ! {
+pub fn hlt_loop() -> ! {
     loop {
         instructions::hlt();
     }
@@ -50,6 +52,10 @@ pub fn nop() {
 /// Calling this with a function pointer is safe, as long as the function does not return.
 #[inline]
 pub unsafe fn jump(addr: usize) -> ! {
+
+    debug_assert!(addr != 0);
+    debug_assert!((addr as *const usize).is_aligned());
+
     unsafe {
         core::arch::asm!(
             "jmp {0}",
@@ -62,7 +68,7 @@ pub unsafe fn jump(addr: usize) -> ! {
 /// Creates a CPU memory fence
 /// 
 /// This does **not** create a compiler fence - only a CPU fence.
-#[inline]
+#[inline(always)]
 pub fn fence() {
     unsafe {
         core::arch::asm!(
@@ -70,6 +76,13 @@ pub fn fence() {
             options(nostack, preserves_flags)
         );
     }
+}
+
+/// Creates both a memory and CPU fence
+#[inline(always)]
+pub fn full_fence(compiler_order: Ordering) {
+    compiler_fence(compiler_order);
+    fence();
 }
 
 /// returns the core's id

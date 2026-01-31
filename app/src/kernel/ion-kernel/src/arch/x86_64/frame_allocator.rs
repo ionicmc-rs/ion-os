@@ -1,7 +1,7 @@
 //! x86_64 physical frame allocator (2 MiB frames only)
 
 use core::ptr::NonNull;
-use crate::{arch::defs::PAGE_SIZE, c_lib::{MultibootMemory, USABLE_ENTRY}};
+use crate::{arch::defs::PAGE_SIZE, c_lib::{MultibootMemory, USABLE_ENTRY, libc::{self, OsError}}};
 
 /// 2 MiB (Size of one Frame, subject to change)
 pub const FRAME_SIZE: usize = PAGE_SIZE;
@@ -9,7 +9,7 @@ pub const FRAME_SIZE: usize = PAGE_SIZE;
 /// Frame allocator which uses boot info
 #[derive(Debug)]
 pub struct BootInfoFrameAllocator {
-    memory_map: NonNull<MultibootMemory>,
+    _memory_map: NonNull<MultibootMemory>,
     // Pre-filled free-list of frame physical addresses (pointer to backing array)
     frames: *mut usize,
     count: usize,
@@ -42,14 +42,15 @@ impl BootInfoFrameAllocator {
 
         // Provide the backing pointer (use raw pointer API to avoid creating
         // a mutable reference to a mutable static under the rust_2024 rules)
-        let frames = unsafe { core::ptr::addr_of_mut!(FRAME_BACKING) as *mut usize };
+        let frames = core::ptr::addr_of_mut!(FRAME_BACKING) as *mut usize;
 
-        Self { memory_map, frames, count: idx }
+        Self { _memory_map: memory_map, frames, count: idx }
     }
 
     /// Allocate one 2 MiB physical frame.
     pub fn alloc_frame(&mut self) -> Option<usize> {
         if self.count == 0 {
+            libc::set_os_error(OsError::MemoryError);
             return None;
         }
         // Pop from end for LIFO allocation
@@ -83,6 +84,7 @@ impl BootInfoFrameAllocator {
                 unsafe { *alloc.0.frames.add(alloc.0.count) = addr; }
                 alloc.0.count += 1;
             } else {
+                libc::set_os_error(OsError::MemoryError);
                 panic!("frame backing full on dealloc");
             }
         }

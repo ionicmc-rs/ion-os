@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use crate::io;
+use crate::{disk::{self, DiskId}, io::{self, Error, ErrorKind}, vfs::{self, fs::parse::read_inode, structures::InodeKind}};
 
 use bitflags::bitflags;
 
@@ -88,18 +88,25 @@ pub struct FileHandle {
     inode: u64,           // inode index
     offset: u64,          // read/write cursor
     flags: OpenFlags,     // open flags
+    disk: DiskId
 }
 
 impl FileHandle {
     /// Create a new file handle with validated flags
-    pub fn new(inode: u64, flags: OpenFlags) -> io::Result<Self> {
+    pub async fn new(inode: u64, flags: OpenFlags, disk: DiskId) -> io::Result<Self> {
         flags.validate()?;
         
-        // If APPEND flag is set, start at end of file (offset will be set by filesystem)
+        let file = read_inode(disk::get_disk(disk), inode).await?;
+
+        if file.kind() != InodeKind::File {
+            return Err(Error::new(ErrorKind::IsADirectory, "attempted to open a directory as a file"));
+        }
+
         Ok(Self {
             inode,
-            offset: if flags.contains(OpenFlags::APPEND) { 0 } else { 0 },
+            offset: if flags.contains(OpenFlags::APPEND) { file.size() } else { 0 },
             flags,
+            disk
         })
     }
 
@@ -336,8 +343,8 @@ impl FdTable {
     /// # Returns
     /// - Ok(fd) on success
     /// - Err if flags are invalid or too many files are open
-    pub fn open(&mut self, inode: u64, flags: OpenFlags) -> io::Result<u32> {
-        let handle = FileHandle::new(inode, flags)?;
+    pub async fn open(&mut self, inode: u64, flags: OpenFlags, disk: DiskId) -> io::Result<u32> {
+        let handle = FileHandle::new(inode, flags, disk).await?;
         self.alloc(handle)
     }
 
@@ -353,13 +360,27 @@ impl FdTable {
     /// # Returns
     /// - Ok(bytes_written) on success
     /// - Err if FD is invalid or not writable
-    pub fn write(&mut self, fd: u32, data: &[u8]) -> io::Result<u64> {
+    pub async fn write(&mut self, fd: u32, data: &[u8]) -> io::Result<u64> {
         let handle = self.get_mut(fd)?;
         handle.check_writable()?;
 
-        let bytes = data.len() as u64;
-        handle.advance_offset(bytes);
-        Ok(bytes)
+        let disk = disk::get_disk(handle.disk);
+
+        let mut inode = read_inode(disk, handle.inode).await?;
+
+        if data.len() as u64 > inode.data_size() {
+            // we need to allocate new space.
+
+            let alloc = vfs::fs::alloc::alloc_data(disk, (data.len() + (data.len() / 2)) as u64).await?; // allocate more to prevent too much allocations
+
+            inode.set_data_offset(alloc);
+            inode.set_total_data_size((data.len() + (data.len() / 2)) as u64);
+        }
+
+        inode.write_as_file(disk, data).await?;
+
+        handle.advance_offset(data.len() as u64);
+        Ok(data.len() as u64)
     }
 
     /// Read data from a file descriptor
@@ -374,13 +395,18 @@ impl FdTable {
     /// # Returns
     /// - Ok(bytes_read) on success
     /// - Err if FD is invalid or not readable
-    pub fn read(&mut self, fd: u32, buf: &mut [u8]) -> io::Result<u64> {
+    pub async fn read(&mut self, fd: u32, buf: &mut [u8]) -> io::Result<u64> {
         let handle = self.get_mut(fd)?;
         handle.check_readable()?;
 
-        let bytes = buf.len() as u64;
-        handle.advance_offset(bytes);
-        Ok(bytes)
+        let disk = disk::get_disk(handle.disk);
+
+        let inode = read_inode(disk, handle.inode).await?;
+
+        let bytes = inode.read(disk, handle.offset, buf).await?;
+
+        handle.advance_offset(bytes as u64);
+        Ok(bytes as u64)
     }
 
     /// Seek to an absolute position in a file
@@ -452,10 +478,41 @@ impl FdTable {
     /// # Returns
     /// - Ok(()) on success
     /// - Err if FD is invalid or not writable
-    pub fn truncate(&mut self, fd: u32, size: u64) -> io::Result<()> {
+    pub async fn truncate(&mut self, fd: u32, size: u64) -> io::Result<()> {
         let handle = self.get_mut(fd)?;
         handle.check_writable()?;
-        // Actual truncation would be done by filesystem
+
+        // we still keep the capacity incase the user ever wants to write again
+
+        let disk = disk::get_disk(handle.disk);
+
+        let mut inode = read_inode(disk, handle.inode).await?;
+
+        if inode.size() < size {
+            return Err(Error::new(ErrorKind::InvalidInput, "cannot truncate a file to a greater size"));
+        }
+
+        // read inode contents
+
+        let mut buf = alloc::vec![0; inode.size() as usize];
+        let bytes = inode.read(disk, 0, &mut buf).await?;
+
+        if bytes as u64 != inode.size() {
+            return Err(Error::new(ErrorKind::Interrupted, "could not fully read inode"));
+        }
+
+        // resize it to full inode
+
+        buf.resize(inode.data_size() as usize, 0);
+
+        // next, we only take what we need
+
+        buf[(size as usize)..].fill(0);
+        
+        // finally, write that to the inode
+
+        inode.write_as_file(disk, &buf).await?;
+
         Ok(())
     }
 
@@ -564,9 +621,9 @@ static GLOBAL_FD_TABLE: spin::Mutex<FdTable> = spin::Mutex::new(FdTable::new());
 /// # Returns
 /// - Ok(fd) on success
 /// - Err if flags are invalid or too many files are open
-pub fn open(inode: u64, flags: OpenFlags) -> io::Result<u32> {
+pub async fn open(disk: DiskId, inode: u64, flags: OpenFlags) -> io::Result<u32> {
     let mut table = GLOBAL_FD_TABLE.lock();
-    table.open(inode, flags)
+    table.open(inode, flags, disk).await
 }
 
 /// Close a file descriptor
@@ -593,9 +650,9 @@ pub fn close(fd: u32) -> io::Result<()> {
 /// # Returns
 /// - Ok(bytes_read) on success
 /// - Err if FD is invalid or not readable
-pub fn read(fd: u32, buf: &mut [u8]) -> io::Result<u64> {
+pub async fn read(fd: u32, buf: &mut [u8]) -> io::Result<u64> {
     let mut table = GLOBAL_FD_TABLE.lock();
-    table.read(fd, buf)
+    table.read(fd, buf).await
 }
 
 /// Write to a file descriptor
@@ -609,9 +666,9 @@ pub fn read(fd: u32, buf: &mut [u8]) -> io::Result<u64> {
 /// # Returns
 /// - Ok(bytes_written) on success
 /// - Err if FD is invalid or not writable
-pub fn write(fd: u32, data: &[u8]) -> io::Result<u64> {
+pub async fn write(fd: u32, data: &[u8]) -> io::Result<u64> {
     let mut table = GLOBAL_FD_TABLE.lock();
-    table.write(fd, data)
+    table.write(fd, data).await
 }
 
 /// Seek to an absolute position in a file
@@ -680,9 +737,9 @@ pub fn tell(fd: u32) -> io::Result<u64> {
 /// # Returns
 /// - Ok(()) on success
 /// - Err if FD is invalid or not writable
-pub fn truncate(fd: u32, size: u64) -> io::Result<()> {
+pub async fn truncate(fd: u32, size: u64) -> io::Result<()> {
     let mut table = GLOBAL_FD_TABLE.lock();
-    table.truncate(fd, size)
+    table.truncate(fd, size).await
 }
 
 /// Duplicate a file descriptor

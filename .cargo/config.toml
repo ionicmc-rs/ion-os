@@ -1,3 +1,23 @@
 [alias]
-xtask = "run -p xtask --"
+# xtask commands
+xtask = "run --manifest-path xtask/Cargo.toml --"
+
+# Running
+xrun = "xtask run"
+xecute = "xtask run --no-build"
+
+xtest = "xtask test"
+
+# Building
+xbuild = "xtask build"
+
+# Host utils
+
+xdoctor = "xtask doctor"
+
 ionfs = "xtask fs"
+
+[target.x86_64-unknown-none]
+rustflags = [
+    "-C", "panic=abort",
+]

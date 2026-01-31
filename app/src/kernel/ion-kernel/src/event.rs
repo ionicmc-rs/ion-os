@@ -4,12 +4,15 @@ use core::task::Waker;
 use pc_keyboard::KeyEvent;
 use spin::Mutex;
 
+type KeyHook = Box<dyn Fn(KeyEvent) + Send + Sync>;
+type KeyHookOnce = Box<dyn FnOnce(KeyEvent) + Send + Sync>;
+
 /// Keyboard hooks (run every key event)
-static KEYBOARD_HOOKS: Mutex<Vec<Box<dyn Fn(KeyEvent) + Send + Sync>>> =
+static KEYBOARD_HOOKS: Mutex<Vec<KeyHook>> =
     Mutex::new(Vec::new());
 
 /// Keyboard hooks that run once
-static KEYBOARD_ONCE_HOOKS: Mutex<Vec<Box<dyn FnOnce(KeyEvent) + Send + Sync>>> =
+static KEYBOARD_ONCE_HOOKS: Mutex<Vec<KeyHookOnce>> =
     Mutex::new(Vec::new());
 
 /// Keyboard wakers

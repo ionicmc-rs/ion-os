@@ -88,6 +88,12 @@ extern "C" fn thread_entry<T: Send + 'static>(arg: usize) -> ! {
 }
 
 
+impl<T: Send + 'static> Default for ThreadBuilder<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Send + 'static> ThreadBuilder<T> {
     pub fn new() -> Self {
         Self {

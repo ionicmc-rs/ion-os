@@ -166,7 +166,7 @@ pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
         }
     }
     serial_print!("Ran Tests: ");
-    if fail_names.len() > 0 {
+    if !fail_names.is_empty() {
         serial_println!("[FAILED]");
     } else {
         serial_println!("[OK]");
@@ -177,7 +177,7 @@ pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
     for x in &fail_names {
         serial_println!("===> {x} failed");
     }
-    if fail_names.len() > 0 {
+    if !fail_names.is_empty() {
         exit(QemuExitCode::Failed)
     } else {
         exit(QemuExitCode::Passed)

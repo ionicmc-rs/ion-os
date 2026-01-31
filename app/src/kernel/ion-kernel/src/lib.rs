@@ -36,6 +36,8 @@
 
 extern crate alloc;
 
+use core::mem::MaybeUninit;
+
 use crate::{
     c_lib::{BootInfoC, bit_flags::BitFlags, libc},
     entry::kernel_main,
@@ -67,6 +69,7 @@ pub mod privilege;
 pub mod process;
 pub mod disk;
 pub mod vfs;
+pub mod graphics;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {
@@ -176,6 +179,13 @@ fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
     }
 }
 
+static mut BOOT_INFO: MaybeUninit<c_lib::BootInfo> = MaybeUninit::uninit();
+
+#[allow(static_mut_refs)]
+pub fn boot_info() -> &'static c_lib::BootInfo {
+    unsafe { BOOT_INFO.assume_init_ref() } // this function must not be called before storage
+}
+
 /// The entry to the kernel
 ///
 /// Do Not call - at all.
@@ -199,6 +209,9 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
             panic!("Invalid Boot Info: {err}")
         })
         .into_rust();
+
+    #[allow(static_mut_refs)]
+    unsafe { BOOT_INFO.write(boot_info.clone()) };
 
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
 
@@ -235,5 +248,5 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 ///
 /// Only used in panics, and the Rust Kernel Entry.
 pub fn hlt_loop() -> ! {
-    arch::cpu::spin()
+    arch::cpu::hlt_loop()
 }

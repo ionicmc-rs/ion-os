@@ -143,6 +143,6 @@ impl Future for KeyInput<> {
 /// returns a future that returns key input.
 /// 
 /// due to its implementation - it cannot be moved, thus it is pinnned
-pub fn key_input<'a>() -> Pin<Box<KeyInput>> {
+pub fn key_input() -> Pin<Box<KeyInput>> {
     Box::pin(KeyInput { state: None, registered: false, _pinned: PhantomPinned })
 }
