@@ -19,7 +19,7 @@ use core::fmt::Display;
 
 use crossbeam_queue::ArrayQueue;
 
-use crate::{arch::{self, interrupts::{self, keyboard::SC_QUEUE}, syscall::init_syscalls}, c_lib::BootInfo, disk, lib_alloc::{init_heap, user::init_user_data}, privilege::init_users, serial_println};
+use crate::{arch::{self, interrupts::{self, keyboard::SC_QUEUE}, syscall::init_syscalls}, c_lib::BootInfo, disk, graphics, lib_alloc::{init_heap, init_thread_stack_region, user::init_user_data}, privilege::init_users, serial_println};
 
 /// An error while Initializing the Kernel
 ///
@@ -73,16 +73,19 @@ impl InitErr {
 #[allow(static_mut_refs)]
 pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
     // interrupts
-    serial_println!("Now Initializing IDT.");
     interrupts::init_interrupt_operations();
 
     // allocation
 
-    // let mut mapper = unsafe { arch::mmu::init() };
     unsafe { arch::frame_allocator::init_global_frame_allocator(boot_info.mem_map_addr) };
 
-    serial_println!("mapping heap...");
-    unsafe { arch::mmu::init_kernel_heap() };
+    // graphics (quick init to ensure users don't get a black screen)
+
+    graphics::framebuffer::init();
+
+    serial_println!("mapping thread heap...");
+    unsafe { init_thread_stack_region(); }
+    // unsafe { arch::mmu::init_kernel_heap() };
 
     serial_println!("initializing heap metadata...");
     unsafe { init_heap() };
@@ -102,6 +105,9 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
     // disk
 
     disk::init();
+
+    let alloc = alloc::boxed::Box::new(10);
+    assert_eq!(*alloc, 10);
 
     x86_64::instructions::interrupts::enable();
 

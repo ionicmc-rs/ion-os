@@ -7,3 +7,5 @@ pub extern "x86-interrupt" fn protection_fault(frame: InterruptStackFrame, _code
     libc::set_os_error(OsError::CpuException); // may be useful to let the underlying error appear instead
     panic!("General Protection Fault:\n{frame:#?}")
 }
+
+pub const GP_IST_INDEX: u16 = 2;

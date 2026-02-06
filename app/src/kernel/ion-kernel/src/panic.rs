@@ -2,15 +2,9 @@
 use core::{cell::Cell, panic::PanicInfo, sync::atomic::compiler_fence};
 
 use alloc::{boxed::Box, string::String, vec::Vec};
-use x86_64::registers::model_specific::FsBase;
 
 use crate::{
-    c_lib::libc::{get_errno, perror},
-    hlt_loop,
-    io::Error,
-    scheduler, serial_println,
-    text::{Color, WRITER},
-    thread,
+    arch, asyncio, c_lib::libc::{self, get_errno, perror}, graphics::{self, Color as GColor, Pos, font::{BitmapFont, draw_text_from_panic, try_get_fallback_font}}, hlt_loop, io::{self, Error, OpenOptions, const_err}, log, scheduler, serial_println, text::{Color, WRITER}, thread
 };
 
 #[thread_local]
@@ -40,10 +34,13 @@ pub fn take_hooks() -> Vec<Box<dyn FnOnce()>> {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    if FsBase::read().as_u64() == 0 {
+    serial_println!("quick print: {info}");
+    if arch::tls::read_ptr().is_null() {
         // panic before thread init - unsafe to use panic thread
         panic_raw(info);
     }
+
+    serial_println!("quick print: {}", *libc::get_errno());
 
     panic_thread(info);
 }
@@ -51,7 +48,7 @@ fn panic(info: &PanicInfo) -> ! {
 /// panics the current thread.
 pub fn panic_thread(info: &PanicInfo) -> ! {
     if thread::panicking() {
-        serial_println!("double panic - halt");
+        serial_println!("halt at {}", info.location().unwrap());
         hlt_loop()
     }
     unsafe { thread::build::set_panic() };
@@ -71,29 +68,47 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
     let c = c"=> Last THREAD Error";
     perror(c.as_ptr().cast_mut());
 
-    let mut lock = match WRITER.try_lock() {
-        Some(v) => v,
-        None => {
-            for hook in take_hooks() {
-                hook()
-            }
-            unsafe { scheduler::panic_current() };
-        }
-    };
+    // This is the old VGA buffer printing.
+    // it's not needed anymore
 
-    use core::fmt::Write;
-    lock.set_color(Color::LightCyan, Color::Black);
-    let _ = match info.can_unwind() {
-        true => writeln!(lock, "(unwind) thread `{tname}` panicked at {loc}"),
-        false => writeln!(lock, "(abort) thread `{tname}` panicked at {loc}"),
-    };
-    lock.set_color(Color::White, Color::Black);
+    // let mut lock = match WRITER.try_lock() {
+    //     Some(v) => v,
+    //     None => {
+    //         for hook in take_hooks() {
+    //             hook()
+    //         }
+    //         unsafe { scheduler::panic_current() };
+    //     }
+    // };
 
-    let _ = writeln!(lock, "{message}");
+    // use core::fmt::Write;
+    // lock.set_color(Color::LightCyan, Color::Black);
+    // let _ = match info.can_unwind() {
+    //     true => writeln!(lock, "(unwind) thread `{tname}` panicked at {loc}"),
+    //     false => writeln!(lock, "(abort) thread `{tname}` panicked at {loc}"),
+    // };
+    // lock.set_color(Color::White, Color::Black);
 
-    lock.set_color(Color::LightCyan, Color::Black);
-    let err = Error::last_os_err();
-    let _ = writeln!(lock, "=> Last THREAD Error: {err}");
+    // let _ = writeln!(lock, "{message}");
+
+    // lock.set_color(Color::LightCyan, Color::Black);
+    // let err = Error::last_os_err();
+    // let _ = writeln!(lock, "=> Last THREAD Error: {err}");
+
+    if let Some(font) = try_get_fallback_font() {
+        let last_os_error = Error::last_os_err();
+        let panic_text = alloc::format!("[bug] thread {tname} panicked at {loc}\n")
+            + &alloc::format!("{message}\n")
+            + &alloc::format!("[err code] {last_os_error}\n\n")
+            + &alloc::format!("This is (likely) a bug, you can report it at [BUG REPORT LINK]");
+    
+        unsafe { graphics::framebuffer::force_unlock() };
+        graphics::clear(GColor::BLACK);
+        serial_println!("attempting to draw now");
+        draw_text_from_panic(Pos::new(20, 20), &font, &panic_text, GColor::WHITE);
+    } else {
+        log::error!("fallback font not loaded - cancelling draw")
+    }
 
     // everything before must stay before, and everything after must stay after.
     compiler_fence(core::sync::atomic::Ordering::SeqCst);
@@ -104,7 +119,7 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
     for hook in take_hooks() {
         hook()
     }
-    drop(lock); // ensure other threads can still print.
+    // drop(lock); // ensure other threads can still print.
     unsafe { scheduler::panic_current() };
 }
 

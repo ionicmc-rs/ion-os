@@ -20,10 +20,6 @@ use std::{
 struct Cli {
     #[command(subcommand)]
     command: Cmd,
-
-    /// Target architecture (e.g. x86_64, aarch64)
-    #[arg(long, default_value = "x86_64", global = true)]
-    arch: String,
 }
 
 #[derive(Subcommand)]
@@ -36,6 +32,9 @@ enum Cmd {
         /// Wether or not to build for tests
         #[arg(long)]
         test: bool,
+        /// Target architecture (e.g. x86_64, aarch64)
+        #[arg(long, default_value = "x86_64", global = true)]
+        arch: String,
     },
     /// Build and Run tests
     Test {
@@ -45,6 +44,9 @@ enum Cmd {
         /// Wether or not build.
         #[arg(long, name = "no-build")]
         no_build: bool,
+        /// Target architecture (e.g. x86_64, aarch64)
+        #[arg(long, default_value = "x86_64", global = true)]
+        arch: String,
     },
     /// Run the output ISO.
     Run {
@@ -57,6 +59,9 @@ enum Cmd {
         /// Wether or not to optimize Rust's build.
         #[arg(long)]
         release: bool,
+        /// Target architecture (e.g. x86_64, aarch64)
+        #[arg(long, default_value = "x86_64", global = true)]
+        arch: String,
     },
 
     /// Run checks on tools, project, and git.
@@ -219,37 +224,44 @@ const SUPPORTED_ARCHS: &[&str] = &["x86_64"];
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    if !SUPPORTED_ARCHS.contains(&cli.arch.as_str()) {
-        bail!(
-            "unsupported architecture: {}\n\nThe supported architectures are: \n{}",
-            cli.arch,
-            SUPPORTED_ARCHS.join("\n")
-        )
-    }
-
     match cli.command {
-        Cmd::Build { release, test } => build(&cli, test, release),
-        Cmd::Test { vm , no_build} => {
+        Cmd::Build { release, test, .. } => build(&cli, test, release),
+        Cmd::Test { vm , no_build, ref arch } => {
+            if !SUPPORTED_ARCHS.contains(&arch.as_str()) {
+                bail!(
+                    "unsupported architecture: {}\n\nThe supported architectures are: \n{}",
+                    arch,
+                    SUPPORTED_ARCHS.join("\n")
+                )
+            }
             if !no_build {
                 build(&cli, true, false)?;
                 println!(
                     "build complete, you may need to change the permissions of kernel.iso before executing."
                 );
             }
-            run_vm(vm, cli.arch, true)
+            run_vm(vm, arch.clone(), true)
         }
         Cmd::Run {
             no_build,
             vm,
             release,
+            ref arch
         } => {
+            if !SUPPORTED_ARCHS.contains(&arch.as_str()) {
+                bail!(
+                    "unsupported architecture: {}\n\nThe supported architectures are: \n{}",
+                    arch,
+                    SUPPORTED_ARCHS.join("\n")
+                )
+            }
             if !no_build {
                 build(&cli, false, release)?;
                 println!(
                     "build complete, you may need to change the permissions of kernel.iso before executing."
                 );
             }
-            run_vm(vm, cli.arch, false)
+            run_vm(vm, arch.clone(), false)
         }
         Cmd::Doctor {
             minimal,
@@ -311,7 +323,8 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
         bail!("internal error: cannot build with both `test` and `release`");
     }
 
-    let arch = &cli.arch;
+    let (Cmd::Build { ref arch, .. } | Cmd::Run { ref arch, .. } | Cmd::Test { ref arch, .. }) = cli.command else { unreachable!() };
+    let arch = arch.clone();
 
     let mut objects = Vec::<PathBuf>::new();
 

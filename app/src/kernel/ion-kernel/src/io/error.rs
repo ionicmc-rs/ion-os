@@ -87,10 +87,18 @@ impl Error {
     /// Creates an error from a string literal.
     ///
     /// used in [`const_err`]
-    /// # Example
+    /// # Practical Example
     /// example using [`const_err`]
     /// ```
     /// const NOT_FOUND: Error = const_err!(NotFound, "The resource was not found");
+    /// ```
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use ion_kernel::io::error::Error;
+    ///
+    /// let err = Error::from_static_msg(ErrorKind::Other, "some error");
     /// ```
     #[inline]
     pub const fn from_static_msg(kind: ErrorKind, msg: &'static str) -> Self {
@@ -283,13 +291,20 @@ impl Error {
 fn decode_os_code(code: i32) -> Option<ErrorKind> {
     match code {
         0 => None,
-        // 1 is simply "Failed", so we route it to other.
+        // no 1
         2 => Some(ErrorKind::InvalidData),
         3 => Some(ErrorKind::Interrupted),
         // 4 is Process Failure which makes no sense for ErrorKind
         5 => Some(ErrorKind::MemoryError),
         6 => Some(ErrorKind::InvalidInput),
         7 => Some(ErrorKind::Unsupported),
+        8 => Some(ErrorKind::NotFound),
+        9 => Some(ErrorKind::PermissionDenied),
+        10 => Some(ErrorKind::AlreadyExists),
+        11 => Some(ErrorKind::ResourceBusy),
+        12 => Some(ErrorKind::TimedOut),
+        13 => Some(ErrorKind::Interrupted),
+        14 => Some(ErrorKind::IsADirectory),
         _ => Some(ErrorKind::Other),
     }
 }

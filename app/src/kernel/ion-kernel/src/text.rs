@@ -335,8 +335,12 @@ pub fn _print(args: fmt::Arguments) {
 // test
 
 #[cfg(feature = "test")]
+#[allow(unreachable_code)]
 /// Tests println output is valid
-pub fn test_println_output(_: TestInfo) {
+pub fn test_println_output(mut inf: TestInfo) {
+    // this is no longer used
+    inf.ignore();
+
     use core::fmt::Write;
     use x86_64::instructions::interrupts;
 

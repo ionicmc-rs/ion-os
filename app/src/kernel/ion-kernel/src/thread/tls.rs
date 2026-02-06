@@ -11,7 +11,7 @@ use core::{alloc::Layout, cmp};
 
 use linked_list_allocator::align_up;
 
-use crate::{arch, serial_println, thread};
+use crate::{arch, log, serial_println, thread};
 
 unsafe extern "C" {
     static __tdata_start: u8;
@@ -54,7 +54,6 @@ pub unsafe fn alloc_thread_self(
     stack_base: *mut u8,
     stack_size: usize,
 ) -> (*mut ThreadSelf, TlsAllocation) {
-    serial_println!("allocating TLS");
 
     // --- TLS size (AUTHORITATIVE, from linker) ---
     let tls_size = (&__tls_end as *const u8 as usize) - (&__tls_start as *const u8 as usize);
@@ -110,9 +109,6 @@ pub unsafe fn alloc_thread_self(
     // --- Sanity checks ---
     debug_assert_eq!(tls_start.add(tls_rounded), tcb as *mut u8);
     debug_assert_eq!((tcb as usize) % tcb_align, 0);
-
-    serial_println!("TLS [{:#p}..{:#p})", tls_start, tcb);
-    serial_println!("TCB @ {:#p}", tcb);
 
     (tcb, TlsAllocation { base, layout })
 }

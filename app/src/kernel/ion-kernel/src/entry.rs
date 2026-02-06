@@ -1,11 +1,11 @@
 //! Main entry point
 
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 use pc_keyboard::KeyState;
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, asyncio, boot_info, event, io, log::{self, error}, scheduler};
+use crate::{arch::interrupts::keyboard::{KEYBOARD, SC_QUEUE}, asyncio, event, graphics::{Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}}, io::OpenOptions, log::error, scheduler};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -67,6 +67,7 @@ static __TLOCAL: u64 = 0xdeadbeef;
 
 /// final init.
 pub fn kernel_main() {
+    serial_println!("in kernel main");
     assert_eq!(__TLOCAL, 0xdeadbeef, "tls is not setup correctly");
 
     #[cfg(debug_assertions)]
@@ -138,15 +139,33 @@ pub fn kernel_main() {
         .with_entry(handle_kbd)
         .build();
 
-    
-    let fb_pointer = boot_info().frame_buffer;
 
-    log::debug!("reading {fb_pointer:?}");
+    let font = asyncio::run_future(async {
+        let file = OpenOptions::new()
+            .read(true)
+            .open("@/fonts/lat9w-16.psf")
+            .await
+            .expect("The fallback font file has not been loaded");
 
-    let framebuffer = unsafe { boot_info().frame_buffer.read() }; // leave memory unchanged
+        let font_data = file
+            .read_all()
+            .await
+            .expect("could not read the fallback font file");
 
-    log::debug!("{framebuffer:#?}");
+        font_data
+    });
 
+    // we will leak this font because it must always be loaded
+
+    let font = font.leak();
+
+    let font = BitmapFont::parse_psf1(font).expect("corrupted font data in fallback font");
+
+    set_fallback_font(font);
+
+    // reassure the user were ok so far
+    draw_text(Pos::new(3, 3), &font, "[info] starting Ion OS...", Color::WHITE);
+    draw_text(Pos::new(3, 16), &font, "[info] This may take a while, please be patient...", Color::WHITE);
 
     cfg_if::cfg_if! {
         if #[cfg(feature = "test")] {

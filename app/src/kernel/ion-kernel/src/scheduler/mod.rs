@@ -12,7 +12,7 @@ use core::{
 use alloc::{boxed::Box, collections::vec_deque::VecDeque, vec::Vec};
 
 use crate::{
-    address_space::kernel_address_space, arch::interrupts::InterruptGuard, hlt_loop, process::{self, CURRENT_PROCESS, PROCESSES}, serial_println, thread::{
+    address_space::kernel_address_space, arch::{self, interrupts::InterruptGuard}, hlt_loop, log, process::{self, CURRENT_PROCESS, PROCESSES}, thread::{
         self, State, Thread, ThreadID,
         build::TPriority,
         tls::{ThreadSelf, install_tls},
@@ -25,6 +25,16 @@ use crate::{
 /// # Using this static
 /// mostly, you will use the safe apis in [`thread`](crate::thread) rather than this static, as threads are currently very unstable.
 pub static SCHEDULER: Scheduler = Scheduler::new();
+
+// this is unsafe and should be changed
+macro_rules! unsafe_cell_ref {
+    ($cell:expr_2021) => {
+        unsafe { $cell.get().as_ref().unwrap() }
+    };
+    (mut $cell:expr_2021) => {
+        unsafe { $cell.get().as_mut().unwrap() }
+    };
+}
 
 type ThreadQueue = VecDeque<Thread>;
 
@@ -138,9 +148,13 @@ struct Queues {
 }
 
 pub extern "C" fn idle_entry(_: usize) -> ! {
-    // thread::set_name("idle");
+    thread::set_name("idle");
     loop {
-        yield_now();
+        if unsafe_cell_ref!(SCHEDULER.queues).has_targets() {
+            yield_now();
+        }
+
+        arch::cpu::halt();
     }
 }
 
@@ -158,7 +172,7 @@ macro_rules! queue_fn {
     };
 }
 fn idle_thread() -> Thread {
-    Thread::new(idle_entry, 0, 16 * 1024, unsafe { kernel_address_space() })
+    Thread::new(idle_entry, 0, 64 * 1024, unsafe { kernel_address_space() })
 }
 
 impl Queues {
@@ -343,16 +357,14 @@ impl Queues {
         None
     }
 
+    pub fn has_targets(&self) -> bool {
+        !(self.high.0.is_empty()
+            && self.med.0.is_empty()
+            && self.low.0.is_empty())
+    }
+
 }
 
-macro_rules! unsafe_cell_ref {
-    ($cell:expr_2021) => {
-        unsafe { $cell.get().as_ref().unwrap() }
-    };
-    (mut $cell:expr_2021) => {
-        unsafe { $cell.get().as_mut().unwrap() }
-    };
-}
 
 #[derive(Debug, Default)]
 pub struct Scheduler {
@@ -407,21 +419,24 @@ impl Scheduler {
         }
     }
 
-    pub fn critical_moment_raw<R>(&self, f: impl FnOnce() -> R, result_buf: &mut MaybeUninit<R>) {
+    pub fn critical_moment_raw<R>(&self, f: impl FnOnce() -> R) -> R {
         let cr = self.can_reschedule.swap(false, Ordering::Acquire);
         let nr = self.needs_resched.swap(false, Ordering::Acquire);
 
         let res = f();
-        result_buf.write(res);
 
         self.can_reschedule.store(cr, Ordering::Release);
         self.needs_resched.store(nr, Ordering::Release);
+
+        res
     }
 
-    pub fn critical_moment<R>(&self, f: impl FnOnce() -> R, result_buf: &mut MaybeUninit<R>) {
-        self.critical_moment_raw(f, result_buf);
+    pub fn critical_moment<R>(&self, f: impl FnOnce() -> R) -> R {
+        let res = self.critical_moment_raw(f);
         // here is a good place to check if we can reschedule, we know threads cant be used from interrupts.
         self.reschedule_if_needed();
+
+        res
     }
 
     pub fn wake_kbd(&self) {
@@ -463,11 +478,8 @@ impl Scheduler {
     /// Switches contexts
     ///
     /// interrupts are always enabled after this function is called.
-    #[track_caller] // very useful for panics
     fn schedule(&self, reason: ScheduleReason) {
-        let mut _buf = MaybeUninit::new(());
         if !self.can_reschedule.load(Ordering::Acquire) {
-            serial_println!("cannot reschedule");
             return;
         }
         let _guard = InterruptGuard::new();
@@ -553,11 +565,11 @@ impl Scheduler {
 
         // interrupts enabled here.
         drop(_guard);
-
         if no_store {
-            unsafe { new_ctx.load() };
+            new_ctx.load()
         } else {
-            unsafe { old_ctx.switch_to(new_ctx) };
+            old_ctx.save();
+            new_ctx.load();
         }
     }
 
@@ -677,25 +689,19 @@ pub fn reschedule_if_needed() {
 }
 
 pub fn critical_moment<R>(f: impl FnOnce() -> R) -> R {
-    let mut buf = MaybeUninit::uninit();
-    SCHEDULER.critical_moment(f, &mut buf);
-
-    // Safety: scheduler fills it
-    unsafe { buf.assume_init() }
+    SCHEDULER.critical_moment(f)
 }
 
+#[track_caller]
 pub fn critical_moment_raw<R>(f: impl FnOnce() -> R) -> R {
-    let mut buf = MaybeUninit::uninit();
-    SCHEDULER.critical_moment_raw(f, &mut buf);
-
-    // Safety: scheduler fills it
-    unsafe { buf.assume_init() }
+    SCHEDULER.critical_moment_raw(f)
 }
 
 pub fn has_panicked(id: ThreadID) -> bool {
     SCHEDULER.has_panicked(id)
 }
 
+#[cold]
 pub unsafe fn start() {
     SCHEDULER.schedule(ScheduleReason::Start);
 }
@@ -715,13 +721,12 @@ pub unsafe fn wake_kbd() {
 }
 
 fn wake_waiters_of(id: ThreadID) {
-    serial_println!("waking waiters of id {id:?}");
     SCHEDULER.wake_waiters_of(id);
 }
 
 pub unsafe fn kill(id: ThreadID) {
     debug_assert_ne!(id, thread::id(), "killing the current thread causes a page fault");
-    serial_println!("[killed] thread id {id:?} was killed");
+    wake_waiters_of(id);
     SCHEDULER.kill(id);
 }
 

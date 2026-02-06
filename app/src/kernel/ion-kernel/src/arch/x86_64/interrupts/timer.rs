@@ -3,8 +3,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use x86_64::structures::idt::InterruptStackFrame;
 
 use crate::{
-    arch::interrupts::pic8259::handlers::notify, scheduler,
-    serial_println,
+    arch::interrupts::pic8259::handlers::notify, log, scheduler, serial_println
 };
 
 // pub extern "x86-interrupt" fn timer_isr_entry(_: InterruptStackFrame) {
@@ -30,6 +29,7 @@ pub fn ticks() -> u64 {
 pub extern "x86-interrupt" fn timer_isr(_stack_frame: InterruptStackFrame) {
     let t = TICKS.fetch_add(1, Ordering::Relaxed);
     if t.is_multiple_of(50) {
+        log::debug!("{_stack_frame:#?}");
         serial_println!("reached notable tick: {t}");
     }
 

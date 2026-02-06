@@ -3,27 +3,26 @@
 //! Typically, you don't use this module directly;
 //! instead, use [`alloc`] types like `Box`, `Vec`, etc.
 
-use core::{alloc::GlobalAlloc, fmt, ptr::NonNull};
+use core::{alloc::GlobalAlloc, fmt, ptr::{NonNull, addr_of_mut}};
 
 use alloc::alloc::{AllocError, Allocator};
 use linked_list_allocator::LockedHeap;
 
-use crate::{c_lib::libc, thread};
+use crate::{address_space::{kernel_address_space, map_into_space}, arch::{self, PhysAddr, VirtAddr, defs::PAGE_SIZE, frame_allocator::alloc_2mib_frame, mmu::{PageTableFlags, map_2mib}}, c_lib::libc, lib_alloc::user::USER_DATA_BASE, thread};
 
 unsafe extern "C" {
-    static __kernel_end: u8;
+    safe static mut __kernel_end: u8;
 }
 
 const HEAP_ALIGN: usize = 2 * 1024 * 1024;
 
 /// Size of the heap in bytes.
-pub const HEAP_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
+pub const HEAP_SIZE: usize = 16 * 1024 * 1024; // 16 MiB
 
 /// gets heap's start
 #[inline]
 pub fn heap_start() -> usize {
-    const TEMP_HEAP_START: usize = 1024 * 1024 * 1024; // 1 GiB
-    linked_list_allocator::align_up(TEMP_HEAP_START as *mut u8, HEAP_ALIGN) as usize
+    linked_list_allocator::align_up(addr_of_mut!(__kernel_end), HEAP_ALIGN) as usize
 }
 
 #[inline]
@@ -136,3 +135,17 @@ pub static GLOBAL_ALLOC: RescheduleAlloc = RescheduleAlloc::empty();
 #[cfg(feature = "test")]
 pub mod tests;
 pub mod user;
+
+// Thread stacks
+
+pub const THREAD_STACK_REGION: usize = USER_DATA_BASE - PAGE_SIZE - (THREAD_STACK_SIZE);
+pub const THREAD_STACK_SIZE: usize = PAGE_SIZE * 2;
+pub static THREAD_STACK_ALLOC: RescheduleAlloc = RescheduleAlloc::empty();
+
+pub fn init_thread_stack_region() {
+    unsafe { arch::mmu::init_thread_heap() };
+
+    unsafe { THREAD_STACK_ALLOC.0.lock()
+        .init(THREAD_STACK_REGION as *mut u8, THREAD_STACK_SIZE) };
+
+}

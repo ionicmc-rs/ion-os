@@ -1,6 +1,6 @@
-// pointers
-
 use crate::arch::{PointerWidth, port::{Port, PortData, Read, ReadWrite, Write}};
+
+// pointer definitions
 
 /// The width of pointers.
 pub const POINTER_WIDTH_RAW: u8 = 64; // pointer width cannot exceed 8 bits, as it is only 16, 32 or 64 (well, for now)
@@ -11,11 +11,25 @@ pub const POINTER_WIDTH: PointerWidth = PointerWidth::SixtyFour;
 /// Convenience type for converting from usize to it's underlying type
 pub type PointerTy = u64;
 
+/// Canonical address bits
+pub const CANONICAL_BITS: usize = 48;
+
+/// Internal function for checking a virtual address is correct
+pub(in crate::arch) const fn is_valid_virt_addr(addr: usize) -> bool {
+    x86_64::VirtAddr::try_new(addr as u64).is_ok()
+}
+
+/// Internal function for checking a virtual address is correct
+pub(in crate::arch) const fn is_valid_phys_addr(addr: usize) -> bool {
+    x86_64::PhysAddr::try_new(addr as u64).is_ok()
+}
+
+// Paging
+
 /// Page size in bytes
 pub const PAGE_SIZE: usize = 2 * 1024 * 1024; // 2 MiB
 
-/// Canonical address bits
-pub const CANONICAL_BITS: usize = 48;
+// Misc
 
 /// Architecture's name
 pub const ARCH_NAME: &str = "x86_64";

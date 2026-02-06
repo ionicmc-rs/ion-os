@@ -5,7 +5,7 @@ use core::ptr::{self, read_volatile, write_volatile};
 use core::sync::atomic::{compiler_fence, Ordering};
 
 use alloc::boxed::Box;
-use linked_list_allocator::align_up;
+use linked_list_allocator::{align_up, align_up_size};
 
 use crate::arch::defs::PAGE_SIZE;
 use crate::arch::frame_allocator::alloc_2mib_frame;
@@ -175,20 +175,22 @@ pub struct VirtioBlk {
 
 /* ====================== MMIO Mapping ========================= */
 
-use core::sync::atomic::{AtomicU64};
-static MMIO_BASE: AtomicU64 = AtomicU64::new(0);
-static MMIO_NEXT: AtomicU64 = AtomicU64::new(0);
+use core::sync::atomic::{AtomicUsize};
+static MMIO_BASE: AtomicUsize = AtomicUsize::new(0);
+static MMIO_NEXT: AtomicUsize = AtomicUsize::new(0);
 
 // Maps a 2MiB physical region to virtual memory. 
 // Expects phys to be 2MiB aligned.
+
+/// Maps a frame to the MMIO region
 #[track_caller]
-unsafe fn map_mmio_frame(phys: u64) -> *mut u8 {
+pub unsafe fn map_mmio_frame(phys: usize) -> *mut u8 {
     assert!(phys % (2 * 1024 * 1024) == 0, "map_mmio_frame received unaligned address");
 
     let base = MMIO_BASE.load(Ordering::Acquire);
     let base = if base == 0 {
         let computed =
-            align_up((heap_end()) as *mut u8, 2 * 1024 * 1024) as u64;
+            align_up_size(1024 * 1024 * 1024, 2 * 1024 * 1024);
         MMIO_BASE.store(computed, Ordering::Release);
         computed
     } else {
@@ -199,9 +201,9 @@ unsafe fn map_mmio_frame(phys: u64) -> *mut u8 {
 
     serial_println!("Mapping MMIO frame: phys={:#x} -> virt={:#x}", phys, virt);
 
-    map_2mib(
-        &mut PageTable(kernel_address_space().ptr()),
-        VirtAddr::new(virt as defs::PointerTy),
+    map_into_space(
+        &mut kernel_address_space(),
+        VirtAddr::new(virt),
         PhysAddr::new(phys),
         PageTableFlags::PRESENT
             | PageTableFlags::WRITABLE
@@ -272,13 +274,13 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
 
             if !is_io && bar_addr != 0 {
                 // Calculate alignment
-                let page_mask = 2 * 1024 * 1024 - 1; // 2MiB
+                let page_mask: u64 = 2 * 1024 * 1024 - 1; // 2MiB
                 let phys_frame_base = bar_addr & !page_mask;
                 let intra_frame_offset = bar_addr & page_mask;
 
                 // Map if not already cached
                 let base_ptr = if bar_virt_cache[bar_idx as usize].is_null() {
-                    let ptr = map_mmio_frame(phys_frame_base);
+                    let ptr = map_mmio_frame(phys_frame_base as usize);
                     bar_virt_cache[bar_idx as usize] = ptr;
                     ptr
                 } else {
@@ -342,7 +344,7 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
 
     let queue_phys = alloc_2mib_frame();
     // Map the queue memory for CPU access
-    let queue_virt = map_mmio_frame(queue_phys as u64);
+    let queue_virt = map_mmio_frame(queue_phys);
 
     // Calculate offsets
     // Spec requires alignment. 2MiB frame is definitely aligned enough.
@@ -388,9 +390,9 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
     let scratch_phys = alloc_2mib_frame();
 
     map_into_space(
-        &kernel_address_space(), 
-        VirtAddr::new(SCRATCH_REGION as defs::PointerTy), 
-        PhysAddr::new(scratch_phys as defs::PointerTy), 
+        &mut kernel_address_space(), 
+        VirtAddr::new(SCRATCH_REGION), 
+        PhysAddr::new(scratch_phys), 
         PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE
     );
 
@@ -463,7 +465,7 @@ pub fn probe_and_register() {
 impl VirtioBlk {
     /// Dispatches a request to the device and returns the slot index used.
     /// This does NOT wait for the device to finish.
-    unsafe fn submit_async(&mut self, sector: u64, buf_phys: u64, write: bool) -> Result<usize> {
+    unsafe fn submit_async(&mut self, sector: u64, buf_phys: usize, write: bool) -> Result<usize> {
         // 1. Find a free slot
         let slot = self.slot_in_use.iter().position(|&usage| !usage)
             .ok_or_else(|| Error::new(ErrorKind::Other, "No free VirtIO slots"))?;
@@ -495,7 +497,7 @@ impl VirtioBlk {
         };
         // Data
         *self.desc.add(base_desc as usize + 1) = VirtqDesc {
-            addr: buf_phys,
+            addr: buf_phys as u64,
             len: 512,
             flags: if write { VIRTQ_DESC_F_NEXT } else { VIRTQ_DESC_F_NEXT | VIRTQ_DESC_F_WRITE },
             next: base_desc + 2,
@@ -551,7 +553,7 @@ impl VirtioBlk {
     fn read_async(&mut self, sector: u64, buf_phys: u64) -> Result<VirtioFuture> {
         unsafe {
             // Reuses the established async submission logic
-            let slot = self.submit_async(sector, buf_phys, false)?;
+            let slot = self.submit_async(sector, buf_phys as usize, false)?;
             Ok(VirtioFuture { dev: self, slot })
         }
     }
@@ -562,7 +564,7 @@ impl VirtioBlk {
     unsafe fn do_block_io(
         &mut self,
         block: u64,
-        buf_phys: u64,
+        buf_phys: usize,
         write: bool,
     ) -> Result<()> {
         let slot = self.submit_async(block, buf_phys, write)?;
@@ -592,7 +594,7 @@ impl VirtioBlk {
     unsafe fn submit_block_async(
         &mut self,
         block: u64,
-        phys: u64,
+        phys: usize,
         write: bool,
     ) -> Result<VirtioFuture<'_>> {
         let slot = self.submit_async(block, phys, write)?;
@@ -648,14 +650,14 @@ impl AsyncBlockDevice for VirtioBlk {
         Box::pin(async move {
             self.check_block_buf(buf.len())?;
 
-            let virt = VirtAddr::new(buf.as_ptr() as defs::PointerTy);
+            let virt = VirtAddr::new(buf.as_ptr().addr());
             let phys = unsafe {
                 virt_to_phys(virt)
                     .ok_or_else(|| Error::new(ErrorKind::Other, "buffer not mapped"))?
             };
 
             unsafe {
-                self.submit_block_async(block, phys.0, false)?
+                self.submit_block_async(block, phys.as_inner(), false)?
             }
             .await
         })
@@ -669,14 +671,14 @@ impl AsyncBlockDevice for VirtioBlk {
         Box::pin(async move {
             self.check_block_buf(buf.len())?;
 
-            let virt = VirtAddr::new(buf.as_ptr() as defs::PointerTy);
+            let virt = VirtAddr::new(buf.as_ptr().addr());
             let phys = unsafe {
                 virt_to_phys(virt)
                     .ok_or_else(|| Error::new(ErrorKind::Other, "buffer not mapped"))?
             };
 
             unsafe {
-                self.submit_block_async(block, phys.0, true)?
+                self.submit_block_async(block, phys.as_inner(), true)?
             }
             .await
         })

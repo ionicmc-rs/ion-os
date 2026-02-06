@@ -1,6 +1,7 @@
 //! x86_64 MMU (2 MiB huge pages only)
 
 use x86_64::registers::control::Cr3;
+use crate::address_space::kernel_address_space;
 use crate::arch::{PhysAddr, VirtAddr, defs};
 
 /// represents the flag for a present entry
@@ -12,8 +13,39 @@ pub const ENTRY_HUGE: u64 = 1 << 7;
 
 /// Raw page-table pointer (identity-mapped)
 #[repr(transparent)]
-#[derive(Debug)]
-pub struct PageTable(pub *mut u64);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PageTable(*mut u64);
+
+impl PageTable {
+    /// Creates a new page table, panicking if it is not mapped
+    pub fn new(ptr: VirtAddr) -> Self {
+        let phys = unsafe { ptr.to_phys() };
+
+        if phys.is_none() {
+            panic!("cannot create a page table from an unmapped virtual address")
+        }
+
+        let phys = phys.unwrap();
+        
+        if phys.as_inner() != ptr.as_inner() {
+            panic!("page table not identity mapped")
+        }
+
+        Self(ptr.as_ptr())
+    }
+
+    pub fn as_usize(self) -> usize {
+        self.0.addr()
+    }
+
+    pub fn as_phys(self) -> PhysAddr {
+        PhysAddr::new(self.0 as usize)
+    }
+
+    pub fn as_virt(self) -> VirtAddr {
+        VirtAddr::new(self.0 as usize)
+    }
+}
 
 /// # Safety
 /// - Paging must be active
@@ -79,10 +111,10 @@ pub unsafe fn map_2mib(
     // temporary
     flags &= !PageTableFlags::NO_EXECUTE;
 
-    let v = virt.0;
+    let v = virt.as_inner() as u64;
 
     debug_assert!(v.is_multiple_of(2 * 1024 * 1024));
-    debug_assert!(phys.0.is_multiple_of(2 * 1024 * 1024));
+    debug_assert!(phys.as_inner().is_multiple_of(2 * 1024 * 1024));
 
     let l4 = pml4.0;
     let l4e = l4.add(pml4_index(v));
@@ -105,7 +137,7 @@ pub unsafe fn map_2mib(
 
     let flags = PageTableFlags::PRESENT | PageTableFlags::HUGE_PAGE | flags;
 
-    *pde = phys.0 | flags.bits();
+    *pde = phys.as_ptr_ty() | flags.bits();
 
     // Invalidate TLB for this page
     core::arch::asm!("invlpg [{}]", in(reg) v, options(nostack, preserves_flags));
@@ -170,25 +202,25 @@ unsafe fn alloc_zeroed_page_table() -> *mut u64 {
 }
 
 
-use crate::lib_alloc::{HEAP_SIZE, heap_start};
+use crate::lib_alloc::{HEAP_SIZE, THREAD_STACK_REGION, THREAD_STACK_SIZE, heap_start};
 
 /// initializes the kernel heap
 /// # Safety
 /// must only be called once
 #[allow(unsafe_op_in_unsafe_fn)]
-pub unsafe fn init_kernel_heap() {
+pub unsafe fn init_thread_heap() {
     let mut pml4 = active_pml4();
 
-    let mut virt = heap_start();
-    let end = heap_start() + HEAP_SIZE;
+    let mut virt = THREAD_STACK_REGION;
+    let end = THREAD_STACK_REGION + THREAD_STACK_SIZE;
 
     while virt < end {
         let phys = alloc_2mib_frame();
 
         map_2mib(
             &mut pml4,
-            VirtAddr(virt as defs::PointerTy),
-            PhysAddr(phys as defs::PointerTy),
+            VirtAddr::new(virt),
+            PhysAddr::new(phys),
             PageTableFlags::WRITABLE, // writable
         );
 
@@ -200,7 +232,7 @@ pub unsafe fn init_kernel_heap() {
 /// the virtual address must be correct, and the current paging config must be correct (i.e., allow for reading)
 #[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe fn virt_to_phys(virt: VirtAddr) -> Option<PhysAddr> {
-    let addr = virt.0 as u64;
+    let addr = virt.as_ptr_ty();
     
     // Get the physical root from CR3 (just like active_pml4 does)
     let (frame, _) = x86_64::registers::control::Cr3::read();
@@ -220,11 +252,11 @@ pub unsafe fn virt_to_phys(virt: VirtAddr) -> Option<PhysAddr> {
     let pde = *pd_ptr.add(pd_index(addr));
     if pde & ENTRY_PRESENT == 0 { return None; }
 
-    // Check if this is a 2MiB Huge Page (Your driver uses these!)
+    // Check if this is a 2MiB Huge Page (disk driver uses these!)
     if pde & ENTRY_HUGE != 0 {
         let phys_base = pde & 0x000f_ffff_fffe_0000; // Mask for 2MiB alignment
         let offset = addr & 0x1F_FFFF;
-        return Some(PhysAddr(phys_base | offset));
+        return Some(PhysAddr::new((phys_base | offset) as usize));
     }
 
     // Level 1: Page Table (Standard 4KiB page)
@@ -237,14 +269,14 @@ pub unsafe fn virt_to_phys(virt: VirtAddr) -> Option<PhysAddr> {
 
     let phys_base = pte & 0x000f_ffff_ffff_f000;
     let offset = addr & 0xFFF;
-    Some(PhysAddr(phys_base | offset))
+    Some(PhysAddr::new((phys_base | offset) as usize))
 }
 
 /// Unmap a 2MiB mapping and return the physical base if it existed.
 /// Safety: paging must be active and page tables identity-mapped.
 #[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe fn unmap_2mib(pml4: &mut PageTable, virt: VirtAddr) -> Option<PhysAddr> {
-    let v = virt.0 as u64;
+    let v = virt.as_ptr_ty();
     let l4 = pml4.0;
     let l4e = l4.add(pml4_index(v));
     if *l4e & ENTRY_PRESENT == 0 { return None; }
@@ -268,15 +300,36 @@ pub unsafe fn unmap_2mib(pml4: &mut PageTable, virt: VirtAddr) -> Option<PhysAdd
     // Invalidate TLB
     core::arch::asm!("invlpg [{}]", in(reg) v, options(nostack, preserves_flags));
 
-    Some(PhysAddr(phys_base as defs::PointerTy))
+    Some(PhysAddr::new(phys_base))
 }
 
 /// Unmap a 2MiB mapping and free its backing physical frame (if it existed)
 pub unsafe fn unmap_and_free_2mib(pml4: &mut PageTable, virt: VirtAddr) -> Option<()> {
     if let Some(phys) = unsafe { unmap_2mib(pml4, virt) } {
-        dealloc_2mib_frame(phys.as_inner() as usize);
+        dealloc_2mib_frame(phys.as_inner());
         Some(())
     } else {
         None
+    }
+}
+
+pub fn copy_kernel_mappings_to(table: &mut PageTable) {
+    let pml4 = table.as_usize() as *mut u64;
+
+    // Copy kernel mappings
+    let kernel_pml4 = unsafe { kernel_address_space().ptr().as_inner() as *mut u64 };
+    for i in 0..512 {
+        let entry = unsafe { kernel_pml4.add(i).read() };
+        if entry & ENTRY_PRESENT != 0 {
+            unsafe { pml4.add(i).write(entry) };
+        }
+    }
+}
+
+pub fn zero_page_table(table: &mut PageTable) {
+    let pml4 = table.as_usize() as *mut u64;
+
+    for i in 0..512 {
+        unsafe { pml4.add(i).write(0) };
     }
 }
