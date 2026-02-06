@@ -16,6 +16,7 @@ use crate::event::{self, reg_kbd_waker};
 use crate::log;
 use crate::thread::{self, JoinHandle};
 
+#[track_caller]
 /// Runs the given future, blocking when it is pending.
 pub fn run_future<F, T>(future: F) -> T
 where

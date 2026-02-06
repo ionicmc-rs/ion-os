@@ -12,7 +12,7 @@ crate-type = ["staticlib"]
 
 
 [dependencies]
-volatile = "0.2.6"
+volatile = "0.4.6"
 spin = "0.5.2"
 cfg-if = "*"
 uart_16550 = "0.2.0"

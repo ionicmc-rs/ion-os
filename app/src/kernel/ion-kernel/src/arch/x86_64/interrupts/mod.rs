@@ -4,7 +4,7 @@
 //!
 //! These things are handled in Ion OS's initialization, so you wouldn't typically have to see them.
 
-use crate::{arch::interrupts::pic8259::InterruptIndex, c_lib::libc, serial_println, text::println};
+use crate::{arch::interrupts::pic8259::InterruptIndex, c_lib::libc, serial_println};
 use lazy_static::lazy_static;
 use x86_64::{
     instructions::interrupts, set_general_handler, structures::idt::{InterruptDescriptorTable, InterruptStackFrame}
@@ -82,7 +82,7 @@ lazy_static! {
 
         set_index!(
             idt,
-            Timer => timer::timer_isr,
+            Timer => timer::timer_trampoline,
             Keyboard => keyboard::keyboard_interrupt_handler
         );
 
@@ -99,9 +99,8 @@ pub fn init_interrupt_operations() {
     serial_println!("Initialized interrupt operations properly");
 }
 
-extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
+extern "x86-interrupt" fn breakpoint_handler(_stack_frame: InterruptStackFrame) {
     libc::error::set_errno(3); // note: reads TLS
-    println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
 #[cfg(feature = "test")]
@@ -169,4 +168,5 @@ mod page_fault;
 mod pic8259;
 mod timer;
 pub use timer::ticks;
+pub(in crate::arch) use timer::InterruptRegs;
 mod gp;

@@ -43,7 +43,6 @@ use crate::{
     entry::kernel_main,
     io::Error,
     log::{info, trace, warn},
-    text::println,
     thread::ThreadBuilder,
 };
 
@@ -246,7 +245,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     // from this point onwards - execution is passed to interrupt handlers and whatever threads we have now (and whatever threads we make.)
     log::info!("starting threads");
     unsafe { thread::start() };
-    println!("return to the boot stack is prohibited");
+    log::error!("return to the boot stack is prohibited");
     hlt_loop();
 }
 

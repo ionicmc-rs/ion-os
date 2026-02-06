@@ -4,7 +4,7 @@ use core::{cell::Cell, panic::PanicInfo, sync::atomic::compiler_fence};
 use alloc::{boxed::Box, string::String, vec::Vec};
 
 use crate::{
-    arch, asyncio, c_lib::libc::{self, get_errno, perror}, graphics::{self, Color as GColor, Pos, font::{BitmapFont, draw_text_from_panic, try_get_fallback_font}}, hlt_loop, io::{self, Error, OpenOptions, const_err}, log, scheduler, serial_println, text::{Color, WRITER}, thread
+    arch, asyncio, c_lib::libc::{self, get_errno, perror}, graphics::{self, Color as GColor, Pos, font::{BitmapFont, draw_text_from_panic, try_get_fallback_font}}, hlt_loop, io::{self, Error, OpenOptions, const_err}, log, scheduler, serial_println, thread
 };
 
 #[thread_local]
@@ -154,39 +154,39 @@ pub fn panic_raw(info: &PanicInfo) -> ! {
     let c = c"=> Last OS Error";
     perror(c.as_ptr().cast_mut());
 
-    if let Some(mut wlock) = WRITER.try_lock() {
-        wlock.set_color(Color::LightCyan, Color::Black);
-        let message = info.message();
-        let loc = info.location();
-        let unwind = info.can_unwind();
-        if let Some(loc) = loc {
-            if unwind {
-                writeln!(wlock, "Unwinding panic caused at {loc}: ");
-            } else {
-                writeln!(wlock, "abort: panic caused at {loc}: ");
-            }
-        } else if unwind {
-            writeln!(wlock, "Unwinding panic caused at unknown location: ");
-        } else {
-            writeln!(wlock, "abort: panic caused at unknown location: ");
-        }
-        wlock.set_color(Color::White, Color::Black);
-        writeln!(wlock, "{message}");
-        wlock.set_color(Color::LightCyan, Color::Black);
-        let err_code = get_errno();
-        if let Some(meaning) = err_code.meaning() {
-            let err_code = *err_code;
-            writeln!(
-                wlock,
-                "=> Last OS Error: {} (os error {})",
-                meaning, err_code
-            );
-        } else {
-            let err_code = *err_code;
-            writeln!(wlock, "=> Last OS Error: {}", err_code);
-        }
+    // if let Some(mut wlock) = WRITER.try_lock() {
+    //     wlock.set_color(Color::LightCyan, Color::Black);
+    //     let message = info.message();
+    //     let loc = info.location();
+    //     let unwind = info.can_unwind();
+    //     if let Some(loc) = loc {
+    //         if unwind {
+    //             writeln!(wlock, "Unwinding panic caused at {loc}: ");
+    //         } else {
+    //             writeln!(wlock, "abort: panic caused at {loc}: ");
+    //         }
+    //     } else if unwind {
+    //         writeln!(wlock, "Unwinding panic caused at unknown location: ");
+    //     } else {
+    //         writeln!(wlock, "abort: panic caused at unknown location: ");
+    //     }
+    //     wlock.set_color(Color::White, Color::Black);
+    //     writeln!(wlock, "{message}");
+    //     wlock.set_color(Color::LightCyan, Color::Black);
+    //     let err_code = get_errno();
+    //     if let Some(meaning) = err_code.meaning() {
+    //         let err_code = *err_code;
+    //         writeln!(
+    //             wlock,
+    //             "=> Last OS Error: {} (os error {})",
+    //             meaning, err_code
+    //         );
+    //     } else {
+    //         let err_code = *err_code;
+    //         writeln!(wlock, "=> Last OS Error: {}", err_code);
+    //     }
 
-        drop(wlock);
-    }
+    //     drop(wlock);
+    // }
     hlt_loop()
 }

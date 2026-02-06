@@ -161,19 +161,14 @@ pub fn spawn_at<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
         // x86_64::instructions::interrupts::disable();
         // Take ownership of Meta
         let mut meta = unsafe { Box::from_raw(arg as *mut Meta<T>) };
-        serial_println!("entered function with arg={arg:#x}");
-        serial_println!("retrieved box");
         thread::set_name(format!("<joiner {:?}>", meta.result));
 
-        serial_println!("taking fn");
         let func = meta.func.take().expect("thread entry called twice");
 
         serial_println!("{:#x}", unsafe { (Box::as_ref(&func) as *const dyn FnOnce() -> T).cast::<usize>().read() });
 
-        serial_println!("running func");
         let res = func();
 
-        serial_println!("setting result");
         unsafe {
             *meta.result = Some(res);
         }
