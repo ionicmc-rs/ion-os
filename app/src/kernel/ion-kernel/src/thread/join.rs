@@ -3,7 +3,7 @@ use core::fmt::Display;
 use alloc::{boxed::Box, format};
 
 use crate::{
-    address_space::kernel_address_space, hlt_loop, scheduler::{self, SCHEDULER}, serial_println, thread::{self, Thread, ThreadID, build::TPriority}
+    address_space::kernel_address_space, hlt_loop, log, scheduler::{self, SCHEDULER}, serial_println, thread::{self, Thread, ThreadID, build::TPriority}
 };
 
 /// Handle used to retrieve the result of a spawned thread.
@@ -88,10 +88,8 @@ pub fn spawn<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
         result: *mut Option<T>,
     }
 
-    serial_println!("allocating for the result");
     // Heap-allocate result storage
     let result_ptr = Box::into_raw(Box::new(None::<T>));
-    serial_println!("allocated");
 
     // Heap-allocate metadata
     let meta = Box::new(Meta {
@@ -109,6 +107,10 @@ pub fn spawn<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
 
         let func = meta.func.take().expect("thread entry called twice");
 
+        let sp: u64;
+        unsafe { core::arch::asm!("mov {}, rsp", out(reg) sp); }
+        serial_println!("SP before calling func: {sp:#x} (mod 16: {})", sp % 16);
+
         let res = func();
 
         unsafe {
@@ -118,15 +120,12 @@ pub fn spawn<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
         scheduler::exit_current();
         hlt_loop()
     }
-    serial_println!("creating thread.");
     // Note: do not support user threads in spawn - user threads must be built via builder.
 
     // Safety: We fulfill all requirements
     let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size, unsafe { kernel_address_space() });
     let id = thread.id();
-    serial_println!("queuing");
     SCHEDULER.queue(thread);
-    serial_println!("queued!");
 
     JoinHandle {
         result: result_ptr,
@@ -140,15 +139,14 @@ pub fn spawn_at<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
     stack_size: usize,
 ) -> JoinHandle<T> {
     /// Heap object shared between parent and thread.
+    #[repr(align(16), C)]
     struct Meta<T: Send + 'static> {
         func: Option<Box<dyn FnOnce() -> T + Send + 'static>>,
         result: *mut Option<T>,
     }
 
-    serial_println!("allocating for the result");
     // Heap-allocate result storage
     let result_ptr = Box::into_raw(Box::new(None::<T>));
-    serial_println!("allocated");
 
     // Heap-allocate metadata
     let meta = Box::new(Meta {
@@ -160,27 +158,37 @@ pub fn spawn_at<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
 
     #[allow(unused, dead_code)]
     extern "C" fn thread_entry<T: Send + 'static>(arg: usize) -> ! {
+        // x86_64::instructions::interrupts::disable();
         // Take ownership of Meta
         let mut meta = unsafe { Box::from_raw(arg as *mut Meta<T>) };
+        serial_println!("entered function with arg={arg:#x}");
+        serial_println!("retrieved box");
         thread::set_name(format!("<joiner {:?}>", meta.result));
 
+        serial_println!("taking fn");
         let func = meta.func.take().expect("thread entry called twice");
 
+        serial_println!("{:#x}", unsafe { (Box::as_ref(&func) as *const dyn FnOnce() -> T).cast::<usize>().read() });
+
+        serial_println!("running func");
         let res = func();
 
+        serial_println!("setting result");
         unsafe {
             *meta.result = Some(res);
         }
+
+        // log::warn!("Leaking memory - this is temporary and must eventually be fixed");
+        // core::mem::forget(meta);
+
+        serial_println!("exiting");
         // Thread must never return
         scheduler::exit_current();
         hlt_loop()
     }
-    serial_println!("creating thread.");
     let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size, unsafe { kernel_address_space() });
     let id = thread.id();
-    serial_println!("queuing");
     SCHEDULER.queue_at(prio, thread);
-    serial_println!("queued!");
 
     JoinHandle {
         result: result_ptr,

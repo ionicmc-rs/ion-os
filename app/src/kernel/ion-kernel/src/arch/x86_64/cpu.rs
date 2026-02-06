@@ -9,6 +9,11 @@ pub fn relax() {
     core::arch::x86_64::_mm_pause();
 }
 
+#[inline]
+pub fn halt() {
+    instructions::hlt();
+}
+
 /// spins forever, [`relax`]ing the CPU each iteration
 /// 
 /// This is not usually what you want - this does not halt the CPU. see [`hlt_loop`] for that.
@@ -23,9 +28,9 @@ pub fn spin() -> ! {
 /// 
 /// use [`spin`] to spin without halting
 #[inline]
-pub fn hlt_loop() -> ! {
+pub fn halt_loop() -> ! {
     loop {
-        instructions::hlt();
+        halt();
     }
 }
 

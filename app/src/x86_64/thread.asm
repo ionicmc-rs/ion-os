@@ -1,7 +1,6 @@
 global context_switch
 global thread_trampoline
 global context_load
-extern timer_isr
 
 section .text
 bits 64
@@ -38,8 +37,6 @@ context_switch:
     mov     rbx, [rsi + 0x28]
     mov     rbp, [rsi + 0x30]
 
-
-
     ret
 
 context_load:
@@ -64,7 +61,6 @@ context_load:
 ; no args - is no return
 thread_trampoline:
     sti
-    mov al, 'T'
     out 0xE9, al
 
     mov rdi, r12

@@ -184,7 +184,6 @@ impl<T: Send + 'static> ThreadBuilder<T> {
         let name = name.as_bytes().to_vec_in(alloc.clone());
 
 
-        serial_println!("retrieved name");
 
         // Re-home closure (unsized-safe)
         let func = self.func.take().expect("function should be provided");
@@ -192,7 +191,6 @@ impl<T: Send + 'static> ThreadBuilder<T> {
         let func = unsafe { Box::from_raw_in(raw, alloc.clone()) };
 
 
-        serial_println!("retrieved func");
 
         let meta = Meta {
             func,
@@ -273,10 +271,25 @@ pub fn set_name(s: impl Into<String>) {
     if arch::tls::read_ptr().is_null() {
         return;
     }
-    let bytes = s.into().into_bytes();
-    let mut vec: Vec<_, Arc<dyn Allocator>> = Vec::new_in(Arc::new(Global));
-    vec.extend(bytes);
-    unsafe { THREAD_DATA.name = Some(vec) };
+    
+    unsafe {
+        if let Some(name) = &mut THREAD_DATA.name {
+            name.clear();
+            serial_println!("cleared old name");
+            name.extend(s.into().into_bytes());
+            serial_println!("added new bytes");
+            serial_println!("set name");
+        } else {
+            serial_println!("created empty vec");
+            let mut vec: Vec<u8, Arc<dyn Allocator>> = Vec::new_in(Arc::new(Global));
+            serial_println!("extending");
+            vec.extend(s.into().into_bytes());
+            serial_println!("setting name");
+            THREAD_DATA.name = Some(vec);
+            serial_println!("set name");
+        }
+    }
+
 }
 
 /// # Safety

@@ -63,7 +63,8 @@ lazy_static! {
             index: u8,
             error_code: Option<u64>,
         ) {            
-            todo!("handle irq {}\n\nerr code: {error_code:?}\n\n{stack_frame:#?}", index)
+            serial_println!("handle irq {}\n\nerr code: {error_code:?}\n\n{stack_frame:#?}", index);
+            panic!()
         }
 
         set_general_handler!(&mut idt, general_handler);

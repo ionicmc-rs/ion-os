@@ -8,9 +8,9 @@
 // required for tests
 #![no_main]
 #![allow(internal_features)]
-// #![deny(warnings, missing_docs, missing_abi, missing_debug_implementations)]
-#![deny(rust_2024_compatibility)]
 #![allow(incomplete_features)]
+#![allow(static_mut_refs)]
+// #![deny(warnings, missing_docs, missing_abi, missing_debug_implementations)]
 #![feature(
     lang_items,
     decl_macro,
@@ -209,7 +209,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
             panic!("Invalid Boot Info: {err}")
         })
         .into_rust();
-
+    
     #[allow(static_mut_refs)]
     unsafe { BOOT_INFO.write(boot_info.clone()) };
 
@@ -231,14 +231,20 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     }
 
     // this is the main thread.
+    log::debug!("initializing threads");
     thread::init();
-    ThreadBuilder::new()
+    log::debug!("making main thread");
+    let builder = ThreadBuilder::new()
         .with_name("main")
         .with_entry(kernel_main)
-        .with_stack(64 * 1024)
-        .build();
+        .with_stack(64 * 1024);
+
+    log::debug!("building main thread");
+
+    builder.build();
 
     // from this point onwards - execution is passed to interrupt handlers and whatever threads we have now (and whatever threads we make.)
+    log::info!("starting threads");
     unsafe { thread::start() };
     println!("return to the boot stack is prohibited");
     hlt_loop();
@@ -248,5 +254,5 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 ///
 /// Only used in panics, and the Rust Kernel Entry.
 pub fn hlt_loop() -> ! {
-    arch::cpu::hlt_loop()
+    arch::cpu::halt_loop()
 }

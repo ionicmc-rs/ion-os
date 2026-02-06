@@ -10,15 +10,13 @@ use core::{fmt::Debug, sync::atomic::{AtomicU64, Ordering}};
 #[cfg(debug_assertions)]
 use crate::scheduler::idle_entry;
 use crate::{
-    address_space::AddressSpace, scheduler::{self, SCHEDULER, WakeEvent}, serial_println, thread::{
-        context::Context,
+    address_space::AddressSpace, arch::ctx::Context, lib_alloc::THREAD_STACK_ALLOC, log, scheduler::{self, SCHEDULER, WakeEvent}, serial_println, thread::{
         stack::ThreadStack,
         tls::{TlsAllocation, alloc_thread_self},
     }
 };
 use crate::arch;
 
-pub mod context;
 mod join;
 pub mod pool;
 pub mod stack;
@@ -40,7 +38,7 @@ pub struct ThreadID(pub u64);
 
 pub struct Thread {
     id: ThreadID,
-    ctx: context::Context,
+    ctx: arch::ctx::Context,
     state: State,
     tls: usize,
 
@@ -96,25 +94,16 @@ impl Debug for State {
     }
 }
 
-impl Drop for Thread {
-    fn drop(&mut self) {
-        serial_println!("Thread <id {}> dropped here", self.id.0)
-    }
-}
-
 impl Thread {
     pub fn new(entry: extern "C" fn(usize) -> !, arg: usize, stack: usize, addr_space: AddressSpace) -> Self {
         // use critical moment to prevent alloc from rescheduling.
         self::critical_moment_raw(|| {
-            serial_println!("creating stack.");
             let alloc: Arc<dyn Allocator> = if let Some(v) = addr_space.allocator() {
                 v
             } else {
-                Arc::new(Global)
+                Arc::new(&THREAD_STACK_ALLOC)
             };
-            serial_println!("retrieved alloc");
             let mut stack = ThreadStack::of_size(stack, alloc);
-            serial_println!("created stack.");
             let id = ThreadID(NEXT_ID.fetch_add(1, Ordering::Relaxed));
 
             #[cfg(debug_assertions)]
@@ -124,8 +113,13 @@ impl Thread {
 
             let (raw_ptr, guard) = unsafe { alloc_thread_self(stack.ptr(), stack.size()) };
 
+            log::debug!("creating context");
+            let mut context = Context::initial(entry as usize, arg, stack.ptr() as usize + stack.size() as usize);
+            log::debug!("created thread");
+            context.set_addr_space(addr_space);
+
             Self {
-                ctx: Context::new(entry, arg, (stack.ptr() as usize) + stack.size(), addr_space),
+                ctx: context,
                 id,
                 tls: raw_ptr as usize,
                 _stack: stack,
@@ -152,12 +146,7 @@ impl Thread {
     }
 
     pub fn wake(&mut self) {
-        if let State::Sleeping(tick) = self.state {
-            serial_println!(
-                "[thread ({})] thread has awoken on tick {}.",
-                self.id.0,
-                tick
-            );
+        if let State::Sleeping(_) = self.state {
             self.state = State::Ready;
         }
     }
@@ -182,14 +171,9 @@ impl Thread {
         &mut self.ctx
     }
 
-    pub fn dump_stack(&self) {
-        serial_println!(
-            "thread <id {:?}> stack ranges from {:p}->{:p}",
-            self.id,
-            self._stack.ptr(),
-            self._stack.ptr().wrapping_add(self._stack.size())
-        );
-    }
+    #[inline(always)]
+    // unused now
+    pub fn dump_stack(&self) {}
 }
 
 /// The next available ID
@@ -210,14 +194,7 @@ pub enum State {
 
 #[track_caller] // for panics.
 pub fn sleep(ms: u64) {
-    serial_println!("sleep was called");
-    let id = current()
-        .expect("sleep should be called after thread initialization.")
-        .id()
-        .0;
-    serial_println!("[thread ({id})] now sleeping for <{ms}> milliseconds");
-
-    scheduler::sleep_current(ms);
+    scheduler::sleep_current(ms / 10);
 }
 
 pub fn id() -> ThreadID {

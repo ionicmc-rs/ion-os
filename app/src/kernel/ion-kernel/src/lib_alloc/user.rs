@@ -176,11 +176,11 @@ pub fn user_data_allocator() -> &'static RegionAllocator {
 
 #[allow(static_mut_refs)]
 pub fn reserve_space_for_addr(
-    space: &AddressSpace,
+    space: &mut AddressSpace,
 ) -> RescheduleAlloc {
     const SIZE: usize = 2 * 1024 * 1024;
 
-    // 1️⃣ Allocate virtual address space (no mapping yet)
+    // Allocate virtual address space (no mapping yet)
     let alloc =
         unsafe { USER_DATA
             .allocate(
@@ -197,19 +197,19 @@ pub fn reserve_space_for_addr(
         serial_println!("mapping pages");
         let phys = alloc_2mib_frame();
 
-        // address_space::map_into_space(
-        //     &kernel_address_space(),  
-        //     VirtAddr(base as defs::PointerTy),
-        //     phys, 
-        //     PageTableFlags::WRITABLE
-        // );
+        address_space::map_into_space(
+            &mut address_space::kernel_address_space(),  
+            VirtAddr::new(base),
+            PhysAddr::new(phys), 
+            PageTableFlags::WRITABLE
+        );
 
         serial_println!("mapping pages for user space");
 
         address_space::map_into_space(
             space,
-            VirtAddr(base as defs::PointerTy),
-            PhysAddr(phys as defs::PointerTy),
+            VirtAddr::new(base),
+            PhysAddr::new(phys),
             PageTableFlags::USER_PAGE | PageTableFlags::WRITABLE,
         );
     }
@@ -235,7 +235,7 @@ pub fn reserve_space_for_addr(
 /// Size for user data.
 pub const USER_DATA_SIZE: usize = 4 * 1024 * 1024; // size for user data.
 /// base for user data.
-pub const USER_DATA_BASE: usize = 0x0000_0000_5000_0000;
+pub const USER_DATA_BASE: usize = 0x0000_0000_7000_0000;
 
 /// # Safety
 /// must only be called once.

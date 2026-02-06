@@ -81,6 +81,13 @@ start:
     ; Enable OSXSAVE/SSE/AVX if supported
     call    enable_osxsave_and_avx
 
+    ; refresh cpuid flags in boot info
+
+    mov eax, 1
+    cpuid
+    mov [boot_info_data + 0x8], edx
+    mov [boot_info_data + 0xC], ecx
+
     ; Marker S6
     mov     dword [0xb8000+20], 0x0F364F53
     mov     al, '6'
@@ -182,13 +189,13 @@ check_multiboot2_mmap:
     jmp     .advance
 
 .check_fb:
-    cmp     eax, 8
+    cmp     eax, 8                    ; framebuffer tag
     jne     .advance
-    mov     eax, [esi + 8]    ; low
-    mov     [boot_info_data + 0x20], eax
-    mov     eax, [esi + 12]   ; high
-    mov     [boot_info_data + 0x24], eax
 
+    ; publish pointer to full tag
+    mov     eax, esi                  ; low 32 bits of tag pointer
+    mov     [boot_info_data + 0x20], eax
+    mov     dword [boot_info_data + 0x24], 0
 
 .advance:
     ; esi = current tag ptr (start at info + 8)

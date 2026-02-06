@@ -23,7 +23,6 @@ pub struct Context {
 impl Context {
     /// Create a fresh context that will start executing `entry(arg)`
     pub fn new(entry: extern "C" fn(usize) -> !, arg: usize, stack_top: usize, addr_space: AddressSpace) -> Self {
-        serial_println!("creating and aligning stack");
 
         // SysV ABI: stack must be 16-byte aligned *before call*
         let mut rsp = stack_top & !0xF;
@@ -38,7 +37,6 @@ impl Context {
             *(rsp as *mut usize) = thread_trampoline as *const () as usize;
         }
 
-        serial_println!("constructed initial context");
 
         Self {
             rsp,
@@ -91,12 +89,10 @@ impl Context {
     /// # Safety
     /// Must be called only by the scheduler at a safe point.
     pub unsafe fn switch_to(&mut self, next: &Context) {
-        serial_println!("context switch {:#x} -> {:#x}", self.rsp, next.rsp);
         unsafe { context_switch(self, next) };
     }
 
     pub unsafe fn load(&self) {
-        serial_println!("context load {:#x}", self.rsp);
         unsafe {
             context_load(self);
         }
@@ -105,7 +101,6 @@ impl Context {
 
 /// Called if a thread function ever returns
 extern "C" fn thread_exit() -> ! {
-    serial_println!("thread exited");
     crate::scheduler::exit_current();
 }
 

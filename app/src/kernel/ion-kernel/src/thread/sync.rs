@@ -7,9 +7,11 @@
 //! static mut GLOBAL_VAR: i32 = 10;
 //!
 //! let first = thread::spawn(|| {
-//!     GLOBAL_VAR += 1;
+//!     // context switch can occur here! (global would be 10)
+//! 
+//!     unsafe { GLOBAL_VAR += 1 };
 //!
-//!     // context switch can occur here!
+//!     // context switch can occur here! (global would be 11)
 //!
 //!     assert_eq!(GLOBAL_VAR, 11)
 //! });
@@ -39,7 +41,9 @@ use core::{
     cell::UnsafeCell, fmt::{Debug, Display}, ops::{Deref, DerefMut}, sync::atomic::{AtomicBool, Ordering}
 };
 
-use crate::{panic, thread};
+use alloc::string::String;
+
+use crate::{panic, serial_println, thread};
 
 pub struct Mutex<T: ?Sized> {
     locked: AtomicBool,
@@ -136,6 +140,7 @@ impl<'mutex, T: ?Sized> MutexGuard<'mutex, T> {
         cell: &'mutex UnsafeCell<T>,
         poisoned: &'mutex AtomicBool,
     ) -> Self {
+        lock.store(true, Ordering::Release);
         Self {
             lock,
             cell,
@@ -202,6 +207,7 @@ impl<T> Mutex<T> {
         }
     }
 
+    #[track_caller]
     pub fn lock(&'static self) -> MutexGuard<'static, T> {
         if self.is_locked() {
             thread::atomic_block_until(&self.locked);
@@ -226,6 +232,17 @@ impl<T> Mutex<T> {
         }
 
         Ok(MutexGuard::new(&self.locked, &self.value, &self.poisoned))
+    }
+
+    /// Unlocks the Mutex
+    /// # Safety
+    /// this is unsafe if the mutex is not held by the current thread - or if a lock to this mutex is used again.
+    pub unsafe fn force_unlock(&self) {
+        self.locked.store(false, Ordering::Release);
+    }
+
+    pub unsafe fn clear_poison(&self) {
+        self.poisoned.store(false, Ordering::Release);
     }
 
     pub fn is_poisoned(&self) -> bool {

@@ -286,7 +286,6 @@ pub async unsafe fn read_inode_unchecked(
     alloc_block: &AllocBlock,
     index: u64,
 ) -> io::Result<Inode> {
-    log::debug!("Reading inode index {}", index);
     let block_size = disk.block_size();
     
     // how many inodes fit in ONE inode table block
