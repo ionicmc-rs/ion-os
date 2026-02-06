@@ -9,9 +9,10 @@ use core::{arch::{asm, naked_asm}, mem::offset_of};
 
 use bitflags::Flags;
 use linked_list_allocator::align_up_size;
-use x86_64::registers::rflags::{self, RFlags};
+use volatile::Volatile;
+use x86_64::{VirtAddr, registers::rflags::{self, RFlags}};
 
-use crate::{address_space, log, thread};
+use crate::{address_space, arch::interrupts::InterruptRegs, log, thread};
 
 /* ==========================================================
  * Public API (arch-independent)
@@ -82,11 +83,17 @@ impl Context {
     pub fn address_space(&self) -> u64 {
         self.ctrl.address_space()
     }
-
+    
     pub fn set_addr_space(&mut self, address_space: address_space::AddressSpace) {
         self.ctrl.cr3 = address_space.ptr().as_ptr_ty();
     }
 }
+const KERNEL_RFLAGS_MASK: u64 =
+    RFlags::INTERRUPT_FLAG.bits()
+| RFlags::ZERO_FLAG.bits()
+| RFlags::SIGN_FLAG.bits()
+| RFlags::PARITY_FLAG.bits()
+| 0x2; // reserved bit
 
 // load/save
 
@@ -98,14 +105,12 @@ impl Context {
             self.regs
         );
         unsafe {
-            log::debug!("restoring address space");
             // Switch address space
             asm!(
                 "mov cr3, {}",
                 in(reg) self.ctrl.cr3,
                 options(nostack),
             );
-            log::debug!("restored");
 
             // Restore FPU
             asm!(
@@ -116,9 +121,8 @@ impl Context {
 
             let r = &self.regs;
 
-            log::debug!("offsets: {:#x}, {:#x}, {:#x}", offset_of!(Regs, rsp), offset_of!(Regs, rflags), offset_of!(Regs, rip));
 
-            log::debug!("restoring regs");
+
             asm!(
                 // Save the current RBP so we can use it as our stable base pointer
                 "push rbp",
@@ -127,12 +131,12 @@ impl Context {
                 // 1. Move to the new stack immediately
                 "mov r14, [rbp + {rsp_off}]",
                 "mov rsp, r14",
-                "sub rsp, 8",
 
                 // 2. Setup the jump target and flags on the NEW stack
                 "mov r15, [rbp + {rip_off}]",
                 "push r15",
                 "mov r15, [rbp + {rflags_off}]",
+                "and r15, {fmask}",
                 "push r15",
 
                 // 3. Restore all GPRs using RBP (except RBP itself and RSP)
@@ -177,6 +181,7 @@ impl Context {
                 r15_off    = const offset_of!(Regs, r15),
                 rip_off    = const offset_of!(Regs, rip),
                 rflags_off = const offset_of!(Regs, rflags),
+                fmask      = const KERNEL_RFLAGS_MASK,
                 options(noreturn)
             );
         }
@@ -186,77 +191,128 @@ impl Context {
     ///
     /// The interrupt frame must have been entered *after* a call frame was pushed.
     /// The call frame is consumed and execution resumes as if returning normally.
-    pub(in crate::arch::x86_64) fn load_with_interrupt_frame(&self, frame: &mut x86_64::structures::idt::InterruptStackFrameValue) {
+    pub(in crate::arch::x86_64) fn load_with_interrupt_frame(&self, mut frame: Volatile<&mut x86_64::structures::idt::InterruptStackFrameValue>) {
         unsafe {
             // Switch address space
             asm!(
                 "mov cr3, {}",
                 in(reg) self.ctrl.cr3,
-                options(nostack, preserves_flags),
-            );
-
-            // Restore FPU
-            // asm!(
-            //     "fxrstor [{}]",
-            //     in(reg) &self.fpu.data,
-            //     options(nostack),
-            // );
-
-            let r = &self.regs;
-
-            // Restore GP registers (except rsp)
-            asm!(
-                "mov rax, [{r} + 0x00]",
-                "mov rbx, [{r} + 0x08]",
-                "mov rcx, [{r} + 0x10]",
-                "mov rdx, [{r} + 0x18]",
-                "mov rsi, [{r} + 0x20]",
-                "mov rdi, [{r} + 0x28]",
-                "mov rbp, [{r} + 0x30]",
-                "mov r8,  [{r} + 0x40]",
-                "mov r9,  [{r} + 0x48]",
-                "mov r10, [{r} + 0x50]",
-                "mov r11, [{r} + 0x58]",
-                "mov r12, [{r} + 0x60]",
-                "mov r13, [{r} + 0x68]",
-                "mov r14, [{r} + 0x70]",
-                "mov r15, [{r} + 0x78]",
-                r = in(reg) r,
                 options(nostack),
             );
 
-            // Extract return RIP from call frame (pushed before interrupt)
-            let call_rip = *(frame.instruction_pointer.as_ptr());
+            // Restore FPU
+            asm!(
+                "fxrstor [{}]",
+                in(reg) &self.fpu.data,
+                options(nostack),
+            );
 
-            // Rewrite interrupt frame
-            frame.instruction_pointer = x86_64::VirtAddr::new(call_rip);
-            frame.cpu_flags = RFlags::from_bits_truncate(self.regs.rflags);
-            frame.stack_pointer += 8; // consume call frame
+            let r = &self.regs;
 
-            // CS / SS intentionally unchanged
-            // Final control transfer happens via iretq by caller
+            // load registers
+            asm!(
+                // Save the current RBP so we can use it as our stable base pointer
+                "push rbp",
+                "mov rbp, {r}", 
+
+                "mov rax, [rbp + {rax_off}]",
+                "mov rbx, [rbp + {rbx_off}]",
+                "mov rcx, [rbp + {rcx_off}]",
+                "mov rdx, [rbp + {rdx_off}]",
+                "mov rsi, [rbp + {rsi_off}]",
+                "mov rdi, [rbp + {rdi_off}]",
+                "mov r8,  [rbp + {r8_off}]",
+                "mov r9,  [rbp + {r9_off}]",
+                "mov r10, [rbp + {r10_off}]",
+                "mov r11, [rbp + {r11_off}]",
+                "mov r12, [rbp + {r12_off}]",
+                "mov r13, [rbp + {r13_off}]",
+                "mov r14, [rbp + {r14_off}]",
+                "mov r15, [rbp + {r15_off}]",
+
+                // Finally, restore RBP from the struct
+                "mov rbp, [rbp + {rbp_off}]",
+
+                r = in(reg) r,
+                rax_off    = const offset_of!(Regs, rax),
+                rbx_off    = const offset_of!(Regs, rbx),
+                rcx_off    = const offset_of!(Regs, rcx),
+                rdx_off    = const offset_of!(Regs, rdx),
+                rsi_off    = const offset_of!(Regs, rsi),
+                rdi_off    = const offset_of!(Regs, rdi),
+                rbp_off    = const offset_of!(Regs, rbp),
+                r8_off     = const offset_of!(Regs, r8),
+                r9_off     = const offset_of!(Regs, r9),
+                r10_off    = const offset_of!(Regs, r10),
+                r11_off    = const offset_of!(Regs, r11),
+                r12_off    = const offset_of!(Regs, r12),
+                r13_off    = const offset_of!(Regs, r13),
+                r14_off    = const offset_of!(Regs, r14),
+                r15_off    = const offset_of!(Regs, r15),
+            );
+
+            frame.update(|frame| {
+                log::debug!("regs (alleged): {r:#?}");
+                frame.stack_pointer = VirtAddr::try_new(r.rsp).unwrap();
+                frame.instruction_pointer = VirtAddr::try_new(r.rip).unwrap();
+                frame.cpu_flags = RFlags::from_bits_truncate(r.rflags & KERNEL_RFLAGS_MASK);
+            });
         }
     }
 
-    /// Save the current execution context into this struct.
+    pub(in crate::arch::x86_64) fn save_from_interrupt(&mut self, regs: &InterruptRegs) {
+        fn canonicalize(addr: u64) -> u64 {
+            let sign = (addr >> 47) & 1;
+            if sign == 1 {
+                addr | 0xffff_0000_0000_0000
+            } else {
+                addr & 0x0000_ffff_ffff_ffff
+            }
+        }
+
+        self.ctrl = capture_ctrl();
+        self.fpu = capture_fpu();
+        self.regs.r8 = regs.r8;
+        self.regs.r9 = regs.r9;
+        self.regs.r10 = regs.r10;
+        self.regs.r11 = regs.r11;
+        self.regs.r12 = regs.r12;
+        self.regs.r13 = regs.r13;
+        self.regs.r14 = regs.r14;
+        self.regs.rax = regs.rax;
+        self.regs.rbx = regs.rbx;
+        self.regs.rbp = regs.rbp;
+        self.regs.rcx = regs.rcx;
+        self.regs.rdi = regs.rdi;
+        self.regs.rdx = regs.rdx;
+        self.regs.rsi = regs.rsi;
+
+        self.regs.rip = regs.stack_frame.instruction_pointer.as_u64();
+        log::debug!("rip: {}", self.regs.rip);
+        log::debug!("rsp: {}", self.regs.rsp);
+        self.regs.rsp = canonicalize(regs.stack_frame.stack_pointer.as_u64());
+        self.regs.rflags = regs.stack_frame.cpu_flags.bits();
+    }
+
     #[unsafe(naked)]
     pub extern "C" fn save(&mut self) {
         naked_asm!(
-            "mov rsi, [rip + 0f]",
-            "call {f}",
+            "call 0f",
             "0:",
+            "pop rsi",
+            "call {f}",
             "ret",
             f = sym Self::internal_save
         )
     }
 
+
     extern "C" fn internal_save(&mut self, addr: u64) {
-        log::debug!("saving context");
         self.ctrl = capture_ctrl();
         self.fpu = capture_fpu();
         self.regs = capture_regs();
-        log::debug!("context rip: {addr}");
         self.regs.rip = addr;
+        log::debug!("rip: {addr}");
         self.regs.rflags = RFlags::from_bits_truncate(self.regs.rflags).bits();
     }
 }

@@ -3,7 +3,7 @@
 //! These are meant for users, but we plan to add a `serial_log`
 use core::fmt;
 
-use crate::{serial_println, text::{Color, print, println, set_print_color}, thread};
+use crate::{serial_println, thread};
 
 /// Log levels
 ///
@@ -28,21 +28,21 @@ pub fn log(level: Level, args: fmt::Arguments, loc: core::panic::Location) {
         if !cfg!(debug_assertions) && level == Level::Debug {
             return;
         }
-        let (fore, back) = (Color::White, Color::Black);
-        print!("[");
-        let col = match level {
-            Level::Debug => Color::Green,
-            Level::Error => Color::LightRed,
-            Level::Trace => Color::Magenta,
-            Level::Info => Color::LightCyan,
-            Level::Warn => Color::Yellow,
-        };
-        set_print_color(col, Color::Black);
+        // let (fore, back) = (Color::White, Color::Black);
+        // print!("[");
+        // let col = match level {
+        //     Level::Debug => Color::Green,
+        //     Level::Error => Color::LightRed,
+        //     Level::Trace => Color::Magenta,
+        //     Level::Info => Color::LightCyan,
+        //     Level::Warn => Color::Yellow,
+        // };
+        // set_print_color(col, Color::Black);
 
-        print!("{level:?}");
+        // print!("{level:?}");
 
-        set_print_color(fore, back);
-        println!(" {}] {}", loc, args);
+        // set_print_color(fore, back);
+        // println!(" {}] {}", loc, args);
         serial_println!("[{level:?} {loc}] {args}")
     });
 }

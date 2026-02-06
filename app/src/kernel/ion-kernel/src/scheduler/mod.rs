@@ -10,9 +10,10 @@ use core::{
 };
 
 use alloc::{boxed::Box, collections::vec_deque::VecDeque, vec::Vec};
+use x86_64::structures::idt::InterruptStackFrameValue;
 
 use crate::{
-    address_space::kernel_address_space, arch::{self, interrupts::InterruptGuard}, hlt_loop, log, process::{self, CURRENT_PROCESS, PROCESSES}, thread::{
+    address_space::kernel_address_space, arch::{self, ctx, interrupts::InterruptGuard}, hlt_loop, log, process::{self, CURRENT_PROCESS, PROCESSES}, thread::{
         self, State, Thread, ThreadID,
         build::TPriority,
         tls::{ThreadSelf, install_tls},
@@ -475,12 +476,9 @@ impl Scheduler {
         }
     }
 
-    /// Switches contexts
-    ///
-    /// interrupts are always enabled after this function is called.
-    fn schedule(&self, reason: ScheduleReason) {
+    pub fn pick(&self, reason: ScheduleReason) -> Option<(Option<&mut ctx::Context>, &ctx::Context)> {
         if !self.can_reschedule.load(Ordering::Acquire) {
-            return;
+            return None;
         }
         let _guard = InterruptGuard::new();
         let queues = unsafe_cell_ref!(mut self.queues);
@@ -497,7 +495,7 @@ impl Scheduler {
             _ => {
                 match reason {
                     ScheduleReason::Yield | ScheduleReason::Preempt => {
-                        return; // no other threads - safely continue
+                        return None; // no other threads - safely continue
                     }
                     ScheduleReason::Exit
                     | ScheduleReason::Block(_)
@@ -566,10 +564,27 @@ impl Scheduler {
         // interrupts enabled here.
         drop(_guard);
         if no_store {
-            new_ctx.load()
+            Some((None, new_ctx))
         } else {
-            old_ctx.save();
-            new_ctx.load();
+            Some((Some(old_ctx), new_ctx))
+        }
+    }
+
+    pub fn pick_preempt(&self) -> Option<(Option<&mut ctx::Context>, &ctx::Context)> {
+        self.pick(ScheduleReason::Preempt)
+    }
+
+    /// Switches contexts
+    ///
+    /// interrupts are always enabled after this function is called.
+    fn schedule(&self, reason: ScheduleReason) {
+        let next = self.pick(reason);
+
+        if let Some((old, new)) = next {
+            if let Some(old) = old {
+                old.save();
+            }
+            new.load();
         }
     }
 

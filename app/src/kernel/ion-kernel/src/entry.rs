@@ -77,14 +77,14 @@ pub fn kernel_main() {
 
             match ev.code {
                 KeyCode::Backspace => {
-                    use crate::text::WRITER;
+                    // use crate::text::WRITER;
 
-                    WRITER.lock().backspace();
+                    // WRITER.lock().backspace();
                 }
                 KeyCode::Delete => {
-                    use crate::text::WRITER;
+                    // use crate::text::WRITER;
 
-                    WRITER.lock().delete_row();
+                    // WRITER.lock().delete_row();
                 }
                 KeyCode::Q => {
                     use crate::{address_space, arch, boot_info, disk::{self, DiskId}, log::debug, process::CURRENT_PROCESS};
@@ -117,9 +117,9 @@ pub fn kernel_main() {
 
                     match KEYBOARD.lock().process_keyevent(ev) {
                         Some(DecodedKey::Unicode(c)) => {
-                            use crate::text::print;
+                            // use crate::text::print;
 
-                            print!("{c}");
+                            // print!("{c}");
                         }
                         Some(DecodedKey::RawKey(k)) => {
                             serial_println!("non decoded key: {k:?}");
@@ -178,7 +178,7 @@ pub fn kernel_main() {
                 // interrupts
                 &interrupts::test::test_breakpoint,
                 // VGA
-                &text::test_println_output,
+                // &text::test_println_output,
                 // Alloc
                 &lib_alloc::tests::test_large_alloc,
                 &lib_alloc::tests::test_freed_mem_used,
