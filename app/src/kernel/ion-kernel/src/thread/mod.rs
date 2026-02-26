@@ -172,8 +172,10 @@ impl Thread {
     }
 
     #[inline(always)]
-    // unused now
-    pub fn dump_stack(&self) {}
+    #[track_caller]
+    pub fn dump_stack(&self) {
+        log::debug!("Thread (id {}) stack: {:?} (size: {})", self.id.0, self._stack.ptr(), self._stack.size());
+    }
 }
 
 /// The next available ID
@@ -199,7 +201,7 @@ pub fn sleep(ms: u64) {
 
 pub fn id() -> ThreadID {
     current()
-        .expect("cannot retrieve thread id before initialization.")
+        .expect("should not retrieve thread id before initialization.")
         .id()
 }
 

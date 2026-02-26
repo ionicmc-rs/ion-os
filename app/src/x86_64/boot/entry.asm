@@ -277,6 +277,18 @@ check_cpuid:
     jmp     error
 
 enable_osxsave_and_avx:
+    ; CR0: EM=0, MP=1
+    mov     eax, cr0
+    and     eax, ~(1 << 2)      ; EM = 0
+    or      eax,  (1 << 1)      ; MP = 1
+    mov     cr0, eax
+
+    ; CR4: OSFXSR=1, OSXMMEXCPT=1
+    mov     eax, cr4
+    or      eax, 1 << 9
+    or      eax, 1 << 10
+    mov     cr4, eax
+
     mov     eax, 1
     cpuid
     mov     ebx, ecx            ; ECX features
@@ -284,16 +296,8 @@ enable_osxsave_and_avx:
     test    ebx, 1 << 26        ; XSAVE
     jz      .done
 
-    ; CR0: EM=0, MP=1
-    mov     eax, cr0
-    and     eax, ~(1 << 2)      ; EM = 0
-    or      eax,  (1 << 1)      ; MP = 1
-    mov     cr0, eax
-
-    ; CR4: OSFXSR=1, OSXMMEXCPT=1, OSXSAVE=1
+    ; CR4: OSXSAVE=1
     mov     eax, cr4
-    or      eax, 1 << 9
-    or      eax, 1 << 10
     or      eax, 1 << 18
     mov     cr4, eax
 

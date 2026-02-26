@@ -21,11 +21,10 @@ use x86_64::{
     }
 };
 
-use crate::arch::interrupts::{double_fault::DOUBLE_FAULT_IST_INDEX, gp::GP_IST_INDEX};
+use crate::arch::interrupts::{double_fault::DOUBLE_FAULT_IST_INDEX, gp::GP_IST_INDEX, thread::TIMER_IST};
 use crate::arch::interrupts::page_fault::PAGE_FAULT_IST_INDEX;
 
-/// Size of interrupt stacks (5 KiB each).
-const IST_STACK_SIZE: usize = 4096 * 5;
+const IST_STACK_SIZE: usize = 32 * 1024;
 
 lazy_static! {
     /// Global Task State Segment.
@@ -50,6 +49,12 @@ lazy_static! {
         
         // General Protection fault IST
         tss.interrupt_stack_table[GP_IST_INDEX as usize] = {
+            static mut STACK: [u8; IST_STACK_SIZE] = [0; IST_STACK_SIZE];
+            let stack_start = VirtAddr::from_ptr(&raw const STACK);
+            stack_start + IST_STACK_SIZE as u64
+        };
+
+        tss.interrupt_stack_table[TIMER_IST as usize] = {
             static mut STACK: [u8; IST_STACK_SIZE] = [0; IST_STACK_SIZE];
             let stack_start = VirtAddr::from_ptr(&raw const STACK);
             stack_start + IST_STACK_SIZE as u64

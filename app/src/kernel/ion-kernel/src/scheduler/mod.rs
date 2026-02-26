@@ -13,7 +13,7 @@ use alloc::{boxed::Box, collections::vec_deque::VecDeque, vec::Vec};
 use x86_64::structures::idt::InterruptStackFrameValue;
 
 use crate::{
-    address_space::kernel_address_space, arch::{self, ctx, interrupts::InterruptGuard}, hlt_loop, log, process::{self, CURRENT_PROCESS, PROCESSES}, thread::{
+    address_space::kernel_address_space, arch::{self, ctx, interrupts::InterruptGuard}, hlt_loop, log, process::{self, CURRENT_PROCESS, PROCESSES}, serial_println, thread::{
         self, State, Thread, ThreadID,
         build::TPriority,
         tls::{ThreadSelf, install_tls},
@@ -47,6 +47,7 @@ impl ReadyQueue {
         ReadyQueue(VecDeque::new())
     }
 
+    #[track_caller]
     pub fn queue(&mut self, thread: Thread) {
         if let State::Ready = thread.state() {
         } else {
@@ -57,6 +58,7 @@ impl ReadyQueue {
         self.0.push_back(thread);
     }
 
+    #[track_caller]
     pub fn queue_ref(&mut self, thread: Thread) -> &mut Thread {
         self.queue(thread);
         self.0.back_mut().unwrap()
@@ -150,6 +152,7 @@ struct Queues {
 
 pub extern "C" fn idle_entry(_: usize) -> ! {
     thread::set_name("idle");
+    serial_println!("in the idle thread");
     loop {
         if unsafe_cell_ref!(SCHEDULER.queues).has_targets() {
             yield_now();
@@ -162,10 +165,12 @@ pub extern "C" fn idle_entry(_: usize) -> ! {
 macro_rules! queue_fn {
     ($($name:ident, $name_ref:ident = $q:ident),*) => {
         $(
+            #[track_caller]
             fn $name(&mut self, thread: Thread) {
                 self.$q.queue(thread);
             }
 
+            #[track_caller]
             fn $name_ref(&mut self, thread: Thread) -> &mut Thread {
                 self.$q.queue_ref(thread)
             }
@@ -476,6 +481,7 @@ impl Scheduler {
         }
     }
 
+    #[track_caller]
     pub fn pick(&self, reason: ScheduleReason) -> Option<(Option<&mut ctx::Context>, &ctx::Context)> {
         if !self.can_reschedule.load(Ordering::Acquire) {
             return None;
@@ -534,6 +540,7 @@ impl Scheduler {
             }
             ScheduleReason::Exit => {
                 old.set_state(State::Terminated);
+                no_store = true;
                 queues.queue_norun_ref(Priority::None, old)
             }
             ScheduleReason::Panicked => {
@@ -574,19 +581,19 @@ impl Scheduler {
         self.pick(ScheduleReason::Preempt)
     }
 
-    /// Switches contexts
-    ///
-    /// interrupts are always enabled after this function is called.
-    fn schedule(&self, reason: ScheduleReason) {
-        let next = self.pick(reason);
+    // /// Switches contexts
+    // ///
+    // /// interrupts are always enabled after this function is called.
+    // fn schedule(&self, reason: ScheduleReason) {
+    //     let next = self.pick(reason);
 
-        if let Some((old, new)) = next {
-            if let Some(old) = old {
-                old.save();
-            }
-            new.load();
-        }
-    }
+    //     if let Some((old, new)) = next {
+    //         if let Some(old) = old {
+    //             old.save();
+    //         }
+    //         new.load();
+    //     }
+    // }
 
     pub fn has_panicked(&self, id: ThreadID) -> bool {
         unsafe_cell_ref!(self.queues).has_panicked(id)
@@ -603,7 +610,7 @@ impl Scheduler {
         }
 
         if self.needs_resched.swap(false, Ordering::Release) {
-            self.schedule(ScheduleReason::Preempt);
+            schedule(ScheduleReason::Preempt);
         }
     }
 
@@ -625,10 +632,18 @@ pub fn current() -> Option<&'static Thread> {
     SCHEDULER.current()
 }
 
-pub fn exit_current() -> ! {
-    if let Some(v) = SCHEDULER.current_mut() {
-        v.set_state(State::Terminated)
+fn schedule(reason: ScheduleReason) {
+    if !SCHEDULER.can_reschedule.load(Ordering::Acquire) {
+        return;
     }
+
+    use crate::arch;
+    arch::interrupts::set_yield_reason(reason);
+    arch::cpu::full_fence(Ordering::SeqCst);
+    unsafe { arch::interrupts::trigger_yield() };
+}
+
+pub fn exit_current() -> ! {
     wake_waiters_of(thread::id());
     if let Some(v) = unsafe { CURRENT_PROCESS } {
         let locked = PROCESSES.lock();
@@ -647,7 +662,14 @@ pub fn exit_current() -> ! {
             })
         });
     }
-    SCHEDULER.schedule(ScheduleReason::Exit);
+    loop {
+        if SCHEDULER.can_reschedule.load(Ordering::Acquire) {
+            break;
+        }
+
+        yield_now();
+    }
+    schedule(ScheduleReason::Exit);
     hlt_loop()
 }
 
@@ -655,40 +677,40 @@ pub fn sleep_current(ticks: u64) {
     if ticks == 0 {
         return;
     }
-    SCHEDULER.schedule(ScheduleReason::Sleep(ticks));
+    schedule(ScheduleReason::Sleep(ticks));
 }
 
 pub(crate) fn block_until(ptr: *const bool) {
     if unsafe { *ptr } {
         return;
     }
-    SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::Raw(ptr)));
+    schedule(ScheduleReason::Block(WakeEvent::Raw(ptr)));
 }
 
 pub fn block_until_end_of(id: ThreadID) {
-    SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::EndOf(id)));
+    schedule(ScheduleReason::Block(WakeEvent::EndOf(id)));
 }
 
 pub fn block_until_key_input() {
-    SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::KeyInput));
+    schedule(ScheduleReason::Block(WakeEvent::KeyInput));
 }
 
 pub fn block_until_true(f: impl Fn() -> bool + 'static) {
     if f() {
         return;
     }
-    SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::FnYieldTrue(Box::new(f))));
+    schedule(ScheduleReason::Block(WakeEvent::FnYieldTrue(Box::new(f))));
 }
 
 pub fn atomic_block_until(atomic: &'static AtomicBool) {
     if atomic.load(Ordering::SeqCst) {
         return;
     }
-    SCHEDULER.schedule(ScheduleReason::Block(WakeEvent::Atomic(atomic)));
+    schedule(ScheduleReason::Block(WakeEvent::Atomic(atomic)));
 }
 
 pub fn yield_now() {
-    SCHEDULER.schedule(ScheduleReason::Yield);
+    schedule(ScheduleReason::Yield);
 }
 
 pub fn request_reschedule() {
@@ -718,7 +740,7 @@ pub fn has_panicked(id: ThreadID) -> bool {
 
 #[cold]
 pub unsafe fn start() {
-    SCHEDULER.schedule(ScheduleReason::Start);
+    schedule(ScheduleReason::Start);
 }
 
 pub unsafe fn remove_panic_id(id: ThreadID) {
@@ -727,7 +749,7 @@ pub unsafe fn remove_panic_id(id: ThreadID) {
 
 pub unsafe fn panic_current() -> ! {
     wake_waiters_of(thread::id());
-    SCHEDULER.schedule(ScheduleReason::Panicked);
+    schedule(ScheduleReason::Panicked);
     hlt_loop()
 }
 
@@ -746,7 +768,7 @@ pub unsafe fn kill(id: ThreadID) {
 }
 
 #[allow(unused)]
-enum ScheduleReason {
+pub enum ScheduleReason {
     Yield,
     Preempt,
     Exit,
@@ -764,5 +786,3 @@ pub enum WakeEvent {
     // only supports static lifetimes for now.
     Atomic(&'static AtomicBool),
 }
-
-// ASM linkage.

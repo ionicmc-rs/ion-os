@@ -32,15 +32,24 @@ pub fn take_hooks() -> Vec<Box<dyn FnOnce()>> {
     THREAD_HOOK.take()
 }
 
+static PANIC_STACK: [u8; 32 * 1024] = [0; 32 * 1024];
+
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    serial_println!("quick print: {info}");
+
+    // unsafe {
+    //     core::arch::asm!(
+    //         "mov rsp, {}",
+    //         in(reg) PANIC_STACK.as_ptr()
+    //     )
+    // }
+
+    // arch::cpu::full_fence(core::sync::atomic::Ordering::SeqCst);
+
     if arch::tls::read_ptr().is_null() {
         // panic before thread init - unsafe to use panic thread
         panic_raw(info);
     }
-
-    serial_println!("quick print: {}", *libc::get_errno());
 
     panic_thread(info);
 }
@@ -48,7 +57,7 @@ fn panic(info: &PanicInfo) -> ! {
 /// panics the current thread.
 pub fn panic_thread(info: &PanicInfo) -> ! {
     if thread::panicking() {
-        serial_println!("halt at {}", info.location().unwrap());
+        serial_println!("(halt) {info}");
         hlt_loop()
     }
     unsafe { thread::build::set_panic() };
@@ -58,9 +67,10 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
         String::from_utf8(v.to_vec()).unwrap()
     )
     .unwrap_or_else(|| "<unnamed>".into());
+    let tid = thread::id();
     match info.can_unwind() {
-        true => serial_println!("(unwind) thread `{tname}` panicked at {loc}"),
-        false => serial_println!("(abort) thread `{tname}` panicked at {loc}"),
+        true => serial_println!("(unwind) thread `{tname}` ({tid:?}) panicked at {loc}"),
+        false => serial_println!("(abort) thread `{tname}` ({tid:?}) panicked at {loc}"),
     }
 
     serial_println!("{message}");

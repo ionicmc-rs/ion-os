@@ -275,18 +275,11 @@ pub fn set_name(s: impl Into<String>) {
     unsafe {
         if let Some(name) = &mut THREAD_DATA.name {
             name.clear();
-            serial_println!("cleared old name");
             name.extend(s.into().into_bytes());
-            serial_println!("added new bytes");
-            serial_println!("set name");
         } else {
-            serial_println!("created empty vec");
             let mut vec: Vec<u8, Arc<dyn Allocator>> = Vec::new_in(Arc::new(Global));
-            serial_println!("extending");
             vec.extend(s.into().into_bytes());
-            serial_println!("setting name");
             THREAD_DATA.name = Some(vec);
-            serial_println!("set name");
         }
     }
 

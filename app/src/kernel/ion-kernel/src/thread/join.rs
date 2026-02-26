@@ -165,8 +165,6 @@ pub fn spawn_at<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
 
         let func = meta.func.take().expect("thread entry called twice");
 
-        serial_println!("{:#x}", unsafe { (Box::as_ref(&func) as *const dyn FnOnce() -> T).cast::<usize>().read() });
-
         let res = func();
 
         unsafe {

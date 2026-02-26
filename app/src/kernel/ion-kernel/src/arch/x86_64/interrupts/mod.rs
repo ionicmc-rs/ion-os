@@ -4,7 +4,7 @@
 //!
 //! These things are handled in Ion OS's initialization, so you wouldn't typically have to see them.
 
-use crate::{arch::interrupts::pic8259::InterruptIndex, c_lib::libc, serial_println};
+use crate::{arch::interrupts::{pic8259::InterruptIndex, thread::YIELD_INTERRUPT_NUMBER}, c_lib::libc, serial_println};
 use lazy_static::lazy_static;
 use x86_64::{
     instructions::interrupts, set_general_handler, structures::idt::{InterruptDescriptorTable, InterruptStackFrame}
@@ -70,19 +70,26 @@ lazy_static! {
         set_general_handler!(&mut idt, general_handler);
 
         idt.breakpoint.set_handler_fn(breakpoint_handler);
+        idt.invalid_opcode.set_handler_fn(ud::invalid_opcode);
         unsafe {
             idt.page_fault.set_handler_fn(page_fault::page_fault)
                 .set_stack_index(page_fault::PAGE_FAULT_IST_INDEX);
             idt.double_fault.set_handler_fn(double_fault::double_fault)
                 .set_stack_index(double_fault::DOUBLE_FAULT_IST_INDEX);
+            idt[InterruptIndex::Timer.as_u8()]
+                .set_handler_fn(thread::timer_trampoline)
+                // Safety: a timer interrupt cannot occur at the same time as a yield
+                .set_stack_index(thread::TIMER_IST);
+            idt[YIELD_INTERRUPT_NUMBER]
+                .set_handler_fn(thread::yield_trampoline)
+                .set_stack_index(thread::YIELD_IST);
         }
         idt.general_protection_fault.set_handler_fn(gp::protection_fault);
-        // Hardware Interrupts.
 
+        // Hardware Interrupts.
 
         set_index!(
             idt,
-            Timer => timer::timer_trampoline,
             Keyboard => keyboard::keyboard_interrupt_handler
         );
 
@@ -166,7 +173,13 @@ pub use gdt::selectors as gdt_selectors;
 pub mod keyboard;
 mod page_fault;
 mod pic8259;
-mod timer;
-pub use timer::ticks;
-pub(in crate::arch) use timer::InterruptRegs;
+mod thread;
+pub use thread::{
+    ticks,
+    trigger_yield,
+    set_yield_reason,
+    YieldReason,
+};
+pub(in crate::arch) use thread::InterruptRegs;
 mod gp;
+mod ud;
