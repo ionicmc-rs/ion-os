@@ -97,11 +97,11 @@ pub fn kernel_main() {
                     // WRITER.lock().delete_row();
                 }
                 KeyCode::Q => {
-                    use crate::{address_space, arch, boot_info, disk::{self, DiskId}, log::debug, process::CURRENT_PROCESS};
+                    use crate::{address_space, arch, boot_info, disk::{self, DiskId}, log::debug, process::current_process};
 
                     debug!("DEBUG KEY PRESSED:");
                     debug!("Thread: \n{:#?}", thread::current());
-                    debug!("Process ID: {:?}", unsafe { CURRENT_PROCESS });
+                    debug!("Process ID: {:?}", current_process());
                     debug!("Context: \n{:#?}", arch::ctx::current());
                     debug!("Boot Info: \n{:#?}", boot_info());
                     debug!("Kernel Address Space: \n{:#?}", unsafe { address_space::kernel_address_space() });

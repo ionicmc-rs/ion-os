@@ -1,0 +1,1001 @@
+00000000001008b0 <syscall_dispatch>:
+  1008b0:	48 81 ec c8 03 00 00 	sub    $0x3c8,%rsp
+  1008b7:	48 89 bc 24 88 00 00 	mov    %rdi,0x88(%rsp)
+  1008be:	00 
+  1008bf:	48 89 bc 24 30 03 00 	mov    %rdi,0x330(%rsp)
+  1008c6:	00 
+  1008c7:	48 83 e7 07          	and    $0x7,%rdi
+  1008cb:	48 83 ff 00          	cmp    $0x0,%rdi
+  1008cf:	75 1c                	jne    1008ed <syscall_dispatch+0x3d>
+  1008d1:	48 8b 84 24 88 00 00 	mov    0x88(%rsp),%rax
+  1008d8:	00 
+  1008d9:	48 83 f8 00          	cmp    $0x0,%rax
+  1008dd:	0f 94 c0             	sete   %al
+  1008e0:	24 ff                	and    $0xff,%al
+  1008e2:	34 ff                	xor    $0xff,%al
+  1008e4:	a8 01                	test   $0x1,%al
+  1008e6:	75 1e                	jne    100906 <syscall_dispatch+0x56>
+  1008e8:	e9 49 01 00 00       	jmp    100a36 <syscall_dispatch+0x186>
+  1008ed:	48 8b b4 24 88 00 00 	mov    0x88(%rsp),%rsi
+  1008f4:	00 
+  1008f5:	bf 08 00 00 00       	mov    $0x8,%edi
+  1008fa:	48 8d 15 67 94 0b 00 	lea    0xb9467(%rip),%rdx        # 1b9d68 <boot_info_data+0x118>
+  100901:	e8 9d bb 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  100906:	48 8b 84 24 88 00 00 	mov    0x88(%rsp),%rax
+  10090d:	00 
+  10090e:	48 89 84 24 98 00 00 	mov    %rax,0x98(%rsp)
+  100915:	00 
+  100916:	48 8b b4 24 98 00 00 	mov    0x98(%rsp),%rsi
+  10091d:	00 
+  10091e:	48 89 b4 24 38 03 00 	mov    %rsi,0x338(%rsp)
+  100925:	00 
+  100926:	48 8d bc 24 b0 00 00 	lea    0xb0(%rsp),%rdi
+  10092d:	00 
+  10092e:	e8 ed 7c 04 00       	call   148620 <_RINvMNtNtCsbHtThoOXcTx_4core3fmt2rtNtB3_8Argument11new_displayyEB7_>
+  100933:	48 8b 84 24 b0 00 00 	mov    0xb0(%rsp),%rax
+  10093a:	00 
+  10093b:	48 8b 8c 24 b8 00 00 	mov    0xb8(%rsp),%rcx
+  100942:	00 
+  100943:	48 89 8c 24 a8 00 00 	mov    %rcx,0xa8(%rsp)
+  10094a:	00 
+  10094b:	48 89 84 24 a0 00 00 	mov    %rax,0xa0(%rsp)
+  100952:	00 
+  100953:	48 8d 3d 41 94 0a 00 	lea    0xa9441(%rip),%rdi        # 1a9d9b <gdt64.pointer+0xfb>
+  10095a:	48 8d b4 24 a0 00 00 	lea    0xa0(%rsp),%rsi
+  100961:	00 
+  100962:	e8 d9 b8 02 00       	call   12c240 <_RINvMs2_NtCsbHtThoOXcTx_4core3fmtNtB6_9Arguments3newKj1f_Kj1_ECs7m1ZmN6sVyh_3elf>
+  100967:	48 89 c7             	mov    %rax,%rdi
+  10096a:	48 89 d6             	mov    %rdx,%rsi
+  10096d:	e8 7e 2d 00 00       	call   1036f0 <_RNvNtCs7EDixs6J678_10ion_kernel6serial6__print>
+  100972:	48 8d b4 24 98 00 00 	lea    0x98(%rsp),%rsi
+  100979:	00 
+  10097a:	48 89 b4 24 40 03 00 	mov    %rsi,0x340(%rsp)
+  100981:	00 
+  100982:	48 8d bc 24 d0 00 00 	lea    0xd0(%rsp),%rdi
+  100989:	00 
+  10098a:	e8 81 7e 05 00       	call   158810 <_RINvMNtNtCsbHtThoOXcTx_4core3fmt2rtNtB3_8Argument9new_debugRNtNtNtNtNtCs7EDixs6J678_10ion_kernel4arch6x86_647syscall8dispatch12SyscallFrameEB16_>
+  10098f:	48 8b 84 24 d0 00 00 	mov    0xd0(%rsp),%rax
+  100996:	00 
+  100997:	48 8b 8c 24 d8 00 00 	mov    0xd8(%rsp),%rcx
+  10099e:	00 
+  10099f:	48 89 8c 24 c8 00 00 	mov    %rcx,0xc8(%rsp)
+  1009a6:	00 
+  1009a7:	48 89 84 24 c0 00 00 	mov    %rax,0xc0(%rsp)
+  1009ae:	00 
+  1009af:	48 8d 3d b6 f1 0a 00 	lea    0xaf1b6(%rip),%rdi        # 1afb6c <gdt64.pointer+0x5ecc>
+  1009b6:	48 8d b4 24 c0 00 00 	lea    0xc0(%rsp),%rsi
+  1009bd:	00 
+  1009be:	e8 7d 1e 00 00       	call   102840 <_RINvMs2_NtCsbHtThoOXcTx_4core3fmtNtB6_9Arguments3newKj15_Kj1_ECs7EDixs6J678_10ion_kernel>
+  1009c3:	48 89 c7             	mov    %rax,%rdi
+  1009c6:	48 89 d6             	mov    %rdx,%rsi
+  1009c9:	e8 22 2d 00 00       	call   1036f0 <_RNvNtCs7EDixs6J678_10ion_kernel6serial6__print>
+  1009ce:	48 8b b4 24 98 00 00 	mov    0x98(%rsp),%rsi
+  1009d5:	00 
+  1009d6:	48 8d bc 24 00 01 00 	lea    0x100(%rsp),%rdi
+  1009dd:	00 
+  1009de:	48 89 7c 24 78       	mov    %rdi,0x78(%rsp)
+  1009e3:	e8 78 fe ff ff       	call   100860 <_RNvXs_NtNtNtNtCs7EDixs6J678_10ion_kernel4arch6x86_647syscall8dispatchNtB4_12SyscallFrameNtNtCsbHtThoOXcTx_4core5clone5Clone5cloneBc_>
+  1009e8:	48 8b 74 24 78       	mov    0x78(%rsp),%rsi
+  1009ed:	48 8d bc 24 e0 00 00 	lea    0xe0(%rsp),%rdi
+  1009f4:	00 
+  1009f5:	e8 36 4a 06 00       	call   165430 <_RNvMNtNtNtNtCs7EDixs6J678_10ion_kernel4arch6x86_647syscall5parseNtB2_7Syscall5parse>
+  1009fa:	48 8b 84 24 e0 00 00 	mov    0xe0(%rsp),%rax
+  100a01:	00 
+  100a02:	48 89 c1             	mov    %rax,%rcx
+  100a05:	48 83 c1 fe          	add    $0xfffffffffffffffe,%rcx
+  100a09:	48 83 e8 02          	sub    $0x2,%rax
+  100a0d:	b8 03 00 00 00       	mov    $0x3,%eax
+  100a12:	48 0f 43 c1          	cmovae %rcx,%rax
+  100a16:	48 89 84 24 80 00 00 	mov    %rax,0x80(%rsp)
+  100a1d:	00 
+  100a1e:	48 8b 8c 24 80 00 00 	mov    0x80(%rsp),%rcx
+  100a25:	00 
+  100a26:	48 8d 05 7f 92 0a 00 	lea    0xa927f(%rip),%rax        # 1a9cac <gdt64.pointer+0xc>
+  100a2d:	48 63 0c 88          	movslq (%rax,%rcx,4),%rcx
+  100a31:	48 01 c8             	add    %rcx,%rax
+  100a34:	ff e0                	jmp    *%rax
+  100a36:	48 8d 3d 2b 93 0b 00 	lea    0xb932b(%rip),%rdi        # 1b9d68 <boot_info_data+0x118>
+  100a3d:	e8 3a ba 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  100a42:	0f 0b                	ud2
+  100a44:	31 c0                	xor    %eax,%eax
+  100a46:	89 c7                	mov    %eax,%edi
+  100a48:	e8 b3 fb ff ff       	call   100600 <_RNvNtNtNtNtCs7EDixs6J678_10ion_kernel4arch6x86_647syscall8dispatch12set_metadata>
+  100a4d:	48 c7 84 24 90 00 00 	movq   $0x0,0x90(%rsp)
+  100a54:	00 00 00 00 00 
+  100a59:	e9 2b 01 00 00       	jmp    100b89 <syscall_dispatch+0x2d9>
+  100a5e:	8b 8c 24 e8 00 00 00 	mov    0xe8(%rsp),%ecx
+  100a65:	8b 84 24 ec 00 00 00 	mov    0xec(%rsp),%eax
+  100a6c:	89 8c 24 3c 01 00 00 	mov    %ecx,0x13c(%rsp)
+  100a73:	89 84 24 40 01 00 00 	mov    %eax,0x140(%rsp)
+  100a7a:	8b 84 24 3c 01 00 00 	mov    0x13c(%rsp),%eax
+  100a81:	48 a9 01 00 00 00    	test   $0x1,%rax
+  100a87:	0f 85 0c 01 00 00    	jne    100b99 <syscall_dispatch+0x2e9>
+  100a8d:	e9 94 01 00 00       	jmp    100c26 <syscall_dispatch+0x376>
+  100a92:	8a 84 24 e8 00 00 00 	mov    0xe8(%rsp),%al
+  100a99:	88 c1                	mov    %al,%cl
+  100a9b:	80 e1 01             	and    $0x1,%cl
+  100a9e:	88 8c 24 67 03 00 00 	mov    %cl,0x367(%rsp)
+  100aa5:	24 01                	and    $0x1,%al
+  100aa7:	0f b6 c0             	movzbl %al,%eax
+  100aaa:	48 a9 01 00 00 00    	test   $0x1,%rax
+  100ab0:	0f 85 54 03 00 00    	jne    100e0a <syscall_dispatch+0x55a>
+  100ab6:	e9 dc 03 00 00       	jmp    100e97 <syscall_dispatch+0x5e7>
+  100abb:	48 8b 84 24 e0 00 00 	mov    0xe0(%rsp),%rax
+  100ac2:	00 
+  100ac3:	48 89 84 24 a8 01 00 	mov    %rax,0x1a8(%rsp)
+  100aca:	00 
+  100acb:	48 8b 84 24 e8 00 00 	mov    0xe8(%rsp),%rax
+  100ad2:	00 
+  100ad3:	48 89 84 24 b0 01 00 	mov    %rax,0x1b0(%rsp)
+  100ada:	00 
+  100adb:	48 8b 84 24 f0 00 00 	mov    0xf0(%rsp),%rax
+  100ae2:	00 
+  100ae3:	48 89 84 24 b8 01 00 	mov    %rax,0x1b8(%rsp)
+  100aea:	00 
+  100aeb:	48 8b 84 24 f8 00 00 	mov    0xf8(%rsp),%rax
+  100af2:	00 
+  100af3:	48 89 84 24 c0 01 00 	mov    %rax,0x1c0(%rsp)
+  100afa:	00 
+  100afb:	48 f7 84 24 a8 01 00 	testq  $0x1,0x1a8(%rsp)
+  100b02:	00 01 00 00 00 
+  100b07:	0f 85 8f 03 00 00    	jne    100e9c <syscall_dispatch+0x5ec>
+  100b0d:	e9 17 04 00 00       	jmp    100f29 <syscall_dispatch+0x679>
+  100b12:	c7 84 24 98 03 00 00 	movl   $0x6,0x398(%rsp)
+  100b19:	06 00 00 00 
+  100b1d:	c7 84 24 c4 03 00 00 	movl   $0x6,0x3c4(%rsp)
+  100b24:	06 00 00 00 
+  100b28:	e8 e3 ed 00 00       	call   10f910 <__errno_location>
+  100b2d:	48 89 44 24 70       	mov    %rax,0x70(%rsp)
+  100b32:	48 83 e0 03          	and    $0x3,%rax
+  100b36:	48 83 f8 00          	cmp    $0x0,%rax
+  100b3a:	75 14                	jne    100b50 <syscall_dispatch+0x2a0>
+  100b3c:	48 8b 44 24 70       	mov    0x70(%rsp),%rax
+  100b41:	48 83 f8 00          	cmp    $0x0,%rax
+  100b45:	0f 94 c0             	sete   %al
+  100b48:	34 ff                	xor    $0xff,%al
+  100b4a:	a8 01                	test   $0x1,%al
+  100b4c:	75 24                	jne    100b72 <syscall_dispatch+0x2c2>
+  100b4e:	eb 16                	jmp    100b66 <syscall_dispatch+0x2b6>
+  100b50:	48 8b 74 24 70       	mov    0x70(%rsp),%rsi
+  100b55:	bf 04 00 00 00       	mov    $0x4,%edi
+  100b5a:	48 8d 15 3f 91 0b 00 	lea    0xb913f(%rip),%rdx        # 1b9ca0 <boot_info_data+0x50>
+  100b61:	e8 3d b9 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  100b66:	48 8d 3d 33 91 0b 00 	lea    0xb9133(%rip),%rdi        # 1b9ca0 <boot_info_data+0x50>
+  100b6d:	e8 0a b9 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  100b72:	48 8b 44 24 70       	mov    0x70(%rsp),%rax
+  100b77:	c7 00 06 00 00 00    	movl   $0x6,(%rax)
+  100b7d:	48 c7 84 24 90 00 00 	movq   $0xab07df,0x90(%rsp)
+  100b84:	00 df 07 ab 00 
+  100b89:	48 8b 84 24 90 00 00 	mov    0x90(%rsp),%rax
+  100b90:	00 
+  100b91:	48 81 c4 c8 03 00 00 	add    $0x3c8,%rsp
+  100b98:	c3                   	ret
+  100b99:	c7 84 24 a8 03 00 00 	movl   $0x6,0x3a8(%rsp)
+  100ba0:	06 00 00 00 
+  100ba4:	c7 84 24 b4 03 00 00 	movl   $0x6,0x3b4(%rsp)
+  100bab:	06 00 00 00 
+  100baf:	e8 5c ed 00 00       	call   10f910 <__errno_location>
+  100bb4:	48 89 44 24 68       	mov    %rax,0x68(%rsp)
+  100bb9:	48 83 e0 03          	and    $0x3,%rax
+  100bbd:	48 83 f8 00          	cmp    $0x0,%rax
+  100bc1:	75 14                	jne    100bd7 <syscall_dispatch+0x327>
+  100bc3:	48 8b 44 24 68       	mov    0x68(%rsp),%rax
+  100bc8:	48 83 f8 00          	cmp    $0x0,%rax
+  100bcc:	0f 94 c0             	sete   %al
+  100bcf:	34 ff                	xor    $0xff,%al
+  100bd1:	a8 01                	test   $0x1,%al
+  100bd3:	75 24                	jne    100bf9 <syscall_dispatch+0x349>
+  100bd5:	eb 16                	jmp    100bed <syscall_dispatch+0x33d>
+  100bd7:	48 8b 74 24 68       	mov    0x68(%rsp),%rsi
+  100bdc:	bf 04 00 00 00       	mov    $0x4,%edi
+  100be1:	48 8d 15 b8 90 0b 00 	lea    0xb90b8(%rip),%rdx        # 1b9ca0 <boot_info_data+0x50>
+  100be8:	e8 b6 b8 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  100bed:	48 8d 3d ac 90 0b 00 	lea    0xb90ac(%rip),%rdi        # 1b9ca0 <boot_info_data+0x50>
+  100bf4:	e8 83 b8 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  100bf9:	48 8b 44 24 68       	mov    0x68(%rsp),%rax
+  100bfe:	c7 00 06 00 00 00    	movl   $0x6,(%rax)
+  100c04:	bf df 07 ab 00       	mov    $0xab07df,%edi
+  100c09:	e8 f2 f9 ff ff       	call   100600 <_RNvNtNtNtNtCs7EDixs6J678_10ion_kernel4arch6x86_647syscall8dispatch12set_metadata>
+  100c0e:	48 8b 84 24 98 00 00 	mov    0x98(%rsp),%rax
+  100c15:	00 
+  100c16:	48 8b 00             	mov    (%rax),%rax
+  100c19:	48 89 84 24 90 00 00 	mov    %rax,0x90(%rsp)
+  100c20:	00 
+  100c21:	e9 63 ff ff ff       	jmp    100b89 <syscall_dispatch+0x2d9>
+  100c26:	8b 84 24 40 01 00 00 	mov    0x140(%rsp),%eax
+  100c2d:	89 84 24 44 01 00 00 	mov    %eax,0x144(%rsp)
+  100c34:	e8 57 23 02 00       	call   122f90 <_RNvNtCs7EDixs6J678_10ion_kernel6thread2id>
+  100c39:	48 89 84 24 48 01 00 	mov    %rax,0x148(%rsp)
+  100c40:	00 
+  100c41:	48 8d 84 24 48 01 00 	lea    0x148(%rsp),%rax
+  100c48:	00 
+  100c49:	48 89 84 24 48 03 00 	mov    %rax,0x348(%rsp)
+  100c50:	00 
+  100c51:	48 8d 84 24 44 01 00 	lea    0x144(%rsp),%rax
+  100c58:	00 
+  100c59:	48 89 84 24 50 03 00 	mov    %rax,0x350(%rsp)
+  100c60:	00 
+  100c61:	48 8d bc 24 70 01 00 	lea    0x170(%rsp),%rdi
+  100c68:	00 
+  100c69:	48 8d b4 24 48 01 00 	lea    0x148(%rsp),%rsi
+  100c70:	00 
+  100c71:	e8 aa 79 04 00       	call   148620 <_RINvMNtNtCsbHtThoOXcTx_4core3fmt2rtNtB3_8Argument11new_displayyEB7_>
+  100c76:	48 8d bc 24 80 01 00 	lea    0x180(%rsp),%rdi
+  100c7d:	00 
+  100c7e:	48 8d b4 24 44 01 00 	lea    0x144(%rsp),%rsi
+  100c85:	00 
+  100c86:	e8 d5 6e 05 00       	call   157b60 <_RINvMNtNtCsbHtThoOXcTx_4core3fmt2rtNtB3_8Argument11new_displaylECs7EDixs6J678_10ion_kernel>
+  100c8b:	48 8b 84 24 70 01 00 	mov    0x170(%rsp),%rax
+  100c92:	00 
+  100c93:	48 89 84 24 50 01 00 	mov    %rax,0x150(%rsp)
+  100c9a:	00 
+  100c9b:	48 8b 84 24 78 01 00 	mov    0x178(%rsp),%rax
+  100ca2:	00 
+  100ca3:	48 89 84 24 58 01 00 	mov    %rax,0x158(%rsp)
+  100caa:	00 
+  100cab:	48 8b 84 24 80 01 00 	mov    0x180(%rsp),%rax
+  100cb2:	00 
+  100cb3:	48 89 84 24 60 01 00 	mov    %rax,0x160(%rsp)
+  100cba:	00 
+  100cbb:	48 8b 84 24 88 01 00 	mov    0x188(%rsp),%rax
+  100cc2:	00 
+  100cc3:	48 89 84 24 68 01 00 	mov    %rax,0x168(%rsp)
+  100cca:	00 
+  100ccb:	48 8d 3d e8 90 0a 00 	lea    0xa90e8(%rip),%rdi        # 1a9dba <gdt64.pointer+0x11a>
+  100cd2:	48 8d b4 24 50 01 00 	lea    0x150(%rsp),%rsi
+  100cd9:	00 
+  100cda:	e8 81 1d 00 00       	call   102a60 <_RINvMs2_NtCsbHtThoOXcTx_4core3fmtNtB6_9Arguments3newKj2a_Kj2_ECs7EDixs6J678_10ion_kernel>
+  100cdf:	48 89 44 24 58       	mov    %rax,0x58(%rsp)
+  100ce4:	48 89 54 24 60       	mov    %rdx,0x60(%rsp)
+  100ce9:	48 8d 3d 90 90 0b 00 	lea    0xb9090(%rip),%rdi        # 1b9d80 <boot_info_data+0x130>
+  100cf0:	e8 bb a0 00 00       	call   10adb0 <_RNvMs4_NtNtCsbHtThoOXcTx_4core5panic8locationNtB5_8Location6callerCs7EDixs6J678_10ion_kernel>
+  100cf5:	48 8b 74 24 58       	mov    0x58(%rsp),%rsi
+  100cfa:	48 8b 54 24 60       	mov    0x60(%rsp),%rdx
+  100cff:	48 8b 08             	mov    (%rax),%rcx
+  100d02:	48 89 8c 24 90 01 00 	mov    %rcx,0x190(%rsp)
+  100d09:	00 
+  100d0a:	48 8b 48 08          	mov    0x8(%rax),%rcx
+  100d0e:	48 89 8c 24 98 01 00 	mov    %rcx,0x198(%rsp)
+  100d15:	00 
+  100d16:	48 8b 40 10          	mov    0x10(%rax),%rax
+  100d1a:	48 89 84 24 a0 01 00 	mov    %rax,0x1a0(%rsp)
+  100d21:	00 
+  100d22:	bf 02 00 00 00       	mov    $0x2,%edi
+  100d27:	48 8d 8c 24 90 01 00 	lea    0x190(%rsp),%rcx
+  100d2e:	00 
+  100d2f:	4c 8d 05 4a 90 0b 00 	lea    0xb904a(%rip),%r8        # 1b9d80 <boot_info_data+0x130>
+  100d36:	e8 55 9e 00 00       	call   10ab90 <_RNvNtCs7EDixs6J678_10ion_kernel3log3log>
+  100d3b:	e8 50 7a 01 00       	call   118790 <_RNvNtCs7EDixs6J678_10ion_kernel7process15current_process>
+  100d40:	48 89 84 24 80 03 00 	mov    %rax,0x380(%rsp)
+  100d47:	00 
+  100d48:	48 89 94 24 88 03 00 	mov    %rdx,0x388(%rsp)
+  100d4f:	00 
+  100d50:	48 f7 84 24 80 03 00 	testq  $0x1,0x380(%rsp)
+  100d57:	00 01 00 00 00 
+  100d5c:	75 0c                	jne    100d6a <syscall_dispatch+0x4ba>
+  100d5e:	48 8d 3d 33 90 0b 00 	lea    0xb9033(%rip),%rdi        # 1b9d98 <boot_info_data+0x148>
+  100d65:	e8 c6 be 03 00       	call   13cc30 <_RNvNtCsbHtThoOXcTx_4core6option13unwrap_failed>
+  100d6a:	48 8b bc 24 88 03 00 	mov    0x388(%rsp),%rdi
+  100d71:	00 
+  100d72:	48 89 bc 24 90 03 00 	mov    %rdi,0x390(%rsp)
+  100d79:	00 
+  100d7a:	48 89 bc 24 58 03 00 	mov    %rdi,0x358(%rsp)
+  100d81:	00 
+  100d82:	e8 29 7a 01 00       	call   1187b0 <_RNvNtCs7EDixs6J678_10ion_kernel7process9exit_proc>
+  100d87:	c7 84 24 ac 03 00 00 	movl   $0x4,0x3ac(%rsp)
+  100d8e:	04 00 00 00 
+  100d92:	c7 84 24 b0 03 00 00 	movl   $0x4,0x3b0(%rsp)
+  100d99:	04 00 00 00 
+  100d9d:	e8 6e eb 00 00       	call   10f910 <__errno_location>
+  100da2:	48 89 44 24 50       	mov    %rax,0x50(%rsp)
+  100da7:	48 83 e0 03          	and    $0x3,%rax
+  100dab:	48 83 f8 00          	cmp    $0x0,%rax
+  100daf:	75 14                	jne    100dc5 <syscall_dispatch+0x515>
+  100db1:	48 8b 44 24 50       	mov    0x50(%rsp),%rax
+  100db6:	48 83 f8 00          	cmp    $0x0,%rax
+  100dba:	0f 94 c0             	sete   %al
+  100dbd:	34 ff                	xor    $0xff,%al
+  100dbf:	a8 01                	test   $0x1,%al
+  100dc1:	75 24                	jne    100de7 <syscall_dispatch+0x537>
+  100dc3:	eb 16                	jmp    100ddb <syscall_dispatch+0x52b>
+  100dc5:	48 8b 74 24 50       	mov    0x50(%rsp),%rsi
+  100dca:	bf 04 00 00 00       	mov    $0x4,%edi
+  100dcf:	48 8d 15 ca 8e 0b 00 	lea    0xb8eca(%rip),%rdx        # 1b9ca0 <boot_info_data+0x50>
+  100dd6:	e8 c8 b6 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  100ddb:	48 8d 3d be 8e 0b 00 	lea    0xb8ebe(%rip),%rdi        # 1b9ca0 <boot_info_data+0x50>
+  100de2:	e8 95 b6 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  100de7:	48 8b 44 24 50       	mov    0x50(%rsp),%rax
+  100dec:	c7 00 04 00 00 00    	movl   $0x4,(%rax)
+  100df2:	48 8b 84 24 98 00 00 	mov    0x98(%rsp),%rax
+  100df9:	00 
+  100dfa:	48 8b 00             	mov    (%rax),%rax
+  100dfd:	48 89 84 24 90 00 00 	mov    %rax,0x90(%rsp)
+  100e04:	00 
+  100e05:	e9 7f fd ff ff       	jmp    100b89 <syscall_dispatch+0x2d9>
+  100e0a:	c7 84 24 a4 03 00 00 	movl   $0x6,0x3a4(%rsp)
+  100e11:	06 00 00 00 
+  100e15:	c7 84 24 b8 03 00 00 	movl   $0x6,0x3b8(%rsp)
+  100e1c:	06 00 00 00 
+  100e20:	e8 eb ea 00 00       	call   10f910 <__errno_location>
+  100e25:	48 89 44 24 48       	mov    %rax,0x48(%rsp)
+  100e2a:	48 83 e0 03          	and    $0x3,%rax
+  100e2e:	48 83 f8 00          	cmp    $0x0,%rax
+  100e32:	75 14                	jne    100e48 <syscall_dispatch+0x598>
+  100e34:	48 8b 44 24 48       	mov    0x48(%rsp),%rax
+  100e39:	48 83 f8 00          	cmp    $0x0,%rax
+  100e3d:	0f 94 c0             	sete   %al
+  100e40:	34 ff                	xor    $0xff,%al
+  100e42:	a8 01                	test   $0x1,%al
+  100e44:	75 24                	jne    100e6a <syscall_dispatch+0x5ba>
+  100e46:	eb 16                	jmp    100e5e <syscall_dispatch+0x5ae>
+  100e48:	48 8b 74 24 48       	mov    0x48(%rsp),%rsi
+  100e4d:	bf 04 00 00 00       	mov    $0x4,%edi
+  100e52:	48 8d 15 47 8e 0b 00 	lea    0xb8e47(%rip),%rdx        # 1b9ca0 <boot_info_data+0x50>
+  100e59:	e8 45 b6 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  100e5e:	48 8d 3d 3b 8e 0b 00 	lea    0xb8e3b(%rip),%rdi        # 1b9ca0 <boot_info_data+0x50>
+  100e65:	e8 12 b6 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  100e6a:	48 8b 44 24 48       	mov    0x48(%rsp),%rax
+  100e6f:	c7 00 06 00 00 00    	movl   $0x6,(%rax)
+  100e75:	bf df 07 ab 00       	mov    $0xab07df,%edi
+  100e7a:	e8 81 f7 ff ff       	call   100600 <_RNvNtNtNtNtCs7EDixs6J678_10ion_kernel4arch6x86_647syscall8dispatch12set_metadata>
+  100e7f:	48 8b 84 24 98 00 00 	mov    0x98(%rsp),%rax
+  100e86:	00 
+  100e87:	48 8b 00             	mov    (%rax),%rax
+  100e8a:	48 89 84 24 90 00 00 	mov    %rax,0x90(%rsp)
+  100e91:	00 
+  100e92:	e9 f2 fc ff ff       	jmp    100b89 <syscall_dispatch+0x2d9>
+  100e97:	e8 74 b1 05 00       	call   15c010 <_RNvNtCs7EDixs6J678_10ion_kernel9scheduler12exit_current>
+  100e9c:	c7 84 24 9c 03 00 00 	movl   $0x6,0x39c(%rsp)
+  100ea3:	06 00 00 00 
+  100ea7:	c7 84 24 c0 03 00 00 	movl   $0x6,0x3c0(%rsp)
+  100eae:	06 00 00 00 
+  100eb2:	e8 59 ea 00 00       	call   10f910 <__errno_location>
+  100eb7:	48 89 44 24 40       	mov    %rax,0x40(%rsp)
+  100ebc:	48 83 e0 03          	and    $0x3,%rax
+  100ec0:	48 83 f8 00          	cmp    $0x0,%rax
+  100ec4:	75 14                	jne    100eda <syscall_dispatch+0x62a>
+  100ec6:	48 8b 44 24 40       	mov    0x40(%rsp),%rax
+  100ecb:	48 83 f8 00          	cmp    $0x0,%rax
+  100ecf:	0f 94 c0             	sete   %al
+  100ed2:	34 ff                	xor    $0xff,%al
+  100ed4:	a8 01                	test   $0x1,%al
+  100ed6:	75 24                	jne    100efc <syscall_dispatch+0x64c>
+  100ed8:	eb 16                	jmp    100ef0 <syscall_dispatch+0x640>
+  100eda:	48 8b 74 24 40       	mov    0x40(%rsp),%rsi
+  100edf:	bf 04 00 00 00       	mov    $0x4,%edi
+  100ee4:	48 8d 15 b5 8d 0b 00 	lea    0xb8db5(%rip),%rdx        # 1b9ca0 <boot_info_data+0x50>
+  100eeb:	e8 b3 b5 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  100ef0:	48 8d 3d a9 8d 0b 00 	lea    0xb8da9(%rip),%rdi        # 1b9ca0 <boot_info_data+0x50>
+  100ef7:	e8 80 b5 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  100efc:	48 8b 44 24 40       	mov    0x40(%rsp),%rax
+  100f01:	c7 00 06 00 00 00    	movl   $0x6,(%rax)
+  100f07:	bf df 07 ab 00       	mov    $0xab07df,%edi
+  100f0c:	e8 ef f6 ff ff       	call   100600 <_RNvNtNtNtNtCs7EDixs6J678_10ion_kernel4arch6x86_647syscall8dispatch12set_metadata>
+  100f11:	48 8b 84 24 98 00 00 	mov    0x98(%rsp),%rax
+  100f18:	00 
+  100f19:	48 8b 00             	mov    (%rax),%rax
+  100f1c:	48 89 84 24 90 00 00 	mov    %rax,0x90(%rsp)
+  100f23:	00 
+  100f24:	e9 60 fc ff ff       	jmp    100b89 <syscall_dispatch+0x2d9>
+  100f29:	48 8b 84 24 b0 01 00 	mov    0x1b0(%rsp),%rax
+  100f30:	00 
+  100f31:	48 89 84 24 c8 01 00 	mov    %rax,0x1c8(%rsp)
+  100f38:	00 
+  100f39:	48 8b 84 24 b8 01 00 	mov    0x1b8(%rsp),%rax
+  100f40:	00 
+  100f41:	48 89 84 24 d0 01 00 	mov    %rax,0x1d0(%rsp)
+  100f48:	00 
+  100f49:	48 8b 84 24 c0 01 00 	mov    0x1c0(%rsp),%rax
+  100f50:	00 
+  100f51:	48 89 84 24 d8 01 00 	mov    %rax,0x1d8(%rsp)
+  100f58:	00 
+  100f59:	48 8d 84 24 c8 01 00 	lea    0x1c8(%rsp),%rax
+  100f60:	00 
+  100f61:	48 89 84 24 e0 01 00 	mov    %rax,0x1e0(%rsp)
+  100f68:	00 
+  100f69:	48 8d 84 24 d0 01 00 	lea    0x1d0(%rsp),%rax
+  100f70:	00 
+  100f71:	48 89 84 24 e8 01 00 	mov    %rax,0x1e8(%rsp)
+  100f78:	00 
+  100f79:	48 8d 84 24 d8 01 00 	lea    0x1d8(%rsp),%rax
+  100f80:	00 
+  100f81:	48 89 84 24 f0 01 00 	mov    %rax,0x1f0(%rsp)
+  100f88:	00 
+  100f89:	48 8b b4 24 e0 01 00 	mov    0x1e0(%rsp),%rsi
+  100f90:	00 
+  100f91:	48 8d bc 24 28 02 00 	lea    0x228(%rsp),%rdi
+  100f98:	00 
+  100f99:	e8 82 76 04 00       	call   148620 <_RINvMNtNtCsbHtThoOXcTx_4core3fmt2rtNtB3_8Argument11new_displayyEB7_>
+  100f9e:	48 8b b4 24 e8 01 00 	mov    0x1e8(%rsp),%rsi
+  100fa5:	00 
+  100fa6:	48 8d bc 24 38 02 00 	lea    0x238(%rsp),%rdi
+  100fad:	00 
+  100fae:	e8 5d de 02 00       	call   12ee10 <_RINvMNtNtCsbHtThoOXcTx_4core3fmt2rtNtB3_8Argument13new_lower_hexyECsisDJh56SBE3_6x86_64>
+  100fb3:	48 8b b4 24 f0 01 00 	mov    0x1f0(%rsp),%rsi
+  100fba:	00 
+  100fbb:	48 8d bc 24 48 02 00 	lea    0x248(%rsp),%rdi
+  100fc2:	00 
+  100fc3:	e8 58 76 04 00       	call   148620 <_RINvMNtNtCsbHtThoOXcTx_4core3fmt2rtNtB3_8Argument11new_displayyEB7_>
+  100fc8:	48 8b 84 24 28 02 00 	mov    0x228(%rsp),%rax
+  100fcf:	00 
+  100fd0:	48 89 84 24 f8 01 00 	mov    %rax,0x1f8(%rsp)
+  100fd7:	00 
+  100fd8:	48 8b 84 24 30 02 00 	mov    0x230(%rsp),%rax
+  100fdf:	00 
+  100fe0:	48 89 84 24 00 02 00 	mov    %rax,0x200(%rsp)
+  100fe7:	00 
+  100fe8:	48 8b 84 24 38 02 00 	mov    0x238(%rsp),%rax
+  100fef:	00 
+  100ff0:	48 89 84 24 08 02 00 	mov    %rax,0x208(%rsp)
+  100ff7:	00 
+  100ff8:	48 8b 84 24 40 02 00 	mov    0x240(%rsp),%rax
+  100fff:	00 
+  101000:	48 89 84 24 10 02 00 	mov    %rax,0x210(%rsp)
+  101007:	00 
+  101008:	48 8b 84 24 48 02 00 	mov    0x248(%rsp),%rax
+  10100f:	00 
+  101010:	48 89 84 24 18 02 00 	mov    %rax,0x218(%rsp)
+  101017:	00 
+  101018:	48 8b 84 24 50 02 00 	mov    0x250(%rsp),%rax
+  10101f:	00 
+  101020:	48 89 84 24 20 02 00 	mov    %rax,0x220(%rsp)
+  101027:	00 
+  101028:	48 8d 3d 52 eb 0a 00 	lea    0xaeb52(%rip),%rdi        # 1afb81 <gdt64.pointer+0x5ee1>
+  10102f:	48 8d b4 24 f8 01 00 	lea    0x1f8(%rsp),%rsi
+  101036:	00 
+  101037:	e8 a4 1a 00 00       	call   102ae0 <_RINvMs2_NtCsbHtThoOXcTx_4core3fmtNtB6_9Arguments3newKj35_Kj3_ECs7EDixs6J678_10ion_kernel>
+  10103c:	48 89 44 24 28       	mov    %rax,0x28(%rsp)
+  101041:	48 89 54 24 30       	mov    %rdx,0x30(%rsp)
+  101046:	48 8d 3d 63 8d 0b 00 	lea    0xb8d63(%rip),%rdi        # 1b9db0 <boot_info_data+0x160>
+  10104d:	e8 5e 9d 00 00       	call   10adb0 <_RNvMs4_NtNtCsbHtThoOXcTx_4core5panic8locationNtB5_8Location6callerCs7EDixs6J678_10ion_kernel>
+  101052:	48 8b 74 24 28       	mov    0x28(%rsp),%rsi
+  101057:	48 8b 54 24 30       	mov    0x30(%rsp),%rdx
+  10105c:	48 8b 08             	mov    (%rax),%rcx
+  10105f:	48 89 8c 24 58 02 00 	mov    %rcx,0x258(%rsp)
+  101066:	00 
+  101067:	48 8b 48 08          	mov    0x8(%rax),%rcx
+  10106b:	48 89 8c 24 60 02 00 	mov    %rcx,0x260(%rsp)
+  101072:	00 
+  101073:	48 8b 40 10          	mov    0x10(%rax),%rax
+  101077:	48 89 84 24 68 02 00 	mov    %rax,0x268(%rsp)
+  10107e:	00 
+  10107f:	bf 02 00 00 00       	mov    $0x2,%edi
+  101084:	48 8d 8c 24 58 02 00 	lea    0x258(%rsp),%rcx
+  10108b:	00 
+  10108c:	4c 8d 05 1d 8d 0b 00 	lea    0xb8d1d(%rip),%r8        # 1b9db0 <boot_info_data+0x160>
+  101093:	e8 f8 9a 00 00       	call   10ab90 <_RNvNtCs7EDixs6J678_10ion_kernel3log3log>
+  101098:	48 8b 94 24 d8 01 00 	mov    0x1d8(%rsp),%rdx
+  10109f:	00 
+  1010a0:	48 8d bc 24 70 02 00 	lea    0x270(%rsp),%rdi
+  1010a7:	00 
+  1010a8:	31 f6                	xor    %esi,%esi
+  1010aa:	e8 91 af 06 00       	call   16c040 <_RINvNtCs3Uzi0JjR8OE_5alloc3vec9from_elemhECs7EDixs6J678_10ion_kernel>
+  1010af:	48 8b 84 24 d0 01 00 	mov    0x1d0(%rsp),%rax
+  1010b6:	00 
+  1010b7:	48 89 44 24 38       	mov    %rax,0x38(%rsp)
+  1010bc:	48 8d bc 24 70 02 00 	lea    0x270(%rsp),%rdi
+  1010c3:	00 
+  1010c4:	e8 f7 a4 03 00       	call   13b5c0 <_RNvXs8_NtCs3Uzi0JjR8OE_5alloc3vecINtB5_3VechENtNtNtCsbHtThoOXcTx_4core3ops5deref8DerefMut9deref_mutB7_>
+  1010c9:	48 8b 7c 24 38       	mov    0x38(%rsp),%rdi
+  1010ce:	48 89 c6             	mov    %rax,%rsi
+  1010d1:	e8 3a f5 ff ff       	call   100610 <_RNvNtNtNtNtCs7EDixs6J678_10ion_kernel4arch6x86_647syscall8dispatch14copy_from_user>
+  1010d6:	89 84 24 88 02 00 00 	mov    %eax,0x288(%rsp)
+  1010dd:	b8 01 00 00 00       	mov    $0x1,%eax
+  1010e2:	31 c9                	xor    %ecx,%ecx
+  1010e4:	83 bc 24 88 02 00 00 	cmpl   $0xf,0x288(%rsp)
+  1010eb:	0f 
+  1010ec:	48 0f 44 c1          	cmove  %rcx,%rax
+  1010f0:	48 a9 01 00 00 00    	test   $0x1,%rax
+  1010f6:	0f 84 56 01 00 00    	je     101252 <syscall_dispatch+0x9a2>
+  1010fc:	8b 84 24 88 02 00 00 	mov    0x288(%rsp),%eax
+  101103:	89 84 24 8c 02 00 00 	mov    %eax,0x28c(%rsp)
+  10110a:	48 8d 84 24 8c 02 00 	lea    0x28c(%rsp),%rax
+  101111:	00 
+  101112:	48 89 84 24 78 03 00 	mov    %rax,0x378(%rsp)
+  101119:	00 
+  10111a:	48 8d bc 24 a0 02 00 	lea    0x2a0(%rsp),%rdi
+  101121:	00 
+  101122:	48 8d b4 24 8c 02 00 	lea    0x28c(%rsp),%rsi
+  101129:	00 
+  10112a:	e8 61 73 05 00       	call   158490 <_RINvMNtNtCsbHtThoOXcTx_4core3fmt2rtNtB3_8Argument9new_debugNtNtNtNtCs7EDixs6J678_10ion_kernel5c_lib4libc5error7OsErrorEB13_>
+  10112f:	48 8b 84 24 a0 02 00 	mov    0x2a0(%rsp),%rax
+  101136:	00 
+  101137:	48 89 84 24 90 02 00 	mov    %rax,0x290(%rsp)
+  10113e:	00 
+  10113f:	48 8b 84 24 a8 02 00 	mov    0x2a8(%rsp),%rax
+  101146:	00 
+  101147:	48 89 84 24 98 02 00 	mov    %rax,0x298(%rsp)
+  10114e:	00 
+  10114f:	48 8d 3d a4 8c 0a 00 	lea    0xa8ca4(%rip),%rdi        # 1a9dfa <gdt64.pointer+0x15a>
+  101156:	48 8d b4 24 90 02 00 	lea    0x290(%rsp),%rsi
+  10115d:	00 
+  10115e:	e8 bd b0 02 00       	call   12c220 <_RINvMs2_NtCsbHtThoOXcTx_4core3fmtNtB6_9Arguments3newKj1a_Kj1_ECs7m1ZmN6sVyh_3elf>
+  101163:	48 89 44 24 08       	mov    %rax,0x8(%rsp)
+  101168:	48 89 54 24 10       	mov    %rdx,0x10(%rsp)
+  10116d:	48 8d 3d 54 8c 0b 00 	lea    0xb8c54(%rip),%rdi        # 1b9dc8 <boot_info_data+0x178>
+  101174:	e8 37 9c 00 00       	call   10adb0 <_RNvMs4_NtNtCsbHtThoOXcTx_4core5panic8locationNtB5_8Location6callerCs7EDixs6J678_10ion_kernel>
+  101179:	48 8b 74 24 08       	mov    0x8(%rsp),%rsi
+  10117e:	48 8b 54 24 10       	mov    0x10(%rsp),%rdx
+  101183:	48 8b 08             	mov    (%rax),%rcx
+  101186:	48 89 8c 24 b0 02 00 	mov    %rcx,0x2b0(%rsp)
+  10118d:	00 
+  10118e:	48 8b 48 08          	mov    0x8(%rax),%rcx
+  101192:	48 89 8c 24 b8 02 00 	mov    %rcx,0x2b8(%rsp)
+  101199:	00 
+  10119a:	48 8b 40 10          	mov    0x10(%rax),%rax
+  10119e:	48 89 84 24 c0 02 00 	mov    %rax,0x2c0(%rsp)
+  1011a5:	00 
+  1011a6:	bf 02 00 00 00       	mov    $0x2,%edi
+  1011ab:	48 8d 8c 24 b0 02 00 	lea    0x2b0(%rsp),%rcx
+  1011b2:	00 
+  1011b3:	4c 8d 05 0e 8c 0b 00 	lea    0xb8c0e(%rip),%r8        # 1b9dc8 <boot_info_data+0x178>
+  1011ba:	e8 d1 99 00 00       	call   10ab90 <_RNvNtCs7EDixs6J678_10ion_kernel3log3log>
+  1011bf:	8b 84 24 8c 02 00 00 	mov    0x28c(%rsp),%eax
+  1011c6:	89 44 24 1c          	mov    %eax,0x1c(%rsp)
+  1011ca:	89 84 24 a0 03 00 00 	mov    %eax,0x3a0(%rsp)
+  1011d1:	89 84 24 bc 03 00 00 	mov    %eax,0x3bc(%rsp)
+  1011d8:	e8 33 e7 00 00       	call   10f910 <__errno_location>
+  1011dd:	48 89 44 24 20       	mov    %rax,0x20(%rsp)
+  1011e2:	48 83 e0 03          	and    $0x3,%rax
+  1011e6:	48 83 f8 00          	cmp    $0x0,%rax
+  1011ea:	75 14                	jne    101200 <syscall_dispatch+0x950>
+  1011ec:	48 8b 44 24 20       	mov    0x20(%rsp),%rax
+  1011f1:	48 83 f8 00          	cmp    $0x0,%rax
+  1011f5:	0f 94 c0             	sete   %al
+  1011f8:	34 ff                	xor    $0xff,%al
+  1011fa:	a8 01                	test   $0x1,%al
+  1011fc:	75 24                	jne    101222 <syscall_dispatch+0x972>
+  1011fe:	eb 16                	jmp    101216 <syscall_dispatch+0x966>
+  101200:	48 8b 74 24 20       	mov    0x20(%rsp),%rsi
+  101205:	bf 04 00 00 00       	mov    $0x4,%edi
+  10120a:	48 8d 15 8f 8a 0b 00 	lea    0xb8a8f(%rip),%rdx        # 1b9ca0 <boot_info_data+0x50>
+  101211:	e8 8d b2 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  101216:	48 8d 3d 83 8a 0b 00 	lea    0xb8a83(%rip),%rdi        # 1b9ca0 <boot_info_data+0x50>
+  10121d:	e8 5a b2 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  101222:	48 8b 44 24 20       	mov    0x20(%rsp),%rax
+  101227:	8b 4c 24 1c          	mov    0x1c(%rsp),%ecx
+  10122b:	89 08                	mov    %ecx,(%rax)
+  10122d:	48 8b 84 24 98 00 00 	mov    0x98(%rsp),%rax
+  101234:	00 
+  101235:	48 8b 00             	mov    (%rax),%rax
+  101238:	48 89 84 24 90 00 00 	mov    %rax,0x90(%rsp)
+  10123f:	00 
+  101240:	48 8d bc 24 70 02 00 	lea    0x270(%rsp),%rdi
+  101247:	00 
+  101248:	e8 c3 77 03 00       	call   138a10 <_RINvNtCsbHtThoOXcTx_4core3ptr13drop_in_placeINtNtCs3Uzi0JjR8OE_5alloc3vec3VechEEBL_>
+  10124d:	e9 37 f9 ff ff       	jmp    100b89 <syscall_dispatch+0x2d9>
+  101252:	48 8d bc 24 70 02 00 	lea    0x270(%rsp),%rdi
+  101259:	00 
+  10125a:	e8 21 a3 03 00       	call   13b580 <_RNvXs7_NtCs3Uzi0JjR8OE_5alloc3vecINtB5_3VechENtNtNtCsbHtThoOXcTx_4core3ops5deref5Deref5derefB7_>
+  10125f:	48 89 c6             	mov    %rax,%rsi
+  101262:	48 8d bc 24 c8 02 00 	lea    0x2c8(%rsp),%rdi
+  101269:	00 
+  10126a:	e8 51 1d 05 00       	call   152fc0 <_RNvNtNtCsbHtThoOXcTx_4core3str8converts9from_utf8>
+  10126f:	48 f7 84 24 c8 02 00 	testq  $0x1,0x2c8(%rsp)
+  101276:	00 01 00 00 00 
+  10127b:	74 69                	je     1012e6 <syscall_dispatch+0xa36>
+  10127d:	48 8d 84 24 70 02 00 	lea    0x270(%rsp),%rax
+  101284:	00 
+  101285:	48 89 84 24 70 03 00 	mov    %rax,0x370(%rsp)
+  10128c:	00 
+  10128d:	48 8d bc 24 20 03 00 	lea    0x320(%rsp),%rdi
+  101294:	00 
+  101295:	48 8d b4 24 70 02 00 	lea    0x270(%rsp),%rsi
+  10129c:	00 
+  10129d:	e8 fe 6d 05 00       	call   1580a0 <_RINvMNtNtCsbHtThoOXcTx_4core3fmt2rtNtB3_8Argument9new_debugINtNtCs3Uzi0JjR8OE_5alloc3vec3VechEECs7EDixs6J678_10ion_kernel>
+  1012a2:	48 8b 84 24 20 03 00 	mov    0x320(%rsp),%rax
+  1012a9:	00 
+  1012aa:	48 89 84 24 10 03 00 	mov    %rax,0x310(%rsp)
+  1012b1:	00 
+  1012b2:	48 8b 84 24 28 03 00 	mov    0x328(%rsp),%rax
+  1012b9:	00 
+  1012ba:	48 89 84 24 18 03 00 	mov    %rax,0x318(%rsp)
+  1012c1:	00 
+  1012c2:	48 8d 3d ed e8 0a 00 	lea    0xae8ed(%rip),%rdi        # 1afbb6 <gdt64.pointer+0x5f16>
+  1012c9:	48 8d b4 24 10 03 00 	lea    0x310(%rsp),%rsi
+  1012d0:	00 
+  1012d1:	e8 6a 17 00 00       	call   102a40 <_RINvMs2_NtCsbHtThoOXcTx_4core3fmtNtB6_9Arguments3newKj2a_Kj1_ECs7EDixs6J678_10ion_kernel>
+  1012d6:	48 89 c7             	mov    %rax,%rdi
+  1012d9:	48 89 d6             	mov    %rdx,%rsi
+  1012dc:	e8 0f 24 00 00       	call   1036f0 <_RNvNtCs7EDixs6J678_10ion_kernel6serial6__print>
+  1012e1:	e9 84 00 00 00       	jmp    10136a <syscall_dispatch+0xaba>
+  1012e6:	48 8b 8c 24 d0 02 00 	mov    0x2d0(%rsp),%rcx
+  1012ed:	00 
+  1012ee:	48 8b 84 24 d8 02 00 	mov    0x2d8(%rsp),%rax
+  1012f5:	00 
+  1012f6:	48 89 8c 24 e0 02 00 	mov    %rcx,0x2e0(%rsp)
+  1012fd:	00 
+  1012fe:	48 89 84 24 e8 02 00 	mov    %rax,0x2e8(%rsp)
+  101305:	00 
+  101306:	48 8d 84 24 e0 02 00 	lea    0x2e0(%rsp),%rax
+  10130d:	00 
+  10130e:	48 89 84 24 68 03 00 	mov    %rax,0x368(%rsp)
+  101315:	00 
+  101316:	48 8d bc 24 00 03 00 	lea    0x300(%rsp),%rdi
+  10131d:	00 
+  10131e:	48 8d b4 24 e0 02 00 	lea    0x2e0(%rsp),%rsi
+  101325:	00 
+  101326:	e8 c5 70 04 00       	call   1483f0 <_RINvMNtNtCsbHtThoOXcTx_4core3fmt2rtNtB3_8Argument11new_displayReEB7_>
+  10132b:	48 8b 84 24 00 03 00 	mov    0x300(%rsp),%rax
+  101332:	00 
+  101333:	48 89 84 24 f0 02 00 	mov    %rax,0x2f0(%rsp)
+  10133a:	00 
+  10133b:	48 8b 84 24 08 03 00 	mov    0x308(%rsp),%rax
+  101342:	00 
+  101343:	48 89 84 24 f8 02 00 	mov    %rax,0x2f8(%rsp)
+  10134a:	00 
+  10134b:	48 8d 3d 92 8a 0a 00 	lea    0xa8a92(%rip),%rdi        # 1a9de4 <gdt64.pointer+0x144>
+  101352:	48 8d b4 24 f0 02 00 	lea    0x2f0(%rsp),%rsi
+  101359:	00 
+  10135a:	e8 01 15 00 00       	call   102860 <_RINvMs2_NtCsbHtThoOXcTx_4core3fmtNtB6_9Arguments3newKj16_Kj1_ECs7EDixs6J678_10ion_kernel>
+  10135f:	48 89 c7             	mov    %rax,%rdi
+  101362:	48 89 d6             	mov    %rdx,%rsi
+  101365:	e8 86 23 00 00       	call   1036f0 <_RNvNtCs7EDixs6J678_10ion_kernel6serial6__print>
+  10136a:	48 c7 84 24 90 00 00 	movq   $0x0,0x90(%rsp)
+  101371:	00 00 00 00 00 
+  101376:	48 8d bc 24 70 02 00 	lea    0x270(%rsp),%rdi
+  10137d:	00 
+  10137e:	e8 8d 76 03 00       	call   138a10 <_RINvNtCsbHtThoOXcTx_4core3ptr13drop_in_placeINtNtCs3Uzi0JjR8OE_5alloc3vec3VechEEBL_>
+  101383:	e9 01 f8 ff ff       	jmp    100b89 <syscall_dispatch+0x2d9>
+  101388:	0f 1f 84 00 00 00 00 	nopl   0x0(%rax,%rax,1)
+  10138f:	00 
+
+0000000000101390 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features>:
+  101390:	48 81 ec 28 02 00 00 	sub    $0x228,%rsp
+  101397:	89 bc 24 f8 00 00 00 	mov    %edi,0xf8(%rsp)
+  10139e:	89 b4 24 fc 00 00 00 	mov    %esi,0xfc(%rsp)
+  1013a5:	48 8d bc 24 f8 00 00 	lea    0xf8(%rsp),%rdi
+  1013ac:	00 
+  1013ad:	31 c0                	xor    %eax,%eax
+  1013af:	89 c6                	mov    %eax,%esi
+  1013b1:	e8 5a 4d 07 00       	call   176110 <_RNvMs2_NtNtCs7EDixs6J678_10ion_kernel5c_lib9bit_flagsNtB5_8BitFlags9read_flagB9_>
+  1013b6:	a8 01                	test   $0x1,%al
+  1013b8:	0f 85 8f 00 00 00    	jne    10144d <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0xbd>
+  1013be:	c7 84 24 24 02 00 00 	movl   $0x7,0x224(%rsp)
+  1013c5:	07 00 00 00 
+  1013c9:	e8 42 e5 00 00       	call   10f910 <__errno_location>
+  1013ce:	48 89 84 24 f0 00 00 	mov    %rax,0xf0(%rsp)
+  1013d5:	00 
+  1013d6:	48 83 e0 03          	and    $0x3,%rax
+  1013da:	48 83 f8 00          	cmp    $0x0,%rax
+  1013de:	75 17                	jne    1013f7 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x67>
+  1013e0:	48 8b 84 24 f0 00 00 	mov    0xf0(%rsp),%rax
+  1013e7:	00 
+  1013e8:	48 83 f8 00          	cmp    $0x0,%rax
+  1013ec:	0f 94 c0             	sete   %al
+  1013ef:	34 ff                	xor    $0xff,%al
+  1013f1:	a8 01                	test   $0x1,%al
+  1013f3:	75 27                	jne    10141c <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x8c>
+  1013f5:	eb 19                	jmp    101410 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x80>
+  1013f7:	48 8b b4 24 f0 00 00 	mov    0xf0(%rsp),%rsi
+  1013fe:	00 
+  1013ff:	bf 04 00 00 00       	mov    $0x4,%edi
+  101404:	48 8d 15 b5 8b 0b 00 	lea    0xb8bb5(%rip),%rdx        # 1b9fc0 <boot_info_data+0x370>
+  10140b:	e8 93 b0 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  101410:	48 8d 3d a9 8b 0b 00 	lea    0xb8ba9(%rip),%rdi        # 1b9fc0 <boot_info_data+0x370>
+  101417:	e8 60 b0 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  10141c:	48 8b 84 24 f0 00 00 	mov    0xf0(%rsp),%rax
+  101423:	00 
+  101424:	c7 00 07 00 00 00    	movl   $0x7,(%rax)
+  10142a:	48 8d 3d af e7 0a 00 	lea    0xae7af(%rip),%rdi        # 1afbe0 <gdt64.pointer+0x5f40>
+  101431:	be 7d 00 00 00       	mov    $0x7d,%esi
+  101436:	e8 05 24 01 00       	call   113840 <_RNvMs2_NtCsbHtThoOXcTx_4core3fmtNtB5_9Arguments17from_str_nonconstCs7EDixs6J678_10ion_kernel>
+  10143b:	48 89 c7             	mov    %rax,%rdi
+  10143e:	48 89 d6             	mov    %rdx,%rsi
+  101441:	48 8d 15 98 89 0b 00 	lea    0xb8998(%rip),%rdx        # 1b9de0 <boot_info_data+0x190>
+  101448:	e8 23 b1 03 00       	call   13c570 <_RNvNtCsbHtThoOXcTx_4core9panicking9panic_fmt>
+  10144d:	48 8d bc 24 f8 00 00 	lea    0xf8(%rsp),%rdi
+  101454:	00 
+  101455:	be 05 00 00 00       	mov    $0x5,%esi
+  10145a:	e8 b1 4c 07 00       	call   176110 <_RNvMs2_NtNtCs7EDixs6J678_10ion_kernel5c_lib9bit_flagsNtB5_8BitFlags9read_flagB9_>
+  10145f:	a8 01                	test   $0x1,%al
+  101461:	0f 85 8f 00 00 00    	jne    1014f6 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x166>
+  101467:	c7 84 24 20 02 00 00 	movl   $0x7,0x220(%rsp)
+  10146e:	07 00 00 00 
+  101472:	e8 99 e4 00 00       	call   10f910 <__errno_location>
+  101477:	48 89 84 24 e8 00 00 	mov    %rax,0xe8(%rsp)
+  10147e:	00 
+  10147f:	48 83 e0 03          	and    $0x3,%rax
+  101483:	48 83 f8 00          	cmp    $0x0,%rax
+  101487:	75 17                	jne    1014a0 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x110>
+  101489:	48 8b 84 24 e8 00 00 	mov    0xe8(%rsp),%rax
+  101490:	00 
+  101491:	48 83 f8 00          	cmp    $0x0,%rax
+  101495:	0f 94 c0             	sete   %al
+  101498:	34 ff                	xor    $0xff,%al
+  10149a:	a8 01                	test   $0x1,%al
+  10149c:	75 27                	jne    1014c5 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x135>
+  10149e:	eb 19                	jmp    1014b9 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x129>
+  1014a0:	48 8b b4 24 e8 00 00 	mov    0xe8(%rsp),%rsi
+  1014a7:	00 
+  1014a8:	bf 04 00 00 00       	mov    $0x4,%edi
+  1014ad:	48 8d 15 0c 8b 0b 00 	lea    0xb8b0c(%rip),%rdx        # 1b9fc0 <boot_info_data+0x370>
+  1014b4:	e8 ea af 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  1014b9:	48 8d 3d 00 8b 0b 00 	lea    0xb8b00(%rip),%rdi        # 1b9fc0 <boot_info_data+0x370>
+  1014c0:	e8 b7 af 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  1014c5:	48 8b 84 24 e8 00 00 	mov    0xe8(%rsp),%rax
+  1014cc:	00 
+  1014cd:	c7 00 07 00 00 00    	movl   $0x7,(%rax)
+  1014d3:	48 8d 3d 83 e7 0a 00 	lea    0xae783(%rip),%rdi        # 1afc5d <gdt64.pointer+0x5fbd>
+  1014da:	be 7d 00 00 00       	mov    $0x7d,%esi
+  1014df:	e8 5c 23 01 00       	call   113840 <_RNvMs2_NtCsbHtThoOXcTx_4core3fmtNtB5_9Arguments17from_str_nonconstCs7EDixs6J678_10ion_kernel>
+  1014e4:	48 89 c7             	mov    %rax,%rdi
+  1014e7:	48 89 d6             	mov    %rdx,%rsi
+  1014ea:	48 8d 15 07 89 0b 00 	lea    0xb8907(%rip),%rdx        # 1b9df8 <boot_info_data+0x1a8>
+  1014f1:	e8 7a b0 03 00       	call   13c570 <_RNvNtCsbHtThoOXcTx_4core9panicking9panic_fmt>
+  1014f6:	48 8d bc 24 f8 00 00 	lea    0xf8(%rsp),%rdi
+  1014fd:	00 
+  1014fe:	be 06 00 00 00       	mov    $0x6,%esi
+  101503:	e8 08 4c 07 00       	call   176110 <_RNvMs2_NtNtCs7EDixs6J678_10ion_kernel5c_lib9bit_flagsNtB5_8BitFlags9read_flagB9_>
+  101508:	a8 01                	test   $0x1,%al
+  10150a:	0f 85 8f 00 00 00    	jne    10159f <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x20f>
+  101510:	c7 84 24 1c 02 00 00 	movl   $0x7,0x21c(%rsp)
+  101517:	07 00 00 00 
+  10151b:	e8 f0 e3 00 00       	call   10f910 <__errno_location>
+  101520:	48 89 84 24 e0 00 00 	mov    %rax,0xe0(%rsp)
+  101527:	00 
+  101528:	48 83 e0 03          	and    $0x3,%rax
+  10152c:	48 83 f8 00          	cmp    $0x0,%rax
+  101530:	75 17                	jne    101549 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x1b9>
+  101532:	48 8b 84 24 e0 00 00 	mov    0xe0(%rsp),%rax
+  101539:	00 
+  10153a:	48 83 f8 00          	cmp    $0x0,%rax
+  10153e:	0f 94 c0             	sete   %al
+  101541:	34 ff                	xor    $0xff,%al
+  101543:	a8 01                	test   $0x1,%al
+  101545:	75 27                	jne    10156e <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x1de>
+  101547:	eb 19                	jmp    101562 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x1d2>
+  101549:	48 8b b4 24 e0 00 00 	mov    0xe0(%rsp),%rsi
+  101550:	00 
+  101551:	bf 04 00 00 00       	mov    $0x4,%edi
+  101556:	48 8d 15 63 8a 0b 00 	lea    0xb8a63(%rip),%rdx        # 1b9fc0 <boot_info_data+0x370>
+  10155d:	e8 41 af 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  101562:	48 8d 3d 57 8a 0b 00 	lea    0xb8a57(%rip),%rdi        # 1b9fc0 <boot_info_data+0x370>
+  101569:	e8 0e af 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  10156e:	48 8b 84 24 e0 00 00 	mov    0xe0(%rsp),%rax
+  101575:	00 
+  101576:	c7 00 07 00 00 00    	movl   $0x7,(%rax)
+  10157c:	48 8d 3d 57 e7 0a 00 	lea    0xae757(%rip),%rdi        # 1afcda <gdt64.pointer+0x603a>
+  101583:	be 7d 00 00 00       	mov    $0x7d,%esi
+  101588:	e8 b3 22 01 00       	call   113840 <_RNvMs2_NtCsbHtThoOXcTx_4core3fmtNtB5_9Arguments17from_str_nonconstCs7EDixs6J678_10ion_kernel>
+  10158d:	48 89 c7             	mov    %rax,%rdi
+  101590:	48 89 d6             	mov    %rdx,%rsi
+  101593:	48 8d 15 76 88 0b 00 	lea    0xb8876(%rip),%rdx        # 1b9e10 <boot_info_data+0x1c0>
+  10159a:	e8 d1 af 03 00       	call   13c570 <_RNvNtCsbHtThoOXcTx_4core9panicking9panic_fmt>
+  10159f:	48 8d bc 24 f8 00 00 	lea    0xf8(%rsp),%rdi
+  1015a6:	00 
+  1015a7:	be 08 00 00 00       	mov    $0x8,%esi
+  1015ac:	e8 5f 4b 07 00       	call   176110 <_RNvMs2_NtNtCs7EDixs6J678_10ion_kernel5c_lib9bit_flagsNtB5_8BitFlags9read_flagB9_>
+  1015b1:	a8 01                	test   $0x1,%al
+  1015b3:	0f 85 8f 00 00 00    	jne    101648 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x2b8>
+  1015b9:	c7 84 24 18 02 00 00 	movl   $0x7,0x218(%rsp)
+  1015c0:	07 00 00 00 
+  1015c4:	e8 47 e3 00 00       	call   10f910 <__errno_location>
+  1015c9:	48 89 84 24 d8 00 00 	mov    %rax,0xd8(%rsp)
+  1015d0:	00 
+  1015d1:	48 83 e0 03          	and    $0x3,%rax
+  1015d5:	48 83 f8 00          	cmp    $0x0,%rax
+  1015d9:	75 17                	jne    1015f2 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x262>
+  1015db:	48 8b 84 24 d8 00 00 	mov    0xd8(%rsp),%rax
+  1015e2:	00 
+  1015e3:	48 83 f8 00          	cmp    $0x0,%rax
+  1015e7:	0f 94 c0             	sete   %al
+  1015ea:	34 ff                	xor    $0xff,%al
+  1015ec:	a8 01                	test   $0x1,%al
+  1015ee:	75 27                	jne    101617 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x287>
+  1015f0:	eb 19                	jmp    10160b <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x27b>
+  1015f2:	48 8b b4 24 d8 00 00 	mov    0xd8(%rsp),%rsi
+  1015f9:	00 
+  1015fa:	bf 04 00 00 00       	mov    $0x4,%edi
+  1015ff:	48 8d 15 ba 89 0b 00 	lea    0xb89ba(%rip),%rdx        # 1b9fc0 <boot_info_data+0x370>
+  101606:	e8 98 ae 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  10160b:	48 8d 3d ae 89 0b 00 	lea    0xb89ae(%rip),%rdi        # 1b9fc0 <boot_info_data+0x370>
+  101612:	e8 65 ae 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  101617:	48 8b 84 24 d8 00 00 	mov    0xd8(%rsp),%rax
+  10161e:	00 
+  10161f:	c7 00 07 00 00 00    	movl   $0x7,(%rax)
+  101625:	48 8d 3d 2b e7 0a 00 	lea    0xae72b(%rip),%rdi        # 1afd57 <gdt64.pointer+0x60b7>
+  10162c:	be 7d 00 00 00       	mov    $0x7d,%esi
+  101631:	e8 0a 22 01 00       	call   113840 <_RNvMs2_NtCsbHtThoOXcTx_4core3fmtNtB5_9Arguments17from_str_nonconstCs7EDixs6J678_10ion_kernel>
+  101636:	48 89 c7             	mov    %rax,%rdi
+  101639:	48 89 d6             	mov    %rdx,%rsi
+  10163c:	48 8d 15 e5 87 0b 00 	lea    0xb87e5(%rip),%rdx        # 1b9e28 <boot_info_data+0x1d8>
+  101643:	e8 28 af 03 00       	call   13c570 <_RNvNtCsbHtThoOXcTx_4core9panicking9panic_fmt>
+  101648:	48 8d bc 24 f8 00 00 	lea    0xf8(%rsp),%rdi
+  10164f:	00 
+  101650:	be 09 00 00 00       	mov    $0x9,%esi
+  101655:	e8 b6 4a 07 00       	call   176110 <_RNvMs2_NtNtCs7EDixs6J678_10ion_kernel5c_lib9bit_flagsNtB5_8BitFlags9read_flagB9_>
+  10165a:	a8 01                	test   $0x1,%al
+  10165c:	0f 85 8f 00 00 00    	jne    1016f1 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x361>
+  101662:	c7 84 24 14 02 00 00 	movl   $0x7,0x214(%rsp)
+  101669:	07 00 00 00 
+  10166d:	e8 9e e2 00 00       	call   10f910 <__errno_location>
+  101672:	48 89 84 24 d0 00 00 	mov    %rax,0xd0(%rsp)
+  101679:	00 
+  10167a:	48 83 e0 03          	and    $0x3,%rax
+  10167e:	48 83 f8 00          	cmp    $0x0,%rax
+  101682:	75 17                	jne    10169b <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x30b>
+  101684:	48 8b 84 24 d0 00 00 	mov    0xd0(%rsp),%rax
+  10168b:	00 
+  10168c:	48 83 f8 00          	cmp    $0x0,%rax
+  101690:	0f 94 c0             	sete   %al
+  101693:	34 ff                	xor    $0xff,%al
+  101695:	a8 01                	test   $0x1,%al
+  101697:	75 27                	jne    1016c0 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x330>
+  101699:	eb 19                	jmp    1016b4 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x324>
+  10169b:	48 8b b4 24 d0 00 00 	mov    0xd0(%rsp),%rsi
+  1016a2:	00 
+  1016a3:	bf 04 00 00 00       	mov    $0x4,%edi
+  1016a8:	48 8d 15 11 89 0b 00 	lea    0xb8911(%rip),%rdx        # 1b9fc0 <boot_info_data+0x370>
+  1016af:	e8 ef ad 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  1016b4:	48 8d 3d 05 89 0b 00 	lea    0xb8905(%rip),%rdi        # 1b9fc0 <boot_info_data+0x370>
+  1016bb:	e8 bc ad 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  1016c0:	48 8b 84 24 d0 00 00 	mov    0xd0(%rsp),%rax
+  1016c7:	00 
+  1016c8:	c7 00 07 00 00 00    	movl   $0x7,(%rax)
+  1016ce:	48 8d 3d ff e6 0a 00 	lea    0xae6ff(%rip),%rdi        # 1afdd4 <gdt64.pointer+0x6134>
+  1016d5:	be 7e 00 00 00       	mov    $0x7e,%esi
+  1016da:	e8 61 21 01 00       	call   113840 <_RNvMs2_NtCsbHtThoOXcTx_4core3fmtNtB5_9Arguments17from_str_nonconstCs7EDixs6J678_10ion_kernel>
+  1016df:	48 89 c7             	mov    %rax,%rdi
+  1016e2:	48 89 d6             	mov    %rdx,%rsi
+  1016e5:	48 8d 15 54 87 0b 00 	lea    0xb8754(%rip),%rdx        # 1b9e40 <boot_info_data+0x1f0>
+  1016ec:	e8 7f ae 03 00       	call   13c570 <_RNvNtCsbHtThoOXcTx_4core9panicking9panic_fmt>
+  1016f1:	48 8d bc 24 f8 00 00 	lea    0xf8(%rsp),%rdi
+  1016f8:	00 
+  1016f9:	be 0f 00 00 00       	mov    $0xf,%esi
+  1016fe:	e8 0d 4a 07 00       	call   176110 <_RNvMs2_NtNtCs7EDixs6J678_10ion_kernel5c_lib9bit_flagsNtB5_8BitFlags9read_flagB9_>
+  101703:	a8 01                	test   $0x1,%al
+  101705:	0f 85 8f 00 00 00    	jne    10179a <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x40a>
+  10170b:	c7 84 24 10 02 00 00 	movl   $0x7,0x210(%rsp)
+  101712:	07 00 00 00 
+  101716:	e8 f5 e1 00 00       	call   10f910 <__errno_location>
+  10171b:	48 89 84 24 c8 00 00 	mov    %rax,0xc8(%rsp)
+  101722:	00 
+  101723:	48 83 e0 03          	and    $0x3,%rax
+  101727:	48 83 f8 00          	cmp    $0x0,%rax
+  10172b:	75 17                	jne    101744 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x3b4>
+  10172d:	48 8b 84 24 c8 00 00 	mov    0xc8(%rsp),%rax
+  101734:	00 
+  101735:	48 83 f8 00          	cmp    $0x0,%rax
+  101739:	0f 94 c0             	sete   %al
+  10173c:	34 ff                	xor    $0xff,%al
+  10173e:	a8 01                	test   $0x1,%al
+  101740:	75 27                	jne    101769 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x3d9>
+  101742:	eb 19                	jmp    10175d <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x3cd>
+  101744:	48 8b b4 24 c8 00 00 	mov    0xc8(%rsp),%rsi
+  10174b:	00 
+  10174c:	bf 04 00 00 00       	mov    $0x4,%edi
+  101751:	48 8d 15 68 88 0b 00 	lea    0xb8868(%rip),%rdx        # 1b9fc0 <boot_info_data+0x370>
+  101758:	e8 46 ad 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  10175d:	48 8d 3d 5c 88 0b 00 	lea    0xb885c(%rip),%rdi        # 1b9fc0 <boot_info_data+0x370>
+  101764:	e8 13 ad 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  101769:	48 8b 84 24 c8 00 00 	mov    0xc8(%rsp),%rax
+  101770:	00 
+  101771:	c7 00 07 00 00 00    	movl   $0x7,(%rax)
+  101777:	48 8d 3d d4 e6 0a 00 	lea    0xae6d4(%rip),%rdi        # 1afe52 <gdt64.pointer+0x61b2>
+  10177e:	be 7e 00 00 00       	mov    $0x7e,%esi
+  101783:	e8 b8 20 01 00       	call   113840 <_RNvMs2_NtCsbHtThoOXcTx_4core3fmtNtB5_9Arguments17from_str_nonconstCs7EDixs6J678_10ion_kernel>
+  101788:	48 89 c7             	mov    %rax,%rdi
+  10178b:	48 89 d6             	mov    %rdx,%rsi
+  10178e:	48 8d 15 c3 86 0b 00 	lea    0xb86c3(%rip),%rdx        # 1b9e58 <boot_info_data+0x208>
+  101795:	e8 d6 ad 03 00       	call   13c570 <_RNvNtCsbHtThoOXcTx_4core9panicking9panic_fmt>
+  10179a:	48 8d bc 24 f8 00 00 	lea    0xf8(%rsp),%rdi
+  1017a1:	00 
+  1017a2:	be 18 00 00 00       	mov    $0x18,%esi
+  1017a7:	e8 64 49 07 00       	call   176110 <_RNvMs2_NtNtCs7EDixs6J678_10ion_kernel5c_lib9bit_flagsNtB5_8BitFlags9read_flagB9_>
+  1017ac:	a8 01                	test   $0x1,%al
+  1017ae:	0f 85 8f 00 00 00    	jne    101843 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x4b3>
+  1017b4:	c7 84 24 0c 02 00 00 	movl   $0x7,0x20c(%rsp)
+  1017bb:	07 00 00 00 
+  1017bf:	e8 4c e1 00 00       	call   10f910 <__errno_location>
+  1017c4:	48 89 84 24 c0 00 00 	mov    %rax,0xc0(%rsp)
+  1017cb:	00 
+  1017cc:	48 83 e0 03          	and    $0x3,%rax
+  1017d0:	48 83 f8 00          	cmp    $0x0,%rax
+  1017d4:	75 17                	jne    1017ed <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x45d>
+  1017d6:	48 8b 84 24 c0 00 00 	mov    0xc0(%rsp),%rax
+  1017dd:	00 
+  1017de:	48 83 f8 00          	cmp    $0x0,%rax
+  1017e2:	0f 94 c0             	sete   %al
+  1017e5:	34 ff                	xor    $0xff,%al
+  1017e7:	a8 01                	test   $0x1,%al
+  1017e9:	75 27                	jne    101812 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x482>
+  1017eb:	eb 19                	jmp    101806 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x476>
+  1017ed:	48 8b b4 24 c0 00 00 	mov    0xc0(%rsp),%rsi
+  1017f4:	00 
+  1017f5:	bf 04 00 00 00       	mov    $0x4,%edi
+  1017fa:	48 8d 15 bf 87 0b 00 	lea    0xb87bf(%rip),%rdx        # 1b9fc0 <boot_info_data+0x370>
+  101801:	e8 9d ac 03 00       	call   13c4a3 <_RNvNtCsbHtThoOXcTx_4core9panicking36panic_misaligned_pointer_dereference>
+  101806:	48 8d 3d b3 87 0b 00 	lea    0xb87b3(%rip),%rdi        # 1b9fc0 <boot_info_data+0x370>
+  10180d:	e8 6a ac 03 00       	call   13c47c <_RNvNtCsbHtThoOXcTx_4core9panicking30panic_null_pointer_dereference>
+  101812:	48 8b 84 24 c0 00 00 	mov    0xc0(%rsp),%rax
+  101819:	00 
+  10181a:	c7 00 07 00 00 00    	movl   $0x7,(%rax)
+  101820:	48 8d 3d a9 e6 0a 00 	lea    0xae6a9(%rip),%rdi        # 1afed0 <gdt64.pointer+0x6230>
+  101827:	be 7e 00 00 00       	mov    $0x7e,%esi
+  10182c:	e8 0f 20 01 00       	call   113840 <_RNvMs2_NtCsbHtThoOXcTx_4core3fmtNtB5_9Arguments17from_str_nonconstCs7EDixs6J678_10ion_kernel>
+  101831:	48 89 c7             	mov    %rax,%rdi
+  101834:	48 89 d6             	mov    %rdx,%rsi
+  101837:	48 8d 15 32 86 0b 00 	lea    0xb8632(%rip),%rdx        # 1b9e70 <boot_info_data+0x220>
+  10183e:	e8 2d ad 03 00       	call   13c570 <_RNvNtCsbHtThoOXcTx_4core9panicking9panic_fmt>
+  101843:	48 8d bc 24 f8 00 00 	lea    0xf8(%rsp),%rdi
+  10184a:	00 
+  10184b:	be 03 00 00 00       	mov    $0x3,%esi
+  101850:	e8 bb 48 07 00       	call   176110 <_RNvMs2_NtNtCs7EDixs6J678_10ion_kernel5c_lib9bit_flagsNtB5_8BitFlags9read_flagB9_>
+  101855:	a8 01                	test   $0x1,%al
+  101857:	75 79                	jne    1018d2 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x542>
+  101859:	48 8d 3d ee e6 0a 00 	lea    0xae6ee(%rip),%rdi        # 1aff4e <gdt64.pointer+0x62ae>
+  101860:	be 3b 00 00 00       	mov    $0x3b,%esi
+  101865:	e8 d6 1f 01 00       	call   113840 <_RNvMs2_NtCsbHtThoOXcTx_4core3fmtNtB5_9Arguments17from_str_nonconstCs7EDixs6J678_10ion_kernel>
+  10186a:	48 89 84 24 b0 00 00 	mov    %rax,0xb0(%rsp)
+  101871:	00 
+  101872:	48 89 94 24 b8 00 00 	mov    %rdx,0xb8(%rsp)
+  101879:	00 
+  10187a:	48 8d 3d 07 86 0b 00 	lea    0xb8607(%rip),%rdi        # 1b9e88 <boot_info_data+0x238>
+  101881:	e8 2a 95 00 00       	call   10adb0 <_RNvMs4_NtNtCsbHtThoOXcTx_4core5panic8locationNtB5_8Location6callerCs7EDixs6J678_10ion_kernel>
+  101886:	48 8b b4 24 b0 00 00 	mov    0xb0(%rsp),%rsi
+  10188d:	00 
+  10188e:	48 8b 94 24 b8 00 00 	mov    0xb8(%rsp),%rdx
+  101895:	00 
+  101896:	48 8b 08             	mov    (%rax),%rcx
+  101899:	48 89 8c 24 00 01 00 	mov    %rcx,0x100(%rsp)
+  1018a0:	00 
+  1018a1:	48 8b 48 08          	mov    0x8(%rax),%rcx
+  1018a5:	48 89 8c 24 08 01 00 	mov    %rcx,0x108(%rsp)
+  1018ac:	00 
+  1018ad:	48 8b 40 10          	mov    0x10(%rax),%rax
+  1018b1:	48 89 84 24 10 01 00 	mov    %rax,0x110(%rsp)
+  1018b8:	00 
+  1018b9:	bf 03 00 00 00       	mov    $0x3,%edi
+  1018be:	48 8d 8c 24 00 01 00 	lea    0x100(%rsp),%rcx
+  1018c5:	00 
+  1018c6:	4c 8d 05 bb 85 0b 00 	lea    0xb85bb(%rip),%r8        # 1b9e88 <boot_info_data+0x238>
+  1018cd:	e8 be 92 00 00       	call   10ab90 <_RNvNtCs7EDixs6J678_10ion_kernel3log3log>
+  1018d2:	48 8d bc 24 f8 00 00 	lea    0xf8(%rsp),%rdi
+  1018d9:	00 
+  1018da:	be 04 00 00 00       	mov    $0x4,%esi
+  1018df:	e8 2c 48 07 00       	call   176110 <_RNvMs2_NtNtCs7EDixs6J678_10ion_kernel5c_lib9bit_flagsNtB5_8BitFlags9read_flagB9_>
+  1018e4:	a8 01                	test   $0x1,%al
+  1018e6:	75 79                	jne    101961 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x5d1>
+  1018e8:	48 8d 3d 9a e6 0a 00 	lea    0xae69a(%rip),%rdi        # 1aff89 <gdt64.pointer+0x62e9>
+  1018ef:	be 3b 00 00 00       	mov    $0x3b,%esi
+  1018f4:	e8 47 1f 01 00       	call   113840 <_RNvMs2_NtCsbHtThoOXcTx_4core3fmtNtB5_9Arguments17from_str_nonconstCs7EDixs6J678_10ion_kernel>
+  1018f9:	48 89 84 24 a0 00 00 	mov    %rax,0xa0(%rsp)
+  101900:	00 
+  101901:	48 89 94 24 a8 00 00 	mov    %rdx,0xa8(%rsp)
+  101908:	00 
+  101909:	48 8d 3d 90 85 0b 00 	lea    0xb8590(%rip),%rdi        # 1b9ea0 <boot_info_data+0x250>
+  101910:	e8 9b 94 00 00       	call   10adb0 <_RNvMs4_NtNtCsbHtThoOXcTx_4core5panic8locationNtB5_8Location6callerCs7EDixs6J678_10ion_kernel>
+  101915:	48 8b b4 24 a0 00 00 	mov    0xa0(%rsp),%rsi
+  10191c:	00 
+  10191d:	48 8b 94 24 a8 00 00 	mov    0xa8(%rsp),%rdx
+  101924:	00 
+  101925:	48 8b 08             	mov    (%rax),%rcx
+  101928:	48 89 8c 24 18 01 00 	mov    %rcx,0x118(%rsp)
+  10192f:	00 
+  101930:	48 8b 48 08          	mov    0x8(%rax),%rcx
+  101934:	48 89 8c 24 20 01 00 	mov    %rcx,0x120(%rsp)
+  10193b:	00 
+  10193c:	48 8b 40 10          	mov    0x10(%rax),%rax
+  101940:	48 89 84 24 28 01 00 	mov    %rax,0x128(%rsp)
+  101947:	00 
+  101948:	bf 03 00 00 00       	mov    $0x3,%edi
+  10194d:	48 8d 8c 24 18 01 00 	lea    0x118(%rsp),%rcx
+  101954:	00 
+  101955:	4c 8d 05 44 85 0b 00 	lea    0xb8544(%rip),%r8        # 1b9ea0 <boot_info_data+0x250>
+  10195c:	e8 2f 92 00 00       	call   10ab90 <_RNvNtCs7EDixs6J678_10ion_kernel3log3log>
+  101961:	48 8d bc 24 f8 00 00 	lea    0xf8(%rsp),%rdi
+  101968:	00 
+  101969:	be 19 00 00 00       	mov    $0x19,%esi
+  10196e:	e8 9d 47 07 00       	call   176110 <_RNvMs2_NtNtCs7EDixs6J678_10ion_kernel5c_lib9bit_flagsNtB5_8BitFlags9read_flagB9_>
+  101973:	a8 01                	test   $0x1,%al
+  101975:	75 7b                	jne    1019f2 <_RNvCs7EDixs6J678_10ion_kernel21assert_cpuid_features+0x662>
+  101977:	48 8d 3d 46 e6 0a 00 	lea    0xae646(%rip),%rdi        # 1affc4 <gdt64.pointer+0x6324>
+  10197e:	be 43 00 00 00       	mov    $0x43,%esi
+  101983:	e8 b8 1e 01 00       	call   113840 <_RNvMs2_NtCsbHtThoOXcTx_4core3fmtNtB5_9Arguments17from_str_nonconstCs7EDixs6J678_10ion_kernel>
+  101988:	48 89 84 24 90 00 00 	mov    %rax,0x90(%rsp)
+  10198f:	00 
+  101990:	48 89 94 24 98 00 00 	mov    %rdx,0x98(%rsp)
+  101997:	00 
+  101998:	48 8d 3d 19 85 0b 00 	lea    0xb8519(%rip),%rdi        # 1b9eb8 <boot_info_data+0x268>
+  10199f:	e8 0c 94 00 00       	call   10adb0 <_RNvMs4_NtNtCsbHtThoOXcTx_4core5panic8locationNtB5_8Location6callerCs7EDixs6J678_10ion_kernel>

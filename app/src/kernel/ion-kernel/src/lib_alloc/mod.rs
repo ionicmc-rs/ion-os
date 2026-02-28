@@ -8,7 +8,7 @@ use core::{alloc::GlobalAlloc, fmt, ptr::{NonNull, addr_of_mut}};
 use alloc::alloc::{AllocError, Allocator};
 use linked_list_allocator::LockedHeap;
 
-use crate::{address_space::{kernel_address_space, map_into_space}, arch::{self, PhysAddr, VirtAddr, defs::PAGE_SIZE, frame_allocator::alloc_2mib_frame, mmu::{PageTableFlags, map_2mib}}, c_lib::libc, lib_alloc::user::USER_DATA_BASE, thread};
+use crate::{address_space::{kernel_address_space}, arch::{self, PhysAddr, VirtAddr, defs::PAGE_SIZE, frame_allocator::alloc_2mib_frame, mmu::{PageTableFlags, map_2mib}}, c_lib::libc, lib_alloc::user::USER_DATA_BASE, thread};
 
 unsafe extern "C" {
     safe static mut __kernel_end: u8;

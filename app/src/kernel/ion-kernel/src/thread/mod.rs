@@ -10,9 +10,9 @@ use core::{fmt::Debug, sync::atomic::{AtomicU64, Ordering}};
 #[cfg(debug_assertions)]
 use crate::scheduler::idle_entry;
 use crate::{
-    address_space::AddressSpace, arch::ctx::Context, lib_alloc::THREAD_STACK_ALLOC, log, scheduler::{self, SCHEDULER, WakeEvent}, serial_println, thread::{
+    address_space::{AddressSpace, kernel_address_space}, arch::ctx::Context, lib_alloc::THREAD_STACK_ALLOC, log, process::{ProcessID, elf::{ElfLoadError, load_elf}}, scheduler::{self, SCHEDULER, WakeEvent}, serial_println, thread::{
         stack::ThreadStack,
-        tls::{TlsAllocation, alloc_thread_self},
+        tls::{ThreadSelf, TlsAllocation, alloc_thread_self},
     }
 };
 use crate::arch;
@@ -23,6 +23,7 @@ pub mod stack;
 pub mod sync;
 
 use alloc::{alloc::{Allocator, Global}, sync::Arc};
+use elf::endian::AnyEndian;
 pub use join::{JoinError, JoinErrorKind, JoinHandle, spawn, spawn_at};
 
 #[allow(unused)]
@@ -43,9 +44,9 @@ pub struct Thread {
     tls: usize,
 
     /// owned memory to ensure [`Drop`] runs on the allocation
-    _stack: ThreadStack<Arc<dyn Allocator>>, // this is a little fishy....
+    _stack: Option<ThreadStack<Arc<dyn Allocator>>>, // this is a little fishy....
     // guards against forgetting to drop the allocation.
-    _tls_guard: TlsAllocation, // No metadata storage here, we do that with thread local storage.
+    _tls_guard: Option<TlsAllocation>, // No metadata storage here, we do that with thread local storage.
 }
 
 impl Debug for Thread {
@@ -56,7 +57,7 @@ impl Debug for Thread {
             .field("state", &self.state)
             .field("tls", &self.tls)
             .field_with("stack", |f| {
-                f.pad(&alloc::format!("{:?} (size: {})", self._stack.ptr(), self._stack.size()))
+                f.pad(&alloc::format!("{:?} (size: {:?})", self._stack.as_ref().map(|s| s.ptr()), self._stack.as_ref().map(|s| s.size())))
             })
             .finish()
     }
@@ -95,15 +96,10 @@ impl Debug for State {
 }
 
 impl Thread {
-    pub fn new(entry: extern "C" fn(usize) -> !, arg: usize, stack: usize, addr_space: AddressSpace) -> Self {
+    pub fn new(entry: extern "C" fn(usize) -> !, arg: usize, stack: usize) -> Self {
         // use critical moment to prevent alloc from rescheduling.
         self::critical_moment_raw(|| {
-            let alloc: Arc<dyn Allocator> = if let Some(v) = addr_space.allocator() {
-                v
-            } else {
-                Arc::new(&THREAD_STACK_ALLOC)
-            };
-            let mut stack = ThreadStack::of_size(stack, alloc);
+            let mut stack: ThreadStack<Arc<dyn Allocator>> = ThreadStack::of_size(stack, Arc::new(Global));
             let id = ThreadID(NEXT_ID.fetch_add(1, Ordering::Relaxed));
 
             #[cfg(debug_assertions)]
@@ -113,21 +109,43 @@ impl Thread {
 
             let (raw_ptr, guard) = unsafe { alloc_thread_self(stack.ptr(), stack.size()) };
 
-            log::debug!("creating context");
             let mut context = Context::initial(entry as usize, arg, stack.ptr() as usize + stack.size() as usize);
-            log::debug!("created thread");
-            context.set_addr_space(addr_space);
+
+            context.set_addr_space(unsafe { kernel_address_space() });
 
             Self {
                 ctx: context,
                 id,
                 tls: raw_ptr as usize,
-                _stack: stack,
                 state: State::Ready,
-                _tls_guard: guard,
+                _stack: Some(stack),
+                _tls_guard: Some(guard),
             }
         })
     }
+
+    pub fn for_user(elf: elf::ElfBytes<AnyEndian>) -> Result<Self, ElfLoadError> {
+        let loaded = load_elf(elf)?;
+
+        let (raw_ptr, guard) = unsafe { alloc_thread_self(loaded.context.stack_pointer() as *mut u8, loaded.stack_size) };
+
+        Ok(Self {
+            ctx: loaded.context,
+            id: ThreadID(NEXT_ID.fetch_add(1, Ordering::Relaxed)),
+            state: State::Ready,
+            tls: raw_ptr as usize,
+            _stack: None,
+            _tls_guard: Some(guard),
+        })
+    }
+
+    pub fn set_pid(&mut self, pid: ProcessID) {
+        let ptr = self.tls as *mut ThreadSelf;
+        unsafe {
+            (*ptr).pid = Some(pid);
+        }
+    }
+
     pub fn tls_block(&self) -> usize {
         self.tls
     }
@@ -171,11 +189,11 @@ impl Thread {
         &mut self.ctx
     }
 
-    #[inline(always)]
-    #[track_caller]
-    pub fn dump_stack(&self) {
-        log::debug!("Thread (id {}) stack: {:?} (size: {})", self.id.0, self._stack.ptr(), self._stack.size());
-    }
+    // #[inline(always)]
+    // #[track_caller]
+    // pub fn dump_stack(&self) {
+    //     log::debug!("Thread (id {}) stack: {:?} (size: {})", self.id.0, self._stack.ptr(), self._stack.size());
+    // }
 }
 
 /// The next available ID

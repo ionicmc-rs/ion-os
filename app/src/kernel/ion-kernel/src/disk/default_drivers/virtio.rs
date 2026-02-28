@@ -11,7 +11,7 @@ use crate::arch::defs::PAGE_SIZE;
 use crate::arch::frame_allocator::alloc_2mib_frame;
 use crate::arch::mmu::{PageTable, PageTableFlags, map_2mib, virt_to_phys};
 use crate::arch::{PhysAddr, VirtAddr, defs};
-use crate::address_space::{kernel_address_space, map_into_space};
+use crate::address_space::{kernel_address_space, map_2mib_into_space};
 use crate::c_lib::libc::{self, OsError};
 use crate::io::{Error, ErrorKind, Result};
 use crate::lib_alloc::user::USER_DATA_BASE;
@@ -201,7 +201,7 @@ pub unsafe fn map_mmio_frame(phys: usize) -> *mut u8 {
 
     serial_println!("Mapping MMIO frame: phys={:#x} -> virt={:#x}", phys, virt);
 
-    map_into_space(
+    map_2mib_into_space(
         &mut kernel_address_space(),
         VirtAddr::new(virt),
         PhysAddr::new(phys),
@@ -389,7 +389,7 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
 
     let scratch_phys = alloc_2mib_frame();
 
-    map_into_space(
+    map_2mib_into_space(
         &mut kernel_address_space(), 
         VirtAddr::new(SCRATCH_REGION), 
         PhysAddr::new(scratch_phys), 

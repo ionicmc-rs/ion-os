@@ -2,15 +2,14 @@ use core::{cell::Cell, fmt::Debug};
 use alloc::{string::String, vec::Vec, vec};
 
 use crate::{
-    privilege::UserId, serial_println, thread::{self, ThreadID, sync::Mutex}
+    privilege::UserId, serial_println, thread::{self, ThreadID, sync::Mutex, tls::tcb}
 };
 
 pub mod elf;
 
-/// Thread-local current process ID.
-/// Storing references is impossible; ProcessID is the correct unit.
-#[thread_local]
-pub static mut CURRENT_PROCESS: Option<ProcessID> = None;
+pub fn current_process() -> Option<ProcessID> {
+    tcb().pid
+}
 
 /// Unique identifier for a process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]

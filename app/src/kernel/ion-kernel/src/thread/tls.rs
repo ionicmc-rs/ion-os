@@ -7,11 +7,12 @@
 
 #![allow(unsafe_op_in_unsafe_fn)]
 
-use core::{alloc::Layout, cmp};
+use core::{alloc::Layout, cmp, panic::PanicInfo};
 
+use alloc::{boxed::Box, string::String, vec::Vec};
 use linked_list_allocator::align_up;
 
-use crate::{arch, log, serial_println, thread};
+use crate::{arch, log, process::ProcessID, serial_println, thread};
 
 unsafe extern "C" {
     static __tdata_start: u8;
@@ -34,6 +35,13 @@ pub struct ThreadSelf {
 
     pub stack_base: *mut u8,
     pub stack_size: usize,
+
+    pub errno: i32,
+    pub panicking: bool,
+    pub panic_hooks: Vec<Box<dyn FnOnce(&PanicInfo) + Send>>,
+    pub name: String,
+    pub is_kill_safe: bool,
+    pub pid: Option<ProcessID>,
 }
 
 #[derive(Debug)]
@@ -103,6 +111,13 @@ pub unsafe fn alloc_thread_self(
             tls_size,
             stack_base,
             stack_size,
+            
+            errno: 0,
+            panicking: false,
+            panic_hooks: Vec::new(),
+            name: String::from("<unnamed>"),
+            is_kill_safe: true,
+            pid: None,
         },
     );
 
@@ -116,4 +131,10 @@ pub unsafe fn alloc_thread_self(
 #[inline(always)]
 pub unsafe fn install_tls(thread_self: *mut ThreadSelf) {
     arch::tls::write_ptr(thread_self.cast());
+}
+
+pub fn tcb() -> &'static mut ThreadSelf {
+    let ptr = arch::tls::read_ptr().cast_mut();
+    assert!(!ptr.is_null());
+    unsafe { &mut *ptr.cast::<ThreadSelf>() }
 }

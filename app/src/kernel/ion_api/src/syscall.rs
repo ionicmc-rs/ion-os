@@ -19,35 +19,23 @@ pub struct SyscallFrame {
 /// # Safety
 /// You must be using Ion OS, after syscall initialization, and the syscall must be valid
 pub unsafe fn syscall(frame: SyscallFrame) -> (u64, u64) {
-    unsafe {
-        core::arch::asm!(
-            "mov rax, {}",
-            "mov rdi, {}",
-            "mov rsi, {}",
-            "mov rdx, {}",
-            "mov r10, {}",
-            "mov r8, {}",
-            "mov r9, {}",
-            in(reg) frame.rax,
-            in(reg) frame.rdi,
-            in(reg) frame.rsi,
-            in(reg) frame.rdx,
-            in(reg) frame.r10,
-            in(reg) frame.r8,
-            in(reg) frame.r9,
-        );
-    }
+    let mut result = frame.rax;
+    let mut meta = frame.rdi;
 
-    let result;
-    let meta;
-
+    // Keep syscall in one asm block so register constraints/clobbers are explicit.
     unsafe {
         core::arch::asm!(
             "syscall",
-            "mov {}, rax",
-            "mov {}, rdi",
-            out(reg) result,
-            out(reg) meta
+            inlateout("rax") result,
+            inlateout("rdi") meta,
+            in("rsi") frame.rsi,
+            in("rdx") frame.rdx,
+            in("r10") frame.r10,
+            in("r8") frame.r8,
+            in("r9") frame.r9,
+            lateout("rcx") _,
+            lateout("r11") _,
+            options(nostack),
         );
     }
 
@@ -112,5 +100,17 @@ syscall_fns!(
     texit() {
         rax: 2,
         rdi: 0
+    };
+
+    // io
+
+    /// Writes `count` bytes from `buffer` to `fd`.
+    write(fd: u64, buffer: *const u8, count: u64) -> u64 {
+        rax: 3,
+        rdi: 0,
+        rsi: fd,
+        rdx: buffer as u64,
+        r10: count
     }
+    (ret, _) => ret
 );

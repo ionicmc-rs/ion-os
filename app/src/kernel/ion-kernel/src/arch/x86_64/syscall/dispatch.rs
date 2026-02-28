@@ -1,4 +1,4 @@
-use crate::{arch::syscall::parse::{ProcessCommand, Syscall, ThreadCommand}, c_lib::libc::{self, OsError}, log::info, process::{CURRENT_PROCESS, exit_proc}, serial_println, thread};
+use crate::{arch::syscall::parse::{ProcessCommand, Syscall, ThreadCommand}, c_lib::libc::{self, OsError}, log::info, process::{current_process, exit_proc}, serial_println, thread};
 
 /// Represents inputs to a syscall
 #[repr(C)]
@@ -45,7 +45,7 @@ pub unsafe extern "C" fn syscall_dispatch(
                 ProcessCommand::Exit(code) => {
                     info!("process <TID {}> exited with code {code}", thread::id().0);
 
-                    let pid = unsafe { CURRENT_PROCESS.unwrap() };
+                    let pid = unsafe { current_process().unwrap() };
                     
                     exit_proc(pid);
 

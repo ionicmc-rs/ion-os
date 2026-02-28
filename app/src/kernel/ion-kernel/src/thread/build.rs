@@ -205,7 +205,6 @@ impl<T: Send + 'static> ThreadBuilder<T> {
             thread_entry::<T>,
             Box::into_raw_with_allocator(boxed).0 as usize,
             self.stack,
-            self.addr_space,
         )
     }
 

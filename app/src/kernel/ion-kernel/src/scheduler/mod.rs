@@ -13,7 +13,7 @@ use alloc::{boxed::Box, collections::vec_deque::VecDeque, vec::Vec};
 use x86_64::structures::idt::InterruptStackFrameValue;
 
 use crate::{
-    address_space::kernel_address_space, arch::{self, ctx, interrupts::InterruptGuard}, hlt_loop, log, process::{self, CURRENT_PROCESS, PROCESSES}, serial_println, thread::{
+    address_space::kernel_address_space, arch::{self, ctx, interrupts::InterruptGuard}, hlt_loop, log, process::{self, PROCESSES}, serial_println, thread::{
         self, State, Thread, ThreadID,
         build::TPriority,
         tls::{ThreadSelf, install_tls},
@@ -178,7 +178,7 @@ macro_rules! queue_fn {
     };
 }
 fn idle_thread() -> Thread {
-    Thread::new(idle_entry, 0, 64 * 1024, unsafe { kernel_address_space() })
+    Thread::new(idle_entry, 0, 64 * 1024)
 }
 
 impl Queues {
@@ -232,10 +232,10 @@ impl Queues {
         }
 
         if self.idle.is_some() {
+            // better error message for when we get CPUs
             panic!(
                 "Idle thread already exists, but the thread was already asserted to be the idle one. this likely indicates data being sent between CPUs"
             );
-            // better error message for when we get CPUs
         }
 
         self.idle = Some(idle);
@@ -398,7 +398,6 @@ impl Scheduler {
         let idle = queues
             .take_idle()
             .expect("queues uninit after explicit init - likely a memory error");
-        idle.dump_stack();
         *unsafe_cell_ref!(mut self.current) = Some((idle, Priority::None));
 
         self.can_reschedule.store(true, Ordering::Relaxed);
@@ -438,10 +437,10 @@ impl Scheduler {
     }
 
     pub fn critical_moment<R>(&self, f: impl FnOnce() -> R) -> R {
-        let res = self.critical_moment_raw(f);
-        // here is a good place to check if we can reschedule, we know threads cant be used from interrupts.
-        self.reschedule_if_needed();
+        // currently just the same
 
+        let res = self.critical_moment_raw(f);
+        
         res
     }
 
@@ -561,12 +560,20 @@ impl Scheduler {
         let old_ctx = old_ref.ctx_mut();
         let new_ctx = current.as_ref().unwrap().0.ctx();
         let new_tls = current.as_ref().unwrap().0.tls_block();
+        // after switching contexts we will update TLS registers
+
 
         self.needs_resched.store(false, Ordering::Release);
 
+        // install kernel TLS (GS)
         unsafe { install_tls(new_tls as *mut ThreadSelf) };
-
-        current.as_ref().unwrap().0.dump_stack();
+        // also update FS.base for user-mode TLS access
+        unsafe {
+            let tcb = (new_tls as *mut ThreadSelf).as_ref().unwrap();
+            // write fs base to beginning of TLS area
+            crate::arch::tls::write_user_ptr(tcb.tls_base);
+            log::info!("scheduler: set FS.base={:#x} for tcb={:p}", tcb.tls_base as usize, tcb);
+        };
 
         // interrupts enabled here.
         drop(_guard);
@@ -645,7 +652,7 @@ fn schedule(reason: ScheduleReason) {
 
 pub fn exit_current() -> ! {
     wake_waiters_of(thread::id());
-    if let Some(v) = unsafe { CURRENT_PROCESS } {
+    if let Some(v) = process::current_process() {
         let locked = PROCESSES.lock();
         thread::critical_moment_raw(|| {
             locked.with_mut(v, |p| {
@@ -703,7 +710,7 @@ pub fn block_until_true(f: impl Fn() -> bool + 'static) {
 }
 
 pub fn atomic_block_until(atomic: &'static AtomicBool) {
-    if atomic.load(Ordering::SeqCst) {
+    if !atomic.load(Ordering::SeqCst) {
         return;
     }
     schedule(ScheduleReason::Block(WakeEvent::Atomic(atomic)));

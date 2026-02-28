@@ -10,14 +10,14 @@
 #[repr(C)]
 pub struct AddressSpace {
     pml4: PageTable,
-    user_alloc: Option<Arc<RescheduleAlloc>>
+    user_alloc: Option<Arc<RegionAllocator>>
 }
 
 use core::{cell::OnceCell};
 
 use alloc::sync::Arc;
 
-use crate::{arch::{self, PhysAddr, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4, copy_kernel_mappings_to, zero_page_table}}, lib_alloc::{RescheduleAlloc, user::reserve_space_for_addr}};
+use crate::{arch::{self, PhysAddr, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4, copy_kernel_mappings_to, zero_page_table}}, lib_alloc::{RescheduleAlloc, user::{RegionAllocator, reserve_space_for_addr}}};
 
 impl AddressSpace {
     /// returns the raw PML4 pointer
@@ -26,8 +26,16 @@ impl AddressSpace {
     }
 
     /// returns a clone of the user allocator, if any
-    pub fn allocator(&self) -> Option<Arc<RescheduleAlloc>> {
+    pub fn allocator(&self) -> Option<Arc<RegionAllocator>> {
         self.user_alloc.clone()
+    }
+
+    pub fn page_table(&self) -> &PageTable {
+        &self.pml4
+    }
+
+    pub fn page_table_mut(&mut self) -> &mut PageTable {
+        &mut self.pml4
     }
 }
 
@@ -56,7 +64,7 @@ pub unsafe fn kernel_address_space() -> AddressSpace {
 /// Creates a new address space, empty and unpaged.
 /// 
 /// this inherits from the active pml4. (assuming it is the kernel)
-pub unsafe fn create_address_space() -> AddressSpace {
+pub unsafe fn create_address_space(size: usize, align: usize) -> AddressSpace {
     let pml4_phys = alloc_2mib_frame();
     let mut pml4 = PageTable::new(VirtAddr::new(pml4_phys));
 
@@ -66,7 +74,7 @@ pub unsafe fn create_address_space() -> AddressSpace {
     copy_kernel_mappings_to(&mut pml4);
 
     let mut space = AddressSpace { pml4, user_alloc: None };
-    let alloc = reserve_space_for_addr(&mut space);
+    let alloc = reserve_space_for_addr(&mut space, size, align);
     space.user_alloc = Some(alloc.into());
     space
 }
@@ -74,7 +82,8 @@ pub unsafe fn create_address_space() -> AddressSpace {
 /// maps inside this space
 /// # Safety
 /// see [`arch::mmu::map_2mib`]
-pub unsafe fn map_into_space(
+#[track_caller]
+pub unsafe fn map_2mib_into_space(
     space: &mut AddressSpace,
     virt: VirtAddr,
     phys: PhysAddr,
@@ -87,3 +96,23 @@ pub unsafe fn map_into_space(
         flags,
     ) };
 }
+
+/// maps inside this space
+/// # Safety
+/// see [`arch::mmu::map_4k`]
+#[track_caller]
+pub unsafe fn map_4k_into_space(
+    space: &mut AddressSpace,
+    virt: VirtAddr,
+    phys: PhysAddr,
+    flags: PageTableFlags,
+) {
+    unsafe { arch::mmu::map_4k(
+        &mut space.pml4,
+        virt,
+        phys,
+        flags,
+    ) };
+}
+
+

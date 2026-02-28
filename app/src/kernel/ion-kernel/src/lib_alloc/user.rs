@@ -1,14 +1,25 @@
-use core::{alloc::{ Layout}, ptr};
-
-use crate::{address_space::{self, AddressSpace}, arch::{PhysAddr, VirtAddr, defs, frame_allocator::alloc_2mib_frame, mmu::PageTableFlags}, lib_alloc::RescheduleAlloc, serial_println};
-
+use core::alloc::Layout;
 use core::ptr::NonNull;
-use alloc::{alloc::{AllocError, Allocator}, boxed::Box};
 
+use alloc::{
+    alloc::{AllocError, Allocator},
+    boxed::Box,
+};
 
+use crate::{
+    address_space::{self, AddressSpace},
+    arch::{
+        PhysAddr,
+        VirtAddr,
+        frame_allocator::alloc_4k_frame,
+        mmu::PageTableFlags,
+    },
+};
 
-/// A free block descriptor.
-/// This metadata lives on the *kernel heap*.
+/* ============================================================
+ * Free list metadata (kernel heap only)
+ * ============================================================ */
+
 #[derive(Debug)]
 struct FreeBlock {
     base: usize,
@@ -16,6 +27,7 @@ struct FreeBlock {
     next: Option<Box<FreeBlock>>,
 }
 
+#[derive(Debug)]
 /// A real heap allocator that manages a pre-mapped memory region,
 /// while storing all metadata on the kernel heap.
 pub struct RegionAllocator {
@@ -26,8 +38,8 @@ impl RegionAllocator {
     /// Initialize the allocator over a memory region.
     ///
     /// # Safety
-    /// - `base .. base+size` must be mapped and writable
-    /// - Must be called exactly once
+    /// - `base..base+size` MUST be mapped and writable
+    /// - Must be called exactly once per region
     pub unsafe fn init(base: usize, size: usize) -> Self {
         Self {
             head: Some(Box::new(FreeBlock {
@@ -40,6 +52,10 @@ impl RegionAllocator {
 
     pub const fn empty() -> Self {
         Self { head: None }
+    }
+
+    pub fn start(&self) -> usize {
+        self.head.as_ref().map(|b| b.base).unwrap_or(0)
     }
 
     fn alloc_inner(&mut self, layout: Layout) -> Option<usize> {
@@ -115,7 +131,6 @@ impl RegionAllocator {
         let mut cur = &mut self.head;
 
         while let Some(a) = cur {
-            // While the next block exists and is adjacent, merge it
             while let Some(ref b) = a.next {
                 if a.base + a.size == b.base {
                     let mut next = a.next.take().unwrap();
@@ -129,14 +144,16 @@ impl RegionAllocator {
             cur = &mut a.next;
         }
     }
-
 }
+
+/* ============================================================
+ * Allocator impl
+ * ============================================================ */
 
 #[allow(invalid_reference_casting)]
 unsafe impl Allocator for RegionAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         let this = unsafe { &mut *(self as *const _ as *mut RegionAllocator) };
-
         let base = this.alloc_inner(layout).ok_or(AllocError)?;
 
         Ok(unsafe {
@@ -148,14 +165,14 @@ unsafe impl Allocator for RegionAllocator {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        let this = unsafe { &mut *(self as *const _ as *mut RegionAllocator) };
-
-        this.free_inner(
-            ptr.as_ptr() as usize,
-            layout.size().max(1),
-        );
+        let this = &mut *(self as *const _ as *mut RegionAllocator);
+        this.free_inner(ptr.as_ptr() as usize, layout.size().max(1));
     }
 }
+
+/* ============================================================
+ * Helpers
+ * ============================================================ */
 
 #[inline]
 fn align_up(x: usize, align: usize) -> usize {
@@ -163,82 +180,77 @@ fn align_up(x: usize, align: usize) -> usize {
     (x + align - 1) & !(align - 1)
 }
 
-/// Allocator that stores user data.
+/* ============================================================
+ * Global user data allocator
+ * ============================================================ */
+
 static mut USER_DATA: RegionAllocator = RegionAllocator::empty();
 
-// const defs:
+pub const USER_DATA_SIZE: usize = 4 * 1024 * 1024;
+pub const USER_DATA_BASE: usize = 0x0000_0000_7000_0000;
+
+const USER_DATA_PAGES: usize = USER_DATA_SIZE / 0x1000;
+
+/// Physical backing for USER_DATA (allocated once)
+static mut USER_DATA_FRAMES: [usize; USER_DATA_PAGES] = [0; USER_DATA_PAGES];
 
 #[allow(static_mut_refs)]
-/// returns the allocator used to store user data
 pub fn user_data_allocator() -> &'static RegionAllocator {
     unsafe { &USER_DATA }
 }
 
-#[allow(static_mut_refs)]
-pub fn reserve_space_for_addr(
-    space: &mut AddressSpace,
-) -> RescheduleAlloc {
-    const SIZE: usize = 2 * 1024 * 1024;
+/* ============================================================
+ * Initialization
+ * ============================================================ */
 
-    // Allocate virtual address space (no mapping yet)
-    let alloc =
-        unsafe { USER_DATA
-            .allocate(
-                Layout::from_size_align(SIZE, SIZE)
-                .unwrap()
-            )
-            .unwrap()
-            .as_ptr()
-            .cast() };
-
-    let base = alloc as usize;
-
-    unsafe {
-        serial_println!("mapping pages");
-        let phys = alloc_2mib_frame();
-
-        address_space::map_into_space(
-            &mut address_space::kernel_address_space(),  
-            VirtAddr::new(base),
-            PhysAddr::new(phys), 
-            PageTableFlags::WRITABLE
-        );
-
-        serial_println!("mapping pages for user space");
-
-        address_space::map_into_space(
-            space,
-            VirtAddr::new(base),
-            PhysAddr::new(phys),
-            PageTableFlags::USER_PAGE | PageTableFlags::WRITABLE,
-        );
+/// Initialize USER_DATA backing and allocator.
+///
+/// # Safety
+/// - Must be called exactly once at boot
+pub unsafe fn init_user_data() {
+    // allocate physical backing ONCE
+    for i in 0..USER_DATA_PAGES {
+        USER_DATA_FRAMES[i] = alloc_4k_frame().expect("out of physical memory");
     }
 
-    unsafe {
-        ptr::write_bytes(base as *mut u8, 0, SIZE);
-    }
-
-    // 3️⃣ Initialize per-address allocator metadata
-    let resc_alloc = RescheduleAlloc::empty();
-
-    unsafe {
-        resc_alloc
-            .0
-            .lock()
-            .init(alloc, SIZE);
-    }
-
-    resc_alloc
+    USER_DATA = RegionAllocator::init(USER_DATA_BASE, USER_DATA_SIZE);
 }
 
-
-/// Size for user data.
-pub const USER_DATA_SIZE: usize = 4 * 1024 * 1024; // size for user data.
-/// base for user data.
-pub const USER_DATA_BASE: usize = 0x0000_0000_7000_0000;
-
+/// Map USER_DATA into an address space (process or kernel).
+///
 /// # Safety
-/// must only be called once.
-pub unsafe fn init_user_data() {
-    unsafe { *(&raw const USER_DATA as *mut _) = RegionAllocator::init(USER_DATA_BASE, USER_DATA_SIZE); }
+/// - `space` must be a valid address space
+pub unsafe fn map_user_data(space: &mut AddressSpace) {
+    for (i, &phys) in USER_DATA_FRAMES.iter().enumerate() {
+        let va = USER_DATA_BASE + i * 0x1000;
+
+        address_space::map_4k_into_space(
+            space,
+            VirtAddr::new(va),
+            PhysAddr::new(phys),
+            PageTableFlags::USER_PAGE
+                | PageTableFlags::WRITABLE
+                | PageTableFlags::PRESENT,
+        );
+    }
+    }
+
+/* ============================================================
+ * Sub-region reservation
+ * ============================================================ */
+
+pub fn reserve_space_for_addr(
+    _space: &mut AddressSpace,
+    size: usize,
+    align: usize,
+) -> RegionAllocator {
+    let alloc = unsafe {
+        USER_DATA
+            .allocate(Layout::from_size_align(size, align).unwrap())
+            .unwrap()
+            .as_ptr()
+            .cast::<u8>()
+    };
+
+    unsafe { RegionAllocator::init(alloc as usize, size) }
 }

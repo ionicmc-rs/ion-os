@@ -123,7 +123,7 @@ pub fn spawn<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
     // Note: do not support user threads in spawn - user threads must be built via builder.
 
     // Safety: We fulfill all requirements
-    let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size, unsafe { kernel_address_space() });
+    let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size);
     let id = thread.id();
     SCHEDULER.queue(thread);
 
@@ -179,7 +179,7 @@ pub fn spawn_at<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
         scheduler::exit_current();
         hlt_loop()
     }
-    let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size, unsafe { kernel_address_space() });
+    let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size);
     let id = thread.id();
     SCHEDULER.queue_at(prio, thread);
 

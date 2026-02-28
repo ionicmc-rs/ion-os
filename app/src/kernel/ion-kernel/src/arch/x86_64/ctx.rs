@@ -10,7 +10,7 @@ use core::{arch::{asm, naked_asm}, mem::offset_of};
 use bitflags::Flags;
 use linked_list_allocator::align_up_size;
 use volatile::Volatile;
-use x86_64::{VirtAddr, registers::rflags::{self, RFlags}, structures::idt::InterruptStackFrameValue};
+use x86_64::{VirtAddr, registers::rflags::{self, RFlags}, structures::{gdt::SegmentSelector, idt::InterruptStackFrameValue}};
 
 use crate::{address_space, arch::interrupts::InterruptRegs, log, thread};
 
@@ -23,8 +23,8 @@ use crate::{address_space, arch::interrupts::InterruptRegs, log, thread};
 pub struct Context {
     regs: Regs,
     ctrl: Ctrl,
-    /// Unused for now
     fpu: Fpu,
+    segments: Segments
 }
 
 /// Capture the current execution context.
@@ -60,28 +60,45 @@ impl Context {
                 ..Default::default() 
             }, 
             ctrl: capture_ctrl(), 
-            fpu: Fpu {                
-                data: [0; 512] 
-            } 
+            fpu: capture_fpu(),
+            segments: Segments {
+                cs: super::interrupts::gdt_selectors().kernel_code.0,
+                ss: super::interrupts::gdt_selectors().kernel_data.0,
+            }
         }
+    }
+
+    pub fn user(entry: usize, arg: usize, stack: usize) -> Self {
+        let mut ctx = Self::initial(entry, arg, stack);
+        let mut seg_cs = super::interrupts::gdt_selectors().user_code;
+        seg_cs.set_rpl(x86_64::PrivilegeLevel::Ring3);
+        ctx.segments.cs = seg_cs.0;
+
+        let mut seg_ss = super::interrupts::gdt_selectors().user_data;
+        seg_ss.set_rpl(x86_64::PrivilegeLevel::Ring3);
+        ctx.segments.ss = seg_ss.0;
+
+        ctx.regs.rsp += 8; // exit is useless because its kernel mapped
+
+        ctx
     }
 
     /// Instruction pointer / program counter.
     #[inline]
-    pub fn instruction_pointer(&self) -> u64 {
-        self.regs.ip()
+    pub fn instruction_pointer(&self) -> usize {
+        self.regs.ip() as usize
     }
 
     /// Stack pointer.
     #[inline]
-    pub fn stack_pointer(&self) -> u64 {
-        self.regs.sp()
+    pub fn stack_pointer(&self) -> usize {
+        self.regs.sp() as usize
     }
 
     /// Address-space identifier (CR3 / TTBR / SATP).
     #[inline]
-    pub fn address_space(&self) -> u64 {
-        self.ctrl.address_space()
+    pub fn address_space(&self) -> usize {
+        self.ctrl.address_space() as usize
     }
     
     pub fn set_addr_space(&mut self, address_space: address_space::AddressSpace) {
@@ -107,12 +124,13 @@ impl Context {
                 options(nostack),
             );
 
-            // // Restore FPU
-            // asm!(
-            //     "fxrstor [{}]",
-            //     in(reg) &self.fpu.data,
-            //     options(nostack),
-            // );
+            // Restore FPU
+            asm!(
+                "clts",
+                // "fxrstor64 [{}]",
+                // in(reg) &self.fpu.data,
+                options(nostack),
+            );
         }
     
         // Overwrite the GPRs on the stack
@@ -133,11 +151,12 @@ impl Context {
         regs_on_stack.rax = self.regs.rax;
     
         // Overwrite the iretq frame
-        log::debug!("loading rip={:#x}, rsp={:#x}", self.regs.rip, self.regs.rsp);
         stack_frame.update(|frame_value| {
             frame_value.instruction_pointer = VirtAddr::new(self.regs.rip);
             frame_value.stack_pointer = VirtAddr::new(self.regs.rsp);
             frame_value.cpu_flags = RFlags::from_bits_retain(self.regs.rflags);
+            frame_value.code_segment = SegmentSelector(self.segments.cs);
+            frame_value.stack_segment = SegmentSelector(self.segments.ss);
         });
     }
 
@@ -160,15 +179,25 @@ impl Context {
         self.regs.rdx = regs.rdx;
         self.regs.rsi = regs.rsi;
 
-        self.regs.rip = stack_frame.read().instruction_pointer.as_u64();
-        self.regs.rsp = stack_frame.read().stack_pointer.as_u64();
-        self.regs.rflags = stack_frame.read().cpu_flags.bits();
+        let frame = stack_frame.read();
+
+        self.regs.rip = frame.instruction_pointer.as_u64();
+        self.regs.rsp = frame.stack_pointer.as_u64();
+        self.regs.rflags = frame.cpu_flags.bits();
+        self.segments.cs = frame.code_segment.0;
+        self.segments.ss = frame.stack_segment.0;
     }
 }
 
 /* ==========================================================
  * Private x86_64 implementation
  * ========================================================== */
+
+#[derive(Debug, Clone, Copy)]
+struct Segments {
+    cs: u16,
+    ss: u16
+}
 
 #[derive(Clone, Debug, Default)]
 #[repr(C)]
@@ -213,6 +242,7 @@ struct Fpu {
 
 fn capture() -> Context {
     Context {
+        segments: capture_segments(),
         regs: capture_regs(),
         ctrl: capture_ctrl(),
         fpu: capture_fpu(),
@@ -245,6 +275,18 @@ impl Ctrl {
 /* ==========================================================
  * Low-level x86_64 capture
  * ========================================================== */
+
+fn capture_segments() -> Segments {
+    let mut s = Segments { cs: 0, ss: 0 };
+
+    unsafe {
+        // use :x for 16-bit values
+        asm!("mov {:x}, cs", out(reg) s.cs);
+        asm!("mov {:x}, ss", out(reg) s.ss);
+    }
+
+    s
+}
 
 fn capture_regs() -> Regs {
     let mut r = Regs {
@@ -317,7 +359,11 @@ fn capture_fpu() -> Fpu {
     let mut f = Fpu { data: [0u8; 512] };
 
     // unsafe {
-    //     asm!("fxsave [{}]", in(reg) &mut f.data);
+    //     asm!(
+    //         "clts",
+    //         "fxsave64 [{}]", 
+    //         in(reg) f.data.as_mut_ptr()
+    //     );
     // }
 
     f

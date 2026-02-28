@@ -1,11 +1,19 @@
-use x86_64::{VirtAddr, registers::model_specific::FsBase};
+use x86_64::{
+    VirtAddr,
+    registers::model_specific::{GsBase, FsBase},
+};
 
-/// write the tls ptr
+/// Writes the kernel TLS pointer (ThreadSelf) to `GS.base`.
 pub fn write_ptr(ptr: *mut u8) {
-    FsBase::write(VirtAddr::from_ptr(ptr));
+    GsBase::write(VirtAddr::from_ptr(ptr));
 }
 
-/// reads the tls ptr
+/// Reads the kernel TLS pointer (ThreadSelf) from `GS.base`.
 pub fn read_ptr() -> *const u8 {
-    FsBase::read().as_ptr::<u8>()
+    GsBase::read().as_ptr::<u8>()
+}
+
+/// Writes the user TLS base (for FS-based TLS) into FS.base.
+pub fn write_user_ptr(ptr: *mut u8) {
+    FsBase::write(VirtAddr::from_ptr(ptr));
 }
