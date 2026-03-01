@@ -41,6 +41,7 @@ pub enum ElfLoadError {
 pub struct LoadedElf {
     pub context: Context,
     pub stack_size: usize,
+    pub address_space: address_space::AddressSpace,
 }
 
 pub fn load_elf(elf: ElfBytes<AnyEndian>) -> Result<LoadedElf, ElfLoadError> {

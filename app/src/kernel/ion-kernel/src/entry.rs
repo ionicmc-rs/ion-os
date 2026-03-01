@@ -1,11 +1,12 @@
 //! Main entry point
 
 use alloc::{string::String, vec::Vec};
+use elf::endian::AnyEndian;
 use pc_keyboard::KeyState;
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE}}, asyncio, event, graphics::{Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}}, io::OpenOptions, log::error, process, scheduler::{self, SCHEDULER}, thread::Thread};
+use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE}}, asyncio, event, graphics::{Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}}, io::OpenOptions, log::{self, error}, process, scheduler::{self, SCHEDULER}, thread::Thread};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -182,11 +183,21 @@ pub fn kernel_main() {
         elf_data
     });
 
-    // let parsed = elf::ElfBytes::minimal_parse(&elf).expect("failed to parse test ELF");
+    log::debug!("got test ELF file, size: {} bytes", elf.len());
 
-    // let thread = Thread::for_user(parsed).unwrap();
+    let parsed: elf::ElfBytes<'_, AnyEndian> = elf::ElfBytes::minimal_parse(&elf).expect("failed to parse test ELF");
 
-    // SCHEDULER.queue(thread); 
+    log::debug!("elf location: {:#?}", elf.as_ptr());
+
+    log::debug!("parsed ELF file, entry point: {:#x}", parsed.ehdr.e_entry);
+
+    // log::debug!("creating thread for test ELF");
+
+    let thread = Thread::for_user(parsed).unwrap();
+
+    SCHEDULER.queue(thread); 
+
+    // log::debug!("queued thread for test ELF");
     
     cfg_if::cfg_if! {
         if #[cfg(feature = "test")] {

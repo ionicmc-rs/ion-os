@@ -17,6 +17,10 @@ pub fn enable() {
     interrupts::enable();
 }
 
+pub fn enable_and_halt() {
+    interrupts::enable_and_hlt();
+}
+
 /// disables interrupts
 pub fn disable() {
     interrupts::disable();

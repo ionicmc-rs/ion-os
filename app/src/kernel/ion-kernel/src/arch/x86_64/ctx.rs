@@ -5,7 +5,7 @@
 
 #![cfg(target_arch = "x86_64")]
 
-use core::{arch::{asm, naked_asm}, mem::offset_of};
+use core::{arch::{asm, naked_asm}, fmt, mem::{offset_of, size_of}};
 
 use bitflags::Flags;
 use linked_list_allocator::align_up_size;
@@ -19,12 +19,25 @@ use crate::{address_space, arch::interrupts::InterruptRegs, log, thread};
  * ========================================================== */
 
 /// Opaque execution context of the current CPU.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Context {
     regs: Regs,
     ctrl: Ctrl,
     fpu: Fpu,
     segments: Segments
+}
+
+impl fmt::Debug for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Context")
+            .field("registers", &self.regs)
+            .field("control", &self.ctrl)
+            .field("segmentation", &self.segments)
+            .field_with("fpu", |f|
+                f.debug_list().finish_non_exhaustive()
+            )
+            .finish()
+    }
 }
 
 /// Capture the current execution context.
@@ -45,6 +58,10 @@ impl Context {
 
         rsp -= size_of::<usize>() as u64;
         unsafe { *(rsp as *mut usize) = exit as *const () as usize };
+
+        if rsp % 16 != 0 {
+            rsp -= 8;
+        }
 
         extern "C" fn exit() -> ! {
             thread::exit_current();

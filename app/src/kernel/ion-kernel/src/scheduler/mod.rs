@@ -158,7 +158,7 @@ pub extern "C" fn idle_entry(_: usize) -> ! {
             yield_now();
         }
 
-        arch::cpu::halt();
+        arch::interrupts::enable_and_halt();
     }
 }
 
