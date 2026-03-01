@@ -48,7 +48,6 @@ pub struct InterruptRegs {
 #[unsafe(naked)]
 pub extern "x86-interrupt" fn timer_trampoline(_: InterruptStackFrame /* unused param here for Rust to not complain */) {
         naked_asm!(
-            "mov rsi, rsp", // &mut InterruptStackFrame
             "push rax",
             "push rbx",
             "push rcx",
@@ -65,7 +64,9 @@ pub extern "x86-interrupt" fn timer_trampoline(_: InterruptStackFrame /* unused 
             "push r14",
             "push r15",
 
+
             "mov rdi, rsp",   // &mut InterruptRegs
+            "lea rsi, [rsp + 120]", // above pushed registers
             "sub rsp, 8",     // align the stack for the call
             "call {handler}",
             "add rsp, 8",     // restore the stack pointer
@@ -122,7 +123,7 @@ pub(super) const YIELD_IST: u16 = 4;
 #[unsafe(naked)]
 pub extern "x86-interrupt" fn yield_trampoline(_: InterruptStackFrame /* unused param here for Rust to not complain */) {
         naked_asm!(
-            "mov rsi, rsp", // &mut InterruptStackFrame
+            "cli", // ensure interrupts are disabled for the duration of the yield handler; they will be re-enabled when the handler returns
             "push rax",
             "push rbx",
             "push rcx",
@@ -140,6 +141,7 @@ pub extern "x86-interrupt" fn yield_trampoline(_: InterruptStackFrame /* unused 
             "push r15",
 
             "mov rdi, rsp",   // &mut InterruptRegs
+            "lea rsi, [rsp + 120]", // above pushed registers
             "sub rsp, 8",     // align the stack for the call
             "call {handler}",
             "add rsp, 8",     // restore the stack pointer
@@ -159,6 +161,8 @@ pub extern "x86-interrupt" fn yield_trampoline(_: InterruptStackFrame /* unused 
             "pop rcx",
             "pop rbx",
             "pop rax",
+
+            "sti",
 
             "iretq",
             handler = sym yield_handler,
@@ -191,7 +195,7 @@ extern "C" fn yield_handler(regs: &mut InterruptRegs, frame: &mut InterruptStack
             }
             log::debug!("loading new thread context: {:?}", v.1);
             v.1.load_with_interrupt_frame(regs, unsafe { frame.as_mut() });
-            log::debug!("loaded new thread context");
+            log::debug!("loaded new thread context: {:#?}", frame);
         }
     }
 }
