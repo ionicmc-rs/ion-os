@@ -102,7 +102,6 @@ pub extern "C" fn timer_handler(regs: &mut InterruptRegs, frame: &mut InterruptS
         if let Some(old) = v.0 {
             old.save_from_interrupt(regs, unsafe { frame.as_mut().read_only() }); // does not need the actual memory
         }
-        log::debug!("timer switch to ctx {:?}", v.1);
         v.1.load_with_interrupt_frame(regs, unsafe { frame.as_mut() });
     }
 
@@ -172,7 +171,6 @@ pub extern "x86-interrupt" fn yield_trampoline(_: InterruptStackFrame /* unused 
 extern "C" fn yield_handler(regs: &mut InterruptRegs, frame: &mut InterruptStackFrame) {
     let _guard = InterruptGuard::new();
 
-    log::debug!("{regs:#?}");
     if let Some(mut lock) = YIELD_REASON.try_lock() 
         && let Some(reason) = lock.take() {
 
@@ -193,9 +191,8 @@ extern "C" fn yield_handler(regs: &mut InterruptRegs, frame: &mut InterruptStack
                 old.save_from_interrupt(regs, unsafe { frame.as_mut().read_only() });
                 log::debug!("saved old thread context");
             }
-            log::debug!("loading new thread context: {:?}", v.1);
             v.1.load_with_interrupt_frame(regs, unsafe { frame.as_mut() });
-            log::debug!("loaded new thread context: {:#?}", frame);
+            log::debug!("loaded new thread context: {:#?}", v.1);
         }
     }
 }

@@ -7,7 +7,7 @@ use core::sync::atomic::{compiler_fence, Ordering};
 use alloc::boxed::Box;
 use linked_list_allocator::{align_up, align_up_size};
 
-use crate::arch::defs::PAGE_SIZE;
+use crate::arch::defs::PAGE_2MIB;
 use crate::arch::frame_allocator::alloc_2mib_frame;
 use crate::arch::mmu::{PageTable, PageTableFlags, map_2mib, virt_to_phys};
 use crate::arch::{PhysAddr, VirtAddr, defs};
@@ -385,7 +385,7 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
         panic!("virtio: device set FAILED status");
     }
 
-    const SCRATCH_REGION: usize = USER_DATA_BASE - PAGE_SIZE; 
+    const SCRATCH_REGION: usize = USER_DATA_BASE - PAGE_2MIB; 
 
     let scratch_phys = alloc_2mib_frame();
 

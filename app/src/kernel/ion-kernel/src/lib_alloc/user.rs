@@ -232,6 +232,14 @@ pub unsafe fn map_user_data(space: &mut AddressSpace) {
                 | PageTableFlags::WRITABLE
                 | PageTableFlags::PRESENT,
         );
+        address_space::map_4k_into_space(
+            &mut address_space::kernel_address_space(),
+            VirtAddr::new(va),
+            PhysAddr::new(phys),
+            PageTableFlags::USER_PAGE
+                | PageTableFlags::WRITABLE
+                | PageTableFlags::PRESENT,
+        );
     }
     }
 

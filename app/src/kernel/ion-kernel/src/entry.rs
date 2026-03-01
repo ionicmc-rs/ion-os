@@ -5,7 +5,7 @@ use pc_keyboard::KeyState;
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE}}, asyncio, event, graphics::{Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}}, io::OpenOptions, log::error, scheduler};
+use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE}}, asyncio, event, graphics::{Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}}, io::OpenOptions, log::error, process, scheduler::{self, SCHEDULER}, thread::Thread};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -67,16 +67,6 @@ fn handle_kbd() -> ! {
 /// final init.
 pub fn kernel_main() {
     serial_println!("in kernel main");
-
-    ThreadBuilder::new()
-        .with_entry(|| loop {
-            let x = 1;
-            serial_println!("A");
-            assert_eq!(x + 1, 2);
-            arch::cpu::halt();
-        })
-        .with_name("A")
-        .build();
 
     #[cfg(debug_assertions)]
     event::add_key_listener(|ev| {
@@ -175,6 +165,28 @@ pub fn kernel_main() {
     draw_text(Pos::new(3, 3), &font, "[info] starting Ion OS...", Color::WHITE);
     draw_text(Pos::new(3, 16), &font, "[info] This may take a while, please be patient...", Color::WHITE);
 
+    // get test elf
+
+    let elf = asyncio::run_future(async {
+        let file = OpenOptions::new()
+            .read(true)
+            .open("@/test_programs/test.elf")
+            .await
+            .expect("test ELF file not found");
+
+        let elf_data = file
+            .read_all()
+            .await
+            .expect("could not read test ELF file");
+
+        elf_data
+    });
+
+    // let parsed = elf::ElfBytes::minimal_parse(&elf).expect("failed to parse test ELF");
+
+    // let thread = Thread::for_user(parsed).unwrap();
+
+    // SCHEDULER.queue(thread); 
     
     cfg_if::cfg_if! {
         if #[cfg(feature = "test")] {

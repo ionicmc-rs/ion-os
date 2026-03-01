@@ -7,7 +7,7 @@ bits 64
 syscall_entry:
     push rbp
     mov rbp, rsp            ; save stack pointer
-
+    
     sub rsp, 8              ; keep SysV call alignment for the Rust callee
 
     push rcx            ; save rcx (return RIP for user)

@@ -20,7 +20,7 @@ cfg_if::cfg_if! {
 // static assertions
 
 const _: () = {
-    assert!(defs::PAGE_SIZE == 2 * 1024 * 1024, "Page size is not 2 MiB - but that is the only supported page size (for now).");
+    assert!(defs::PAGE_2MIB == 2 * 1024 * 1024, "Page size is not 2 MiB - but that is the only supported page size (for now).");
     if defs::POINTER_WIDTH_RAW == 64 {
         assert!(matches!(defs::POINTER_WIDTH, PointerWidth::SixtyFour))
     } else if defs::POINTER_WIDTH_RAW == 32 {

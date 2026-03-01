@@ -27,7 +27,7 @@ pub(in crate::arch) const fn is_valid_phys_addr(addr: usize) -> bool {
 // Paging
 
 /// Page size in bytes
-pub const PAGE_SIZE: usize = 2 * 1024 * 1024; // 2 MiB
+pub const PAGE_2MIB: usize = 2 * 1024 * 1024; // 2 MiB
 
 // Misc
 

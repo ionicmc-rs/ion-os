@@ -4,7 +4,7 @@ use core::ptr::NonNull;
 use spin::Mutex;
 
 use crate::{
-    arch::defs::PAGE_SIZE,
+    arch::defs::PAGE_2MIB,
     c_lib::{
         MultibootMemory,
         USABLE_ENTRY,
@@ -17,7 +17,7 @@ use crate::{
  * ============================================================ */
 
 /// 2 MiB frame size
-pub const FRAME_SIZE: usize = PAGE_SIZE;
+pub const FRAME_SIZE: usize = PAGE_2MIB;
 
 /// 4 KiB sub-frame size
 pub const SMALL_FRAME_SIZE: usize = 4096;
