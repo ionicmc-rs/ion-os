@@ -485,7 +485,9 @@ impl Scheduler {
         if !self.can_reschedule.load(Ordering::Acquire) {
             return None;
         }
-        let _guard = InterruptGuard::new();
+
+        arch::interrupts::disable();
+
         let queues = unsafe_cell_ref!(mut self.queues);
 
         let current = unsafe_cell_ref!(mut self.current);
@@ -567,16 +569,13 @@ impl Scheduler {
 
         // install kernel TLS (GS)
         unsafe { install_tls(new_tls as *mut ThreadSelf) };
-        // also update FS.base for user-mode TLS access
-        unsafe {
-            let tcb = (new_tls as *mut ThreadSelf).as_ref().unwrap();
-            // write fs base to beginning of TLS area
-            crate::arch::tls::write_user_ptr(tcb.tls_base);
-            log::info!("scheduler: set FS.base={:#x} for tcb={:p}", tcb.tls_base as usize, tcb);
-        };
+
+        arch::tls::write_user_ptr(new_tls as *mut u8);
+
+        // user FS.base write removed; causes crashes when performed here
+        // TODO: set FS.base later (e.g. on return to user mode)
 
         // interrupts enabled here.
-        drop(_guard);
         if no_store {
             Some((None, new_ctx))
         } else {

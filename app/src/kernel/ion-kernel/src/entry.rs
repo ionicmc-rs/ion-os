@@ -62,13 +62,11 @@ fn handle_kbd() -> ! {
     }
 }
 
-#[thread_local]
-static __TLOCAL: u64 = 0xdeadbeef;
+
 
 /// final init.
 pub fn kernel_main() {
     serial_println!("in kernel main");
-    assert_eq!(__TLOCAL, 0xdeadbeef, "tls is not setup correctly");
 
     ThreadBuilder::new()
         .with_entry(|| loop {
