@@ -122,7 +122,6 @@ pub(super) const YIELD_IST: u16 = 4;
 #[unsafe(naked)]
 pub extern "x86-interrupt" fn yield_trampoline(_: InterruptStackFrame /* unused param here for Rust to not complain */) {
         naked_asm!(
-            "cli", // ensure interrupts are disabled for the duration of the yield handler; they will be re-enabled when the handler returns
             "push rax",
             "push rbx",
             "push rcx",
@@ -161,8 +160,6 @@ pub extern "x86-interrupt" fn yield_trampoline(_: InterruptStackFrame /* unused 
             "pop rbx",
             "pop rax",
 
-            "sti",
-
             "iretq",
             handler = sym yield_handler,
         );
@@ -170,28 +167,31 @@ pub extern "x86-interrupt" fn yield_trampoline(_: InterruptStackFrame /* unused 
 
 extern "C" fn yield_handler(regs: &mut InterruptRegs, frame: &mut InterruptStackFrame) {
     without_interrupts(|| {
-        if let Some(mut lock) = YIELD_REASON.try_lock() 
-            && let Some(reason) = lock.take() {
-
-            match reason.0 {
-                ScheduleReason::Yield => log::debug!("yielding"),
-                ScheduleReason::Preempt => log::debug!("preempting"),
-                ScheduleReason::Exit => log::debug!("exiting"),
-                ScheduleReason::Block(_) => log::debug!("blocking"),
-                ScheduleReason::Sleep(_) => log::debug!("sleeping"),
-                ScheduleReason::Panicked => log::debug!("panicked"),
-                ScheduleReason::Start => log::debug!("starting"),
-            }
-
-            if let Some(v) = SCHEDULER.pick(reason.0) {
-                fence(Ordering::SeqCst);
-                if let Some(old) = v.0 {
-                    log::debug!("saving old thread context");
-                    old.save_from_interrupt(regs, unsafe { frame.as_mut().read_only() });
-                    log::debug!("saved old thread context");
+        if let Some(mut lock) = YIELD_REASON.try_lock() {
+            if let Some(reason) = lock.take() {
+                match reason.0 {
+                    ScheduleReason::Yield => log::debug!("yielding"),
+                    ScheduleReason::Preempt => log::debug!("preempting"),
+                    ScheduleReason::Exit => log::debug!("exiting"),
+                    ScheduleReason::Block(_) => log::debug!("blocking"),
+                    ScheduleReason::Sleep(_) => log::debug!("sleeping"),
+                    ScheduleReason::Panicked => log::debug!("panicked"),
+                    ScheduleReason::Start => log::debug!("starting"),
                 }
-                v.1.load_with_interrupt_frame(regs, unsafe { frame.as_mut() });
-                log::debug!("loaded new thread context: {:#?}", v.1);
+
+                if let Some(v) = SCHEDULER.pick(reason.0) {
+                    fence(Ordering::SeqCst);
+                    if let Some(old) = v.0 {
+                        log::debug!("saving old thread context");
+                        old.save_from_interrupt(regs, unsafe { frame.as_mut().read_only() });
+                        log::debug!("saved old thread context");
+                    }
+
+                    log::debug!("loading new thread context (\n{:#?}\n)", v.1);
+
+                    v.1.load_with_interrupt_frame(regs, unsafe { frame.as_mut() });
+                    log::debug!("loaded new thread context: {:#?}", v.1);
+                }
             }
         }
     });

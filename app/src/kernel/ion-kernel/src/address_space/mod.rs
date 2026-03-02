@@ -9,7 +9,7 @@
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct AddressSpace {
-    pml4: PageTable,
+    page_base: PageTable,
     user_alloc: Option<Arc<RegionAllocator>>
 }
 
@@ -17,12 +17,12 @@ use core::{cell::OnceCell};
 
 use alloc::sync::Arc;
 
-use crate::{arch::{self, PhysAddr, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4, copy_kernel_mappings_to, zero_page_table}}, lib_alloc::{RescheduleAlloc, user::{RegionAllocator, reserve_space_for_addr}}};
+use crate::{arch::{self, PhysAddr, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4, copy_kernel_mappings_to, zero_page_table}}, lib_alloc::{RescheduleAlloc, user::{RegionAllocator, reserve_space_for_addr}}, log};
 
 impl AddressSpace {
     /// returns the raw PML4 pointer
     pub fn ptr(&self) -> PhysAddr {
-        self.pml4.as_phys()
+        self.page_base.as_phys()
     }
 
     /// returns a clone of the user allocator, if any
@@ -31,11 +31,11 @@ impl AddressSpace {
     }
 
     pub fn page_table(&self) -> &PageTable {
-        &self.pml4
+        &self.page_base
     }
 
     pub fn page_table_mut(&mut self) -> &mut PageTable {
-        &mut self.pml4
+        &mut self.page_base
     }
 }
 
@@ -55,7 +55,7 @@ static KERNEL_SPACE: KernelSpace = KernelSpace(OnceCell::new());
 pub unsafe fn kernel_address_space() -> AddressSpace {
     KERNEL_SPACE.0.get_or_init(|| {
         AddressSpace {
-            pml4: unsafe { active_pml4() },
+            page_base: unsafe { active_pml4() },
             user_alloc: None
         }
     }).clone() // clone is cheap - pointers are Copy and Arc increases ref count
@@ -73,9 +73,12 @@ pub unsafe fn create_address_space(size: usize, align: usize) -> AddressSpace {
 
     copy_kernel_mappings_to(&mut pml4);
 
-    let mut space = AddressSpace { pml4, user_alloc: None };
+    let mut space = AddressSpace { page_base: pml4, user_alloc: None };
     let alloc = reserve_space_for_addr(&mut space, size, align);
     space.user_alloc = Some(alloc.into());
+
+    log::debug!("created new address space with pml4 at {:#x}", space.page_base.as_phys().as_inner());
+
     space
 }
 
@@ -90,7 +93,7 @@ pub unsafe fn map_2mib_into_space(
     flags: PageTableFlags,
 ) {
     unsafe { arch::mmu::map_2mib(
-        &mut space.pml4,
+        &mut space.page_base,
         virt,
         phys,
         flags,
@@ -108,7 +111,7 @@ pub unsafe fn map_4k_into_space(
     flags: PageTableFlags,
 ) {
     unsafe { arch::mmu::map_4k(
-        &mut space.pml4,
+        &mut space.page_base,
         virt,
         phys,
         flags,

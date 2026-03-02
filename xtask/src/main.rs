@@ -520,7 +520,9 @@ fn run_qemu(iso: &str) -> Result<()> {
         "-machine",
         "q35",
         "-d",
-        "cpu_reset"
+        "cpu_reset",
+        "-cpu", 
+        "qemu64,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+avx2,+xsave,+xsaveopt"
     ]);
 
     let status = cmd.status()?.code();

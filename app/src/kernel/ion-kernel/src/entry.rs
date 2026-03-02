@@ -193,7 +193,7 @@ pub fn kernel_main() {
 
     // log::debug!("creating thread for test ELF");
 
-    let thread = Thread::for_user(parsed).unwrap();
+    let thread = Thread::for_user(parsed, &elf).unwrap();
 
     SCHEDULER.queue(thread); 
 

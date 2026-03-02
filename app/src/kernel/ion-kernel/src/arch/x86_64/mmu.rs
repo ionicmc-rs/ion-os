@@ -477,7 +477,7 @@ pub fn copy_kernel_mappings_to(table: &mut PageTable) {
         unsafe { kernel_address_space().ptr().as_inner() as *mut u64 };
 
     // Copy ONLY the kernel half
-    for i in 256..512 {
+    for i in 0..512 {
         let entry = unsafe { kernel_pml4.add(i).read() };
         if entry & ENTRY_PRESENT != 0 {
             unsafe { user_pml4.add(i).write(entry) };

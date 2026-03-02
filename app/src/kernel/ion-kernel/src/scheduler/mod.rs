@@ -773,6 +773,7 @@ pub unsafe fn kill(id: ThreadID) {
     SCHEDULER.kill(id);
 }
 
+#[derive(Debug)]
 #[allow(unused)]
 pub enum ScheduleReason {
     Yield,
@@ -791,4 +792,16 @@ pub enum WakeEvent {
     FnYieldTrue(Box<dyn Fn() -> bool>),
     // only supports static lifetimes for now.
     Atomic(&'static AtomicBool),
+}
+
+impl alloc::fmt::Debug for WakeEvent {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Raw(ptr) => f.debug_tuple("Raw").field(ptr).finish(),
+            Self::EndOf(id) => f.debug_tuple("EndOf").field(id).finish(),
+            Self::KeyInput => f.debug_struct("KeyInput").finish(),
+            Self::FnYieldTrue(_) => f.debug_struct("FnYieldTrue").finish(),
+            Self::Atomic(_) => f.debug_struct("Atomic").finish(),
+        }
+    }
 }

@@ -56,13 +56,6 @@ impl Context {
     pub fn initial(entry: usize, arg: usize, stack: usize) -> Self {
         let mut rsp = (align_up_size(stack, 16)) as u64;
 
-        rsp -= size_of::<usize>() as u64;
-        unsafe { *(rsp as *mut usize) = exit as *const () as usize };
-
-        if rsp % 16 != 0 {
-            rsp -= 8;
-        }
-
         extern "C" fn exit() -> ! {
             thread::exit_current();
         }
@@ -72,7 +65,6 @@ impl Context {
                 rip: entry as u64, 
                 rdi: arg as u64, 
                 rsp, 
-                rbp: 0,
                 rflags: 0x202, 
                 ..Default::default() 
             }, 
@@ -94,8 +86,6 @@ impl Context {
         let mut seg_ss = super::interrupts::gdt_selectors().user_data;
         seg_ss.set_rpl(x86_64::PrivilegeLevel::Ring3);
         ctx.segments.ss = seg_ss.0;
-
-        ctx.regs.rsp += 8; // exit is useless because its kernel mapped
 
         ctx
     }
@@ -134,12 +124,15 @@ const KERNEL_RFLAGS_MASK: u64 =
 impl Context {
     pub(in crate::arch::x86_64) fn load_with_interrupt_frame(&self, regs_on_stack: &mut super::interrupts::InterruptRegs, mut stack_frame: Volatile<&mut InterruptStackFrameValue>) {
         unsafe {
+            log::debug!("switching address space to {:#x}", self.ctrl.cr3);
+
             // Switch address space
             asm!(
                 "mov cr3, {}",
                 in(reg) self.ctrl.cr3,
                 options(nostack),
             );
+
 
             // Restore FPU
             asm!(

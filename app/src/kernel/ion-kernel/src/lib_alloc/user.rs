@@ -1,4 +1,5 @@
 use core::alloc::Layout;
+use core::cell::RefCell;
 use core::ptr::NonNull;
 
 use alloc::{
@@ -12,7 +13,7 @@ use crate::{
         PhysAddr,
         VirtAddr,
         frame_allocator::alloc_4k_frame,
-        mmu::PageTableFlags,
+        mmu::{PageTableFlags, virt_to_phys_in},
     },
 };
 
@@ -30,8 +31,13 @@ struct FreeBlock {
 #[derive(Debug)]
 /// A real heap allocator that manages a pre-mapped memory region,
 /// while storing all metadata on the kernel heap.
+/// 
+/// This allocator can optionally map pages into an address space when allocating.
 pub struct RegionAllocator {
     head: Option<Box<FreeBlock>>,
+    /// Optional address space to map pages into when allocating
+    #[allow(dead_code)]
+    address_space: Option<AddressSpace>,
 }
 
 impl RegionAllocator {
@@ -47,11 +53,24 @@ impl RegionAllocator {
                 size,
                 next: None,
             })),
+            address_space: None,
         }
     }
 
     pub const fn empty() -> Self {
-        Self { head: None }
+        Self { head: None, address_space: None }
+    }
+
+    /// Initialize with an address space for automatic page mapping
+    pub unsafe fn init_with_space(base: usize, size: usize, space: AddressSpace) -> Self {
+        Self {
+            head: Some(Box::new(FreeBlock {
+                base,
+                size,
+                next: None,
+            })),
+            address_space: Some(space),
+        }
     }
 
     pub fn start(&self) -> usize {
@@ -153,8 +172,31 @@ impl RegionAllocator {
 #[allow(invalid_reference_casting)]
 unsafe impl Allocator for RegionAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        let this = unsafe { &mut *(self as *const _ as *mut RegionAllocator) };
+        // We need mutable access to map pages - use RefCell pattern
+        // This is safe because we're in a single-threaded kernel
+        let this = unsafe { &mut *((self as *const _ as *mut RegionAllocator)) };
+        
         let base = this.alloc_inner(layout).ok_or(AllocError)?;
+
+        // If we have an address space, map the pages
+        if let Some(ref mut space) = this.address_space {
+            let pages = (layout.size() + 0xFFF) / 0x1000;
+            for i in 0..pages {
+                let va = base + i * 0x1000;
+                let phys = alloc_4k_frame().expect("out of physical memory");
+                
+                unsafe {
+                    address_space::map_4k_into_space(
+                        space,
+                        VirtAddr::new(va),
+                        PhysAddr::new(phys),
+                        PageTableFlags::USER_PAGE
+                            | PageTableFlags::WRITABLE
+                            | PageTableFlags::PRESENT,
+                    );
+                }
+            }
+        }
 
         Ok(unsafe {
             NonNull::slice_from_raw_parts(
@@ -224,22 +266,28 @@ pub unsafe fn map_user_data(space: &mut AddressSpace) {
     for (i, &phys) in USER_DATA_FRAMES.iter().enumerate() {
         let va = USER_DATA_BASE + i * 0x1000;
 
-        address_space::map_4k_into_space(
+        unsafe { address_space::map_4k_into_space(
             space,
             VirtAddr::new(va),
             PhysAddr::new(phys),
             PageTableFlags::USER_PAGE
                 | PageTableFlags::WRITABLE
                 | PageTableFlags::PRESENT,
-        );
-        address_space::map_4k_into_space(
-            &mut address_space::kernel_address_space(),
-            VirtAddr::new(va),
-            PhysAddr::new(phys),
-            PageTableFlags::USER_PAGE
-                | PageTableFlags::WRITABLE
-                | PageTableFlags::PRESENT,
-        );
+        ) };
+
+        let mut kernel = unsafe { address_space::kernel_address_space() };
+
+        if unsafe { virt_to_phys_in(VirtAddr::new(va), kernel.page_table_mut()).is_none() } { 
+            unsafe { address_space::map_4k_into_space(
+                &mut address_space::kernel_address_space(),
+                VirtAddr::new(va),
+                PhysAddr::new(phys),
+                PageTableFlags::USER_PAGE
+                    | PageTableFlags::WRITABLE
+                    | PageTableFlags::PRESENT,
+            ) };
+        }
+
     }
     }
 
@@ -248,10 +296,11 @@ pub unsafe fn map_user_data(space: &mut AddressSpace) {
  * ============================================================ */
 
 pub fn reserve_space_for_addr(
-    _space: &mut AddressSpace,
+    space: &mut AddressSpace,
     size: usize,
     align: usize,
 ) -> RegionAllocator {
+    // Allocate virtual address range from global USER_DATA allocator
     let alloc = unsafe {
         USER_DATA
             .allocate(Layout::from_size_align(size, align).unwrap())
@@ -260,5 +309,7 @@ pub fn reserve_space_for_addr(
             .cast::<u8>()
     };
 
+    // Initialize the allocator for the allocated region
+    // Note: We don't pass the address_space here since we already mapped pages above
     unsafe { RegionAllocator::init(alloc as usize, size) }
 }

@@ -124,8 +124,9 @@ impl Thread {
         })
     }
 
-    pub fn for_user(elf: elf::ElfBytes<AnyEndian>) -> Result<Self, ElfLoadError> {
-        let loaded = load_elf(elf)?;
+    pub fn for_user(elf: elf::ElfBytes<AnyEndian>, elf_data: &[u8]) -> Result<Self, ElfLoadError> {
+        log::debug!("loading ELF file");
+        let loaded = load_elf(elf, elf_data)?;
 
         log::debug!("loaded ELF file, entry point: {:#x}", loaded.context.instruction_pointer());
 

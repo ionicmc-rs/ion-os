@@ -1,4 +1,4 @@
-//! Tools for loading ELFs and parsing Ion OS–specific requests.
+//! Tools for loading ELFs and parsing Ion OS-specific requests.
 //!
 //! Uses PT_LOAD segments and the userspace allocator.
 //! All user memory lives above USER_BASE.
@@ -32,6 +32,43 @@ pub enum ElfLoadError {
     RequestParseError(RequestParseError),
     MissingRequests,
     NoLoadableSegments,
+    InvalidOffset,
+}
+
+/* ============================
+ * Raw ELF header structures for manual parsing
+ * ============================ */
+
+#[repr(C)]
+struct Elf64_Ehdr {
+    e_ident: [u8; 16],
+    e_type: u16,
+    e_machine: u16,
+    e_version: u32,
+    e_entry: u64,
+    e_phoff: u64,
+    e_shoff: u64,
+    e_flags: u32,
+    e_ehsize: u16,
+    e_phentsize: u16,
+    e_phnum: u16,
+    e_shentsize: u16,
+    e_shnum: u16,
+    e_shstrndx: u16,
+}
+
+#[repr(C)]
+struct Elf64_Shdr {
+    sh_name: u32,
+    sh_type: u32,
+    sh_flags: u64,
+    sh_addr: u64,
+    sh_offset: u64,
+    sh_size: u64,
+    sh_link: u32,
+    sh_info: u32,
+    sh_addralign: u64,
+    sh_entsize: u64,
 }
 
 /* ============================
@@ -44,22 +81,98 @@ pub struct LoadedElf {
     pub address_space: address_space::AddressSpace,
 }
 
-pub fn load_elf(elf: ElfBytes<AnyEndian>) -> Result<LoadedElf, ElfLoadError> {
+/// Find the .ion_os.requests section manually by iterating through section headers
+/// 
+/// # Safety
+/// This function performs raw pointer operations and should only be called
+/// with valid ELF data that has been verified to contain the required headers.
+unsafe fn find_requests_section(elf_data: &[u8], ehdr: &Elf64_Ehdr) -> Result<*const u8, ElfLoadError> {
+    let shstrndx = ehdr.e_shstrndx as usize;
+    let shnum = ehdr.e_shnum as usize;
+    
+    if shnum == 0 || shstrndx == 0 {
+        return Err(ElfLoadError::MissingRequests);
+    }
+
+    // Get the string table section header
+    let shstrtab_offset = ehdr.e_shoff as usize + shstrndx * size_of::<Elf64_Shdr>();
+    if shstrtab_offset + size_of::<Elf64_Shdr>() > elf_data.len() {
+        return Err(ElfLoadError::InvalidOffset);
+    }
+    
+    let shstrtab_shdr = unsafe {
+        &*(elf_data.as_ptr().add(shstrtab_offset) as *const Elf64_Shdr)
+    };
+    
+    // Get the string table data
+    let strtab_offset = shstrtab_shdr.sh_offset as usize;
+    let strtab_size = shstrtab_shdr.sh_size as usize;
+    if strtab_offset + strtab_size > elf_data.len() {
+        return Err(ElfLoadError::InvalidOffset);
+    }
+    
+    let strtab_data = &elf_data[strtab_offset..strtab_offset + strtab_size];
+    
+    // Search for ".ion_os.requests" in the string table
+    let target = b".ion_os.requests";
+    
+    // Find the position of the target string in the string table
+    let mut target_pos: Option<usize> = None;
+    for i in 0..strtab_data.len().saturating_sub(target.len() - 1) {
+        if &strtab_data[i..i + target.len()] == target {
+            target_pos = Some(i);
+            break;
+        }
+    }
+    
+    let Some(name_offset) = target_pos else {
+        return Err(ElfLoadError::MissingRequests);
+    };
+    
+    // Now find which section has this name offset
+    for sh_idx in 0..shnum {
+        let offset = ehdr.e_shoff as usize + sh_idx * size_of::<Elf64_Shdr>();
+        if offset + size_of::<Elf64_Shdr>() > elf_data.len() {
+            continue;
+        }
+        
+        let shdr = unsafe {
+            &*(elf_data.as_ptr().add(offset) as *const Elf64_Shdr)
+        };
+        
+        if shdr.sh_name as usize == name_offset {
+            // Found the section - return its data pointer
+            let req_offset = shdr.sh_offset as usize;
+            let req_size = shdr.sh_size as usize;
+            if req_offset + req_size > elf_data.len() {
+                return Err(ElfLoadError::InvalidOffset);
+            }
+            log::debug!("found .ion_os.requests at offset {}, size {}", req_offset, req_size);
+            return Ok(unsafe { elf_data.as_ptr().add(req_offset) });
+        }
+    }
+    
+    Err(ElfLoadError::MissingRequests)
+}
+
+pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8]) -> Result<LoadedElf, ElfLoadError> {
     /* ----------------------------
-     * Parse .ion_os.requests
+     * Parse .ion_os.requests - manual lookup
      * ---------------------------- */
 
-    let shdr = elf
-        .section_header_by_name(".ion_os.requests")
-        .map_err(ElfLoadError::ElfParseError)?
-        .ok_or(ElfLoadError::MissingRequests)?;
+    log::debug!("parsing .ion_os.requests section");
 
-    let (req_data, _) = elf
-        .section_data(&shdr)
-        .map_err(ElfLoadError::ElfParseError)?;
+    // Get the ELF header for manual parsing
+    let ehdr = unsafe { &*(elf_data.as_ptr() as *const Elf64_Ehdr) };
+    
+    let req_data_ptr = unsafe { find_requests_section(elf_data, ehdr) }?;
+    let req_data = unsafe { core::slice::from_raw_parts(req_data_ptr, 24) };
 
     let requests = parse_requests(req_data)
         .map_err(ElfLoadError::RequestParseError)?;
+
+    log::debug!("parsed .ion_os.requests: stack size = {}, align = {}",
+        requests.stack.size, requests.stack.align);
 
     /* ----------------------------
      * Create address space
@@ -72,7 +185,11 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>) -> Result<LoadedElf, ElfLoadError> {
         )
     };
 
-    unsafe { map_user_data(&mut space); };
+    unsafe {
+        map_user_data(&mut space);
+    }
+
+    log::debug!("created new address space for ELF");
 
     let user_alloc = space.allocator().unwrap();
 
@@ -184,11 +301,13 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>) -> Result<LoadedElf, ElfLoadError> {
     log::info!("ELF loaded: entry={:#x}, load_base={:#x}, stack_base={:#x}",
         entry, load_base, stack_base);
 
-    let ctx = Context::user(entry, /* tls */ 0, stack_top);
+    let mut ctx = Context::user(entry, /* tls */ 0, stack_top);
+    ctx.set_addr_space(space.clone());
 
     Ok(LoadedElf {
         context: ctx,
         stack_size: requests.stack.size,
+        address_space: space,
     })
 }
 
@@ -298,3 +417,4 @@ fn align_down(x: usize, a: usize) -> usize {
 fn align_up(x: usize, a: usize) -> usize {
     (x + a - 1) & !(a - 1)
 }
+
