@@ -11,12 +11,8 @@ use core::{
 
 use crate::{
     serial_println,
-    thread,
+    thread::{self, tls::tcb},
 };
-
-/// Thread-local errno (used when a thread context exists)
-#[thread_local]
-static mut ERRNO: i32 = 0;
 
 /// Global errno (used before threading / TLS is initialized)
 static mut GLOBAL_ERRNO: i32 = 0;
@@ -31,7 +27,7 @@ static mut GLOBAL_ERRNO: i32 = 0;
 #[allow(static_mut_refs)]
 pub extern "C" fn __errno_location() -> *mut i32 {
     if thread::current().is_some() {
-        &raw mut ERRNO
+        &raw mut tcb().errno
     } else {
         &raw mut GLOBAL_ERRNO
     }

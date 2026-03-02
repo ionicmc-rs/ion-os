@@ -223,7 +223,7 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8]) -> Result<LoadedElf, 
         return Err(ElfLoadError::NoLoadableSegments);
     }
 
-    let total_size = max_vaddr - min_vaddr;
+    let total_size = align_up(max_vaddr, 0x1000) - align_down(min_vaddr, 0x1000);
 
     /* ----------------------------
      * Allocate VA range via userspace allocator

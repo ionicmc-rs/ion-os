@@ -1,38 +1,32 @@
 //! panicking.
-use core::{cell::Cell, panic::PanicInfo, sync::atomic::compiler_fence};
+use core::{cell::Cell, mem, panic::PanicInfo, sync::atomic::compiler_fence};
 
 use alloc::{boxed::Box, string::String, vec::Vec};
 
 use crate::{
-    arch, asyncio, c_lib::libc::{self, get_errno, perror}, graphics::{self, Color as GColor, Pos, font::{BitmapFont, draw_text_from_panic, try_get_fallback_font}}, hlt_loop, io::{self, Error, OpenOptions, const_err}, log, scheduler, serial_println, thread
+    arch, asyncio, c_lib::libc::{self, get_errno, perror}, graphics::{self, Color as GColor, Pos, font::{BitmapFont, draw_text_from_panic, try_get_fallback_font}}, hlt_loop, io::{self, Error, OpenOptions, const_err}, log, scheduler, serial_println, thread::{self, tls::tcb}
 };
-
-#[thread_local]
-static THREAD_HOOK: Cell<Vec<Box<dyn FnOnce()>>> = Cell::new(Vec::new());
 
 /// Sets the function run at the end of panics.
 ///
 /// note: this does not replace the panic function, but it runs alongside it at the end.
 ///
 /// this is usually useful to poison mutexes while we don't have unwinding.
-pub fn add_hook(f: impl FnOnce() + 'static) {
+pub fn add_hook(f: impl FnOnce(&PanicInfo) + Send + 'static) {
     if thread::current().is_none() {
         panic!("Attempted to set a panic hook from the boot stack.");
     }
-    let mut old = THREAD_HOOK.take();
-    old.push(Box::new(f));
-    THREAD_HOOK.set(old);
+    (&mut tcb().panic_hooks).push(Box::new(f) as Box<dyn FnOnce(&PanicInfo) + Send + 'static>);
 }
 
 /// takes the current hooks, leaving nothing in its place.
-pub fn take_hooks() -> Vec<Box<dyn FnOnce()>> {
+pub fn take_hooks() -> Vec<Box<dyn FnOnce(&PanicInfo) + Send + 'static>> {
     if thread::current().is_none() {
         panic!("Attempted to take a panic hook from the boot stack.");
     }
-    THREAD_HOOK.take()
+    mem::take(&mut tcb().panic_hooks)
 }
 
-static PANIC_STACK: [u8; 32 * 1024] = [0; 32 * 1024];
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -57,16 +51,13 @@ fn panic(info: &PanicInfo) -> ! {
 /// panics the current thread.
 pub fn panic_thread(info: &PanicInfo) -> ! {
     if thread::panicking() {
-        serial_println!("(halt) {info}");
+        serial_println!("(immediate abort) {info}");
         hlt_loop()
     }
     unsafe { thread::build::set_panic() };
     let loc = info.location().unwrap();
     let message = info.message();
-    let tname = thread::name().map(|v|
-        String::from_utf8(v.to_vec()).unwrap()
-    )
-    .unwrap_or_else(|| "<unnamed>".into());
+    let tname = thread::name();
     let tid = thread::id();
     match info.can_unwind() {
         true => serial_println!("(unwind) thread `{tname}` ({tid:?}) panicked at {loc}"),
@@ -127,7 +118,7 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
         hlt_loop(); // main thread having an error implies initialization error, which is fatal.
     }
     for hook in take_hooks() {
-        hook()
+        hook(info)
     }
     // drop(lock); // ensure other threads can still print.
     unsafe { scheduler::panic_current() };

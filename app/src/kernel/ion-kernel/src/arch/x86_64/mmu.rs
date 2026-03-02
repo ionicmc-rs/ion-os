@@ -535,6 +535,20 @@ impl PageTable {
     }
 }
 
-pub fn flags_of(page: &PageTable, virt: VirtAddr) -> Option<PageTableFlags> {
+pub fn flags_of_in(page: &PageTable, virt: VirtAddr) -> Option<PageTableFlags> {
     page.query_flags(virt)
+}
+
+pub fn flags_of(virt: VirtAddr) -> Option<PageTableFlags> {
+    let pml4 = unsafe { active_pml4() };
+    pml4.query_flags(virt)
+}
+
+pub fn is_user_accessible_in(page: &PageTable, virt: VirtAddr) -> bool {
+    flags_of_in(page, virt).is_some_and(|flags| flags.contains(PageTableFlags::USER_PAGE))
+}
+
+pub fn is_user_accessible(virt: VirtAddr) -> bool {
+    let pml4 = unsafe { active_pml4() };
+    is_user_accessible_in(&pml4, virt)
 }

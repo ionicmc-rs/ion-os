@@ -152,7 +152,7 @@ impl<'mutex, T: ?Sized> MutexGuard<'mutex, T> {
     where
         'mutex: 'static, // 'mutex = 'static
     {
-        panic::add_hook(|| {
+        panic::add_hook(|_| {
             drop(guard);
         });
     }
@@ -256,3 +256,4 @@ impl<T> Mutex<T> {
 
 unsafe impl<T: ?Sized> Sync for Mutex<T> {}
 unsafe impl<T: ?Sized> Send for Mutex<T> {}
+unsafe impl<T: ?Sized> Send for MutexGuard<'_, T> {}

@@ -130,17 +130,18 @@ impl Thread {
 
         log::debug!("loaded ELF file, entry point: {:#x}", loaded.context.instruction_pointer());
 
-        let (raw_ptr, guard) = unsafe { alloc_thread_self(loaded.context.stack_pointer() as *mut u8, loaded.stack_size) };
+        let (tls, _tls_guard) = unsafe { alloc_thread_self(loaded.context.stack_pointer() as *mut u8, loaded.stack_size) };
 
-        log::debug!("created new user thread with TLS block at {:#x} (size: {})", raw_ptr as usize, loaded.stack_size);
+        let _tls_guard = Some(_tls_guard);
+        let tls = tls.addr();
 
         Ok(Self {
             ctx: loaded.context,
             id: ThreadID(NEXT_ID.fetch_add(1, Ordering::Relaxed)),
             state: State::Ready,
-            tls: raw_ptr as usize,
+            tls,
             _stack: None,
-            _tls_guard: Some(guard),
+            _tls_guard, // User TLS is managed by the user address space
         })
     }
 

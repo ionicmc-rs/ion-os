@@ -5,7 +5,7 @@ use alloc::{
 };
 
 use crate::{
-    address_space::{AddressSpace, kernel_address_space}, arch, serial_println, thread::{self, JoinHandle, Thread, ThreadID}
+    address_space::{AddressSpace, kernel_address_space}, arch, serial_println, thread::{self, JoinHandle, Thread, ThreadID, tls::tcb}
 };
 
 struct ThreadMetadata {
@@ -13,13 +13,6 @@ struct ThreadMetadata {
     panicking: bool,
     kill_safe: bool,
 }
-
-#[thread_local]
-static mut THREAD_DATA: ThreadMetadata = ThreadMetadata {
-    name: None,
-    panicking: false,
-    kill_safe: false, // should likely not be TLS
-};
 
 #[derive(Default)]
 pub enum TPriority {
@@ -49,7 +42,7 @@ impl<T: Send + 'static> Debug for ThreadBuilder<T> {
 
 struct Meta<T: Send + 'static> {
     func: Box<dyn FnOnce() -> T, Arc<dyn Allocator>>,
-    name: Vec<u8, Arc<dyn Allocator>>,
+    name: String,
     safe: bool,
     alloc: Arc<dyn Allocator>,
 }
@@ -75,8 +68,8 @@ extern "C" fn thread_entry<T: Send + 'static>(arg: usize) -> ! {
     // boxed is consumed here; no partial moves exist
 
     unsafe {
-        THREAD_DATA.name = Some(name);
-        THREAD_DATA.kill_safe = safe;
+        tcb().name = name;
+        tcb().is_kill_safe = safe;
     }
 
     // Call FnOnce — consumes it
@@ -181,9 +174,6 @@ impl<T: Send + 'static> ThreadBuilder<T> {
             };
 
         let name = self.name.unwrap_or("<unnamed>".to_string());
-        let name = name.as_bytes().to_vec_in(alloc.clone());
-
-
 
         // Re-home closure (unsized-safe)
         let func = self.func.take().expect("function should be provided");
@@ -219,11 +209,9 @@ impl<T: Send + 'static> ThreadBuilder<T> {
             move || {
                 unsafe {
                     let name = self.name.unwrap_or("<unnamed>".to_string());
-
-                    let name: Vec<u8, Arc<dyn Allocator>> = name.as_bytes().to_vec_in(Arc::new(Global));
                     
-                    THREAD_DATA.name = Some(name);
-                    THREAD_DATA.kill_safe = self.safe;
+                    tcb().name = name;
+                    tcb().is_kill_safe = self.safe;
 
                 }
 
@@ -244,26 +232,26 @@ pub fn panicking() -> bool {
     if arch::tls::read_ptr().is_null() {
         return false;
     }
-    unsafe { THREAD_DATA.panicking }
+    unsafe { tcb().panicking }
 }
 
 pub fn kill_safe() -> bool {
     if arch::tls::read_ptr().is_null() {
         return false;
     }
-    unsafe { THREAD_DATA.kill_safe }
+    unsafe { tcb().is_kill_safe }
 }
 
 pub fn set_kill_safe(safe: bool) {
-    unsafe { THREAD_DATA.kill_safe = safe }
+    unsafe { tcb().is_kill_safe = safe }
 }
 
 #[allow(static_mut_refs)]
-pub fn name() -> Option<Vec<u8, Arc<dyn Allocator>>> {
+pub fn name() -> String {
     if arch::tls::read_ptr().is_null() {
-        return None;
+        panic!("use of TLS before initialization");
     }
-    unsafe { THREAD_DATA.name.clone() }
+    unsafe { tcb().name.clone() }
 }
 
 pub fn set_name(s: impl Into<String>) {
@@ -271,17 +259,7 @@ pub fn set_name(s: impl Into<String>) {
         return;
     }
     
-    unsafe {
-        if let Some(name) = &mut THREAD_DATA.name {
-            name.clear();
-            name.extend(s.into().into_bytes());
-        } else {
-            let mut vec: Vec<u8, Arc<dyn Allocator>> = Vec::new_in(Arc::new(Global));
-            vec.extend(s.into().into_bytes());
-            THREAD_DATA.name = Some(vec);
-        }
-    }
-
+    tcb().name = s.into();
 }
 
 /// # Safety
@@ -290,5 +268,5 @@ pub unsafe fn set_panic() {
     if arch::tls::read_ptr().is_null() {
         return;
     }
-    unsafe { THREAD_DATA.panicking = true }
+    unsafe { tcb().panicking = true }
 }

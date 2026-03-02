@@ -54,7 +54,10 @@ impl Context {
     /// 
     /// on x86_64, this inherits the control registers from the current context
     pub fn initial(entry: usize, arg: usize, stack: usize) -> Self {
-        let mut rsp = (align_up_size(stack, 16)) as u64;
+        let mut rsp = (align_up_size(stack, 16));
+
+        rsp -= size_of::<usize>();
+        unsafe { (rsp as *mut extern "C" fn() -> !).write_volatile(exit); }
 
         extern "C" fn exit() -> ! {
             thread::exit_current();
@@ -64,7 +67,7 @@ impl Context {
             regs: Regs { 
                 rip: entry as u64, 
                 rdi: arg as u64, 
-                rsp, 
+                rsp: rsp as u64, 
                 rflags: 0x202, 
                 ..Default::default() 
             }, 
@@ -86,6 +89,8 @@ impl Context {
         let mut seg_ss = super::interrupts::gdt_selectors().user_data;
         seg_ss.set_rpl(x86_64::PrivilegeLevel::Ring3);
         ctx.segments.ss = seg_ss.0;
+
+        unsafe { *(ctx.regs.rsp as *mut usize) = 0xdeadbeefdeadbeef }; // there is no use in keeping a kernel-mapped fallback
 
         ctx
     }

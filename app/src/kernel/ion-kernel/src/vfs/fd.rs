@@ -205,7 +205,7 @@ impl FdTable {
     pub const fn new() -> Self {
         Self {
             entries: Vec::new(),
-            next_reuse: 0,
+            next_reuse: 3, // 0, 1, 2 are reserved for the std* outputs
         }
     }
 

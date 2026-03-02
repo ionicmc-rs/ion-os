@@ -570,10 +570,7 @@ impl Scheduler {
         // install kernel TLS (GS)
         unsafe { install_tls(new_tls as *mut ThreadSelf) };
 
-        arch::tls::write_user_ptr(new_tls as *mut u8);
-
-        // user FS.base write removed; causes crashes when performed here
-        // TODO: set FS.base later (e.g. on return to user mode)
+        // user FS.base is set by the user program itself via syscall
 
         // interrupts enabled here.
         if no_store {

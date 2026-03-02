@@ -6,7 +6,7 @@ use pc_keyboard::KeyState;
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE}}, asyncio, event, graphics::{Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}}, io::OpenOptions, log::{self, error}, process, scheduler::{self, SCHEDULER}, thread::Thread};
+use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE}}, asyncio, event, graphics::{Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}}, io::OpenOptions, log::{self, error}, process::{self, spawn_proc}, scheduler::{self, SCHEDULER}, thread::Thread};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -193,7 +193,13 @@ pub fn kernel_main() {
 
     // log::debug!("creating thread for test ELF");
 
-    let thread = Thread::for_user(parsed, &elf).unwrap();
+    let mut thread = Thread::for_user(parsed, &elf).unwrap();
+
+    let pid = spawn_proc("test", 0, thread.id(), None);
+
+    thread.set_pid(pid);
+
+    log::debug!("user thread: {thread:#?}");
 
     SCHEDULER.queue(thread); 
 
