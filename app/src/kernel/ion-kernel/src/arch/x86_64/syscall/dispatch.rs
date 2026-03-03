@@ -84,12 +84,12 @@ pub unsafe extern "C" fn syscall_dispatch(
 
                 match fd {
                     fd @ 0..=2 => {
-                        match String::from_utf8(kernel_buf) {
+                        match str::from_utf8(&kernel_buf) {
                             Ok(s) => {
                                 log::debug!("got a write on fd `{fd}`: {s}");
                             }
                             Err(e) => {
-                                log::debug!("got a write on fd `{fd}` (non-UTF8): {s:?}");
+                                log::debug!("got a write on fd `{fd}` (non-UTF8): {kernel_buf:?}");
                                 log::debug!("UTF8 error: {e:?}");
                             }
                         }
