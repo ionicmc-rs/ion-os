@@ -50,7 +50,7 @@ pub unsafe extern "C" fn syscall_dispatch(
 
                     let pid = unsafe { current_process().unwrap() };
                     
-                    exit_proc(pid);
+                    exit_proc(pid, code);
 
                     // if we are still here somehow, then we return an error
 

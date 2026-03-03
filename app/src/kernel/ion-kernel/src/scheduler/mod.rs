@@ -659,7 +659,7 @@ pub fn exit_current() -> ! {
                 if p.threads.is_empty() {
                     // Safety: this wont exit the current threads if 
                     // threads is empty
-                    process::exit_proc(p.pid);
+                    process::exit_proc(p.pid, 0);
                 }
                 // do not use `p` here anymore.
             })

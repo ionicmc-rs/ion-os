@@ -167,7 +167,7 @@ pub fn kernel_main() {
     graphics::renderer::init(fb);
 
     with_renderer(|r| {        
-        // draw_text(&mut r.back, Pos::new(20, 20), &font, "[ion-os] starting ion os...\n[info] this process may be lengthy - please be patient...", Color::WHITE);
+        draw_text(&mut r.back, Pos::new(20, 20), &font, "[ion-os] starting ion os...\n[ion-os] this process may be lengthy - please be patient...", Color::WHITE);
 
         r.present();
     });

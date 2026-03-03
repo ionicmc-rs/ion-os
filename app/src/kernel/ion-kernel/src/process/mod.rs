@@ -19,7 +19,7 @@ pub struct ProcessID(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessState {
     Running,
-    Zombie,
+    Zombie(i32),
 }
 
 /// Represents a kernel-side process.
@@ -145,7 +145,7 @@ pub fn spawn_proc(
 /// - Frees PID
 /// 
 /// This fails if the current thread is part of this process.
-pub fn exit_proc(pid: ProcessID) {
+pub fn exit_proc(pid: ProcessID, exit_code: i32) {
     let lock = PROCESSES.lock();
 
     if thread::critical_moment(|| {
@@ -177,11 +177,7 @@ pub fn exit_proc(pid: ProcessID) {
             }
         }
 
-        processes[idx].state = ProcessState::Zombie;
-
-        let pid = processes[idx].pid;
-        processes.remove(idx);
-        lock.free_pid(pid);
+        processes[idx].state = ProcessState::Zombie(exit_code);
 
         lock.processes.set(processes);
         should_exit
