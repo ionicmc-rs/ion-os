@@ -129,8 +129,6 @@ const KERNEL_RFLAGS_MASK: u64 =
 impl Context {
     pub(in crate::arch::x86_64) fn load_with_interrupt_frame(&self, regs_on_stack: &mut super::interrupts::InterruptRegs, mut stack_frame: Volatile<&mut InterruptStackFrameValue>) {
         unsafe {
-            log::debug!("switching address space to {:#x}", self.ctrl.cr3);
-
             // Switch address space
             asm!(
                 "mov cr3, {}",

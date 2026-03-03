@@ -35,7 +35,6 @@ where
         awoken.store(false, Ordering::SeqCst);
         match future.as_mut().poll(&mut cx) {
             Poll::Ready(v) => {
-                log::trace!("future completed");
                 thread::set_kill_safe(prev);
                 break v
             }

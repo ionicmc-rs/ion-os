@@ -6,7 +6,7 @@ use pc_keyboard::KeyState;
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE}}, asyncio, event, graphics::{Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}}, io::OpenOptions, log::{self, error}, process::{self, spawn_proc}, scheduler::{self, SCHEDULER}, thread::Thread};
+use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE}}, asyncio, event, graphics::{self, Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}, with_renderer}, io::OpenOptions, log::{self, error}, process::{self, spawn_proc}, scheduler::{self, SCHEDULER}, thread::Thread};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -162,9 +162,15 @@ pub fn kernel_main() {
 
     set_fallback_font(font);
 
-    // reassure the user were ok so far
-    draw_text(Pos::new(3, 3), &font, "[info] starting Ion OS...", Color::WHITE);
-    draw_text(Pos::new(3, 16), &font, "[info] This may take a while, please be patient...", Color::WHITE);
+    let fb = graphics::framebuffer();
+
+    graphics::renderer::init(fb);
+
+    with_renderer(|r| {        
+        // draw_text(&mut r.back, Pos::new(20, 20), &font, "[ion-os] starting ion os...\n[info] this process may be lengthy - please be patient...", Color::WHITE);
+
+        r.present();
+    });
 
     // get test elf
 

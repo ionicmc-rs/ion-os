@@ -6,7 +6,7 @@
 
 use core::{mem::size_of, sync::atomic::{AtomicBool, Ordering}};
 
-use crate::{graphics::{self, Color, Pos, framebuffer}, log};
+use crate::{graphics::{self, Color, Pos, Surface, framebuffer}, log};
 
 /// PSF1 on-disk header
 #[repr(C)]
@@ -143,6 +143,7 @@ impl<'a> BitmapFont<'a> {
 
 /// Draw a single PSF1 glyph
 pub fn draw_glyph(
+    surface: &mut Surface,
     x: u32,
     y: u32,
     font: &BitmapFont,
@@ -152,11 +153,7 @@ pub fn draw_glyph(
     for (row, byte) in glyph.iter().enumerate() {
         for bit in 0..8 {
             if (byte >> (7 - bit)) & 1 != 0 {
-                let pos = Pos::new(x + bit , y + row as u32);
-                graphics::put_pixel(
-                    pos,
-                    color,
-                );
+                surface.draw_pixel(x + bit, y + row as u32, color); 
             }
         }
     }
@@ -174,12 +171,16 @@ pub fn draw_glyph_from_panic(
         for bit in 0..8 {
             if (byte >> (7 - bit)) & 1 != 0 {
                 let pos = Pos::new(x + bit , y + row as u32);
-                unsafe { framebuffer::clear_poison() };
-                graphics::put_pixel(
-                    pos,
+
+                let mut surface = super::framebuffer();
+
+                unsafe { surface.draw_pixel(
+                    pos.x,
+                    pos.y,
                     color,
-                );
-                unsafe { framebuffer::clear_poison() };
+                ) };
+
+                drop(surface);
             }
         }
     }
@@ -187,6 +188,7 @@ pub fn draw_glyph_from_panic(
 
 /// Draw ASCII text using a PSF1 font
 pub fn draw_text(
+    surface: &mut Surface,
     mut pos: Pos,
     font: &BitmapFont,
     text: &str,
@@ -202,7 +204,7 @@ pub fn draw_text(
             }
             _ => {
                 if let Some(glyph) = font.glyph(ch) {
-                    draw_glyph(pos.x, pos.y, font, glyph, color);
+                    draw_glyph(surface, pos.x, pos.y, font, glyph, color);
                 }
                 pos.x += font.glyph_width as u32;
             }

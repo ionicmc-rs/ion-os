@@ -4,7 +4,7 @@ use core::{cell::Cell, mem, panic::PanicInfo, sync::atomic::compiler_fence};
 use alloc::{boxed::Box, string::String, vec::Vec};
 
 use crate::{
-    arch, asyncio, c_lib::libc::{self, get_errno, perror}, graphics::{self, Color as GColor, Pos, font::{BitmapFont, draw_text_from_panic, try_get_fallback_font}}, hlt_loop, io::{self, Error, OpenOptions, const_err}, log, scheduler, serial_println, thread::{self, tls::tcb}
+    arch, asyncio, c_lib::libc::{self, get_errno, perror}, graphics::{self, Color as GColor, Pos, font::{BitmapFont, draw_text_from_panic, try_get_fallback_font}, with_renderer}, hlt_loop, io::{self, Error, OpenOptions, const_err}, log, scheduler, serial_println, thread::{self, tls::tcb}
 };
 
 /// Sets the function run at the end of panics.
@@ -102,10 +102,11 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
             + &alloc::format!("{message}\n")
             + &alloc::format!("[err code] {last_os_error}\n\n")
             + &alloc::format!("This is (likely) a bug, you can report it at [BUG REPORT LINK]");
-    
-        unsafe { graphics::framebuffer::force_unlock() };
-        graphics::clear(GColor::BLACK);
-        serial_println!("attempting to draw now");
+
+        with_renderer(|r| {
+            r.clear(GColor::BLACK);
+        });
+
         draw_text_from_panic(Pos::new(20, 20), &font, &panic_text, GColor::WHITE);
     } else {
         log::error!("fallback font not loaded - cancelling draw")

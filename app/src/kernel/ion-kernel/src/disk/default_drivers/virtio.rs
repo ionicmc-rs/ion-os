@@ -11,7 +11,7 @@ use crate::arch::defs::PAGE_2MIB;
 use crate::arch::frame_allocator::alloc_2mib_frame;
 use crate::arch::mmu::{PageTable, PageTableFlags, map_2mib, virt_to_phys};
 use crate::arch::{PhysAddr, VirtAddr, defs};
-use crate::address_space::{kernel_address_space, map_2mib_into_space};
+use crate::address_space::{kernel_address_space, map_2mib_into_space, map_4k_into_space};
 use crate::c_lib::libc::{self, OsError};
 use crate::io::{Error, ErrorKind, Result};
 use crate::lib_alloc::user::USER_DATA_BASE;
@@ -171,47 +171,6 @@ pub struct VirtioBlk {
     // NEW: Slot tracking
     // true = in use, false = free
     slot_in_use: [bool; MAX_CONCURRENT], 
-}
-
-/* ====================== MMIO Mapping ========================= */
-
-use core::sync::atomic::{AtomicUsize};
-static MMIO_BASE: AtomicUsize = AtomicUsize::new(0);
-static MMIO_NEXT: AtomicUsize = AtomicUsize::new(0);
-
-// Maps a 2MiB physical region to virtual memory. 
-// Expects phys to be 2MiB aligned.
-
-/// Maps a frame to the MMIO region
-#[track_caller]
-pub unsafe fn map_mmio_frame(phys: usize) -> *mut u8 {
-    assert!(phys % (2 * 1024 * 1024) == 0, "map_mmio_frame received unaligned address");
-
-    let base = MMIO_BASE.load(Ordering::Acquire);
-    let base = if base == 0 {
-        let computed =
-            align_up_size(1024 * 1024 * 1024, 2 * 1024 * 1024);
-        MMIO_BASE.store(computed, Ordering::Release);
-        computed
-    } else {
-        base
-    };
-
-    let virt = base + MMIO_NEXT.fetch_add(2 * 1024 * 1024, Ordering::Relaxed);
-
-    serial_println!("Mapping MMIO frame: phys={:#x} -> virt={:#x}", phys, virt);
-
-    map_2mib_into_space(
-        &mut kernel_address_space(),
-        VirtAddr::new(virt),
-        PhysAddr::new(phys),
-        PageTableFlags::PRESENT
-            | PageTableFlags::WRITABLE
-            | PageTableFlags::NO_EXECUTE
-            | PageTableFlags::NO_CACHE,
-    );
-
-    virt as *mut u8
 }
 
 /* ========================= PROBE ============================== */
@@ -449,6 +408,7 @@ unsafe fn negotiate_features(common: *mut VirtioPciCommonCfg) {
 
 use crate::disk::{AsyncBlockDevice, register_disk};
 use crate::lib_alloc::{heap_end};
+use crate::mmio::map_mmio_frame;
 use crate::serial_println;
 
 pub fn probe_and_register() {

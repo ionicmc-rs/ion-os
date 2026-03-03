@@ -169,28 +169,13 @@ extern "C" fn yield_handler(regs: &mut InterruptRegs, frame: &mut InterruptStack
     without_interrupts(|| {
         if let Some(mut lock) = YIELD_REASON.try_lock() {
             if let Some(reason) = lock.take() {
-                match reason.0 {
-                    ScheduleReason::Yield => log::debug!("yielding"),
-                    ScheduleReason::Preempt => log::debug!("preempting"),
-                    ScheduleReason::Exit => log::debug!("exiting"),
-                    ScheduleReason::Block(_) => log::debug!("blocking"),
-                    ScheduleReason::Sleep(_) => log::debug!("sleeping"),
-                    ScheduleReason::Panicked => log::debug!("panicked"),
-                    ScheduleReason::Start => log::debug!("starting"),
-                }
-
                 if let Some(v) = SCHEDULER.pick(reason.0) {
                     fence(Ordering::SeqCst);
                     if let Some(old) = v.0 {
-                        log::debug!("saving old thread context");
                         old.save_from_interrupt(regs, unsafe { frame.as_mut().read_only() });
-                        log::debug!("saved old thread context");
                     }
 
-                    log::debug!("loading new thread context (\n{:#?}\n)", v.1);
-
                     v.1.load_with_interrupt_frame(regs, unsafe { frame.as_mut() });
-                    log::debug!("loaded new thread context: {:#?}", v.1);
                 }
             }
         }

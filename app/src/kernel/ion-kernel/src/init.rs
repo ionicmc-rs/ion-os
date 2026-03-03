@@ -19,7 +19,7 @@ use core::fmt::Display;
 
 use crossbeam_queue::ArrayQueue;
 
-use crate::{arch::{self, interrupts::{self, keyboard::SC_QUEUE}, syscall::init_syscalls}, c_lib::BootInfo, disk, graphics, lib_alloc::{init_heap, init_thread_stack_region, user::init_user_data}, privilege::init_users, serial_println};
+use crate::{arch::{self, interrupts::{self, keyboard::SC_QUEUE}, syscall::init_syscalls}, c_lib::BootInfo, disk, graphics::{self, Surface}, lib_alloc::{init_heap, init_thread_stack_region, user::init_user_data}, privilege::init_users, serial_println};
 
 /// An error while Initializing the Kernel
 ///
@@ -81,7 +81,7 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
 
     // graphics (quick init to ensure users don't get a black screen)
 
-    graphics::framebuffer::init();
+    graphics::init_from_boot();
 
     serial_println!("mapping thread heap...");
     unsafe { init_thread_stack_region(); }

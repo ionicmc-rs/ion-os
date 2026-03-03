@@ -113,6 +113,8 @@ pub unsafe fn map_2mib(
     phys: PhysAddr,
     mut flags: PageTableFlags,
 ) {
+    log::debug!("attempting to map: {:?}", virt.as_ptr::<u8>());
+
     // temporary
     flags &= !PageTableFlags::NO_EXECUTE;
 
@@ -146,7 +148,7 @@ pub unsafe fn map_2mib(
     let l2 = next_table(*l3e);
     let pde = l2.add(pd_index(v));
 
-    assert!(*pde & ENTRY_PRESENT == 0, "PDE already mapped");
+    assert!(*pde & ENTRY_PRESENT == 0, "PDE already mapped (virt: {:?})", virt.as_ptr::<u8>());
 
     let flags = PageTableFlags::PRESENT | PageTableFlags::HUGE_PAGE | flags;
 
@@ -267,6 +269,7 @@ pub unsafe fn map_4k(
 }
 
 use crate::arch::frame_allocator::{alloc_2mib_frame, dealloc_2mib_frame};
+use crate::log;
 use spin::Mutex;
 
 /// A simple page table allocator that subdivides 2 MiB frames into 4 KiB page tables

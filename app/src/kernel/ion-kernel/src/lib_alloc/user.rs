@@ -229,7 +229,7 @@ fn align_up(x: usize, align: usize) -> usize {
 static mut USER_DATA: RegionAllocator = RegionAllocator::empty();
 
 pub const USER_DATA_SIZE: usize = 4 * 1024 * 1024;
-pub const USER_DATA_BASE: usize = 0x0000_0000_7000_0000;
+pub const USER_DATA_BASE: usize = 0x0000_0002_0000_0000;
 
 const USER_DATA_PAGES: usize = USER_DATA_SIZE / 0x1000;
 
