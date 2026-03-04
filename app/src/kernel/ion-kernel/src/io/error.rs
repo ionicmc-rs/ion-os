@@ -34,7 +34,7 @@ use core::{error, fmt::Display};
 
 use alloc::boxed::Box;
 
-use crate::c_lib::libc;
+use crate::c_lib::libc::{self, OsError};
 
 /// The Result type for I/O errors
 ///
@@ -290,6 +290,7 @@ impl Error {
 
 fn decode_os_code(code: i32) -> Option<ErrorKind> {
     match code {
+        i32::MIN..0 => None, // user code
         0 => None,
         // no 1
         2 => Some(ErrorKind::InvalidData),

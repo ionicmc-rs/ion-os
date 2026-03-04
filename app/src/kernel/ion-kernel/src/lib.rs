@@ -58,6 +58,7 @@ pub mod log;
 pub mod panic;
 pub mod scheduler;
 pub mod serial;
+pub mod resources;
 pub mod test;
 pub mod text;
 pub mod thread;

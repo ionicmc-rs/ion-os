@@ -12,10 +12,12 @@ use crate::{
     vfs::fs::parse::alloc_inode,
 };
 
+use crate::resources::OpenFlags;
+
 /// Helper to get the primary disk
 fn get_main_disk() -> io::Result<&'static mut dyn crate::disk::AsyncBlockDevice> {
     let disk = get_disk(DiskId::new(0).ok_or_else(|| 
-        io::Error::new(io::ErrorKind::Other, "failed to get disk")
+        io::Error::new(io::ErrorKind::NotFound, "failed to get disk")
     )?);
     Ok(disk)
 }
@@ -476,19 +478,19 @@ impl OpenOptions {
 
         let inode = crate::vfs::resolve_path(disk, path).await?;
         
-        let mut flags = fd::OpenFlags::empty();
+        let mut flags = OpenFlags::empty();
 
         if self.read {
-            flags |= fd::OpenFlags::READ;
+            flags |= OpenFlags::READ;
         }
         if self.write {
-            flags |= fd::OpenFlags::WRITE;
+            flags |= OpenFlags::WRITE;
         }
         if self.append {
-            flags |= fd::OpenFlags::APPEND;
+            flags |= OpenFlags::APPEND;
         }
         if self.create || self.create_new {
-            flags |= fd::OpenFlags::CREATE;
+            flags |= OpenFlags::CREATE;
         }
 
         Ok(File { fd: fd::open(DiskId::new(0).unwrap(), inode.index(), flags).await? })

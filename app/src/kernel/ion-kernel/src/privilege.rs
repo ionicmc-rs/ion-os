@@ -27,7 +27,22 @@ use crate::thread::sync::Mutex;
 ///
 /// User IDs are kernel-assigned, stable, and never reused.
 /// `UserId = 0` is always reserved for the `Os` user.
-pub type UserId = u32;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UserID(u32);
+
+impl UserID {
+    pub const fn new(id: u32) -> Self {
+        Self(id)
+    }
+
+    pub const fn os() -> Self {
+        Self(0)
+    }
+
+    pub fn get(&self) -> u32 {
+        self.0
+    }
+}
 
 /// Privilege levels within Ion OS.
 ///
@@ -72,7 +87,7 @@ pub struct UserMetaData {
     pub name: [u8; 16],
 
     /// Kernel-assigned user identifier.
-    pub id: UserId,
+    pub id: UserID,
 }
 
 /// Kernel representation of a user identity.
@@ -118,7 +133,7 @@ pub fn init_users() {
     reg.users.push(User {
         meta: UserMetaData {
             name: *b"Os\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
-            id: 0,
+            id: UserID::os(),
         },
         privilege: PrivilegeLevel::Os,
     });
@@ -130,22 +145,31 @@ pub fn init_users() {
 ///
 /// Returns the assigned `UserId`.
 pub fn create_user(
-    name: [u8; 16],
+    name: &str,
     privilege: PrivilegeLevel,
-) -> UserId {
+) -> Option<UserID> {
+
+    if name.len() > 16 || name.len() == 0 {
+        return None;
+    }
+
     let mut reg = USER_REGISTRY.lock();
 
-    let id = reg.users.len() as UserId;
+    let id = UserID(reg.users.len() as u32);
+
+    let mut buf = [0; 16];
+
+    buf[..name.len()].copy_from_slice(name.as_bytes());
 
     reg.users.push(User {
         meta: UserMetaData {
-            name,
+            name: buf,
             id,
         },
         privilege,
     });
 
-    id
+    Some(id)
 }
 
 /// Retrieve a user by ID.
@@ -157,9 +181,9 @@ pub fn create_user(
 /// - Users are never removed
 /// - User storage is stable for the kernel lifetime
 /// - Mutation is centralized inside the registry
-pub fn get_user(id: UserId) -> Option<&'static User> {
+pub fn get_user(id: UserID) -> Option<&'static User> {
     let reg = USER_REGISTRY.lock();
-    let user = reg.users.get(id as usize)? as *const User;
+    let user = reg.users.get(id.get() as usize)? as *const User;
 
     // SAFETY:
     // - registry lives forever

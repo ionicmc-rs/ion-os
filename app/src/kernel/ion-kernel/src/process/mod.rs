@@ -1,8 +1,8 @@
 use core::{cell::Cell, fmt::Debug};
-use alloc::{string::String, vec::Vec, vec};
+use alloc::{boxed::Box, string::String, vec, vec::Vec};
 
 use crate::{
-    privilege::UserId, serial_println, thread::{self, ThreadID, sync::Mutex, tls::tcb}
+    io, privilege::UserID, resources::{FdDispatch, OpenFlags, ResourceTable, fd}, serial_println, thread::{self, ThreadID, sync::Mutex, tls::tcb}, vfs::fd::FdTable
 };
 
 pub mod elf;
@@ -22,16 +22,83 @@ pub enum ProcessState {
     Zombie(i32),
 }
 
+#[derive(Debug)]
+pub struct Resources {
+    local_fd_mappings: ResourceTable<FdHandle>
+}
+
+#[derive(Debug)]
+pub struct FdHandle(u32);
+
+impl FdDispatch for FdHandle {
+    fn read(&mut self, buf: &mut [u8]) -> crate::io::Result<u64> {
+        fd::read(self.0, buf)
+    }
+
+    fn write(&mut self, data: &[u8]) -> crate::io::Result<u64> {
+        fd::write(self.0, data)
+    }
+
+    fn seek(&mut self, pos: u64) -> crate::io::Result<u64> {
+        fd::seek(self.0, pos)
+    }
+
+    fn seek_relative(&mut self, delta: i64) -> crate::io::Result<u64> {
+        fd::seek_relative(self.0, delta)
+    }
+
+    fn rewind(&mut self) {
+        _ = fd::rewind(self.0);
+    }
+
+    fn tell(&self) -> crate::io::Result<u64> {
+        fd::tell(self.0)
+    }
+
+    fn flags(&self) -> crate::resources::OpenFlags {
+        fd::info(self.0)
+            .expect("could not get open flags")
+            .2
+    }
+
+    fn is_readable(&self) -> bool {
+        self.flags().contains(OpenFlags::READ)
+    }
+
+    fn is_writable(&self) -> bool {
+        self.flags().contains(OpenFlags::WRITE)
+    }
+
+    fn truncate(&mut self, size: u64) -> crate::io::Result<()> {
+        fd::truncate(self.0, size)
+    }
+
+    fn close(self: alloc::boxed::Box<Self>) -> crate::io::Result<()> {
+        fd::close(self.0)
+    }
+
+    fn metadata(&self) -> crate::io::Result<(u64, u64, crate::resources::OpenFlags)> {
+        fd::info(self.0)
+    }
+}
+
+impl Resources {
+    pub fn alloc_fd(&mut self, fd: u32) -> io::Result<u32> {
+        self.local_fd_mappings.alloc(FdHandle(fd))
+    }
+}
+
 /// Represents a kernel-side process.
 #[derive(Debug)]
 pub struct Process {
     pub pid: ProcessID,
     pub parent: Option<ProcessID>,
     pub threads: Vec<ThreadID>,
-    pub owner: UserId,
+    pub owner: UserID,
     pub name: String,
     pub children: Vec<ProcessID>,
     pub state: ProcessState,
+    pub resources: Resources
 }
 
 /// Global process manager.
@@ -103,7 +170,7 @@ impl ProcManager {
 /// User-mode execution is blocked until ELF loading exists.
 pub fn spawn_proc(
     name: impl Into<String>,
-    owner: UserId,
+    owner: UserID,
     main_thread: ThreadID,
     parent: Option<ProcessID>,
 ) -> ProcessID {
@@ -129,6 +196,9 @@ pub fn spawn_proc(
             name: name.into(),
             children: Vec::new(),
             state: ProcessState::Running,
+            resources: Resources {
+                local_fd_mappings: ResourceTable::new()
+            }
         });
 
         lock.processes.set(processes);
@@ -188,4 +258,12 @@ pub fn exit_proc(pid: ProcessID, exit_code: i32) {
 
 pub fn dump() {
     serial_println!("{:#?}", PROCESSES);
+}
+
+impl Process {
+    pub fn open_resource(&mut self, resource: Box<dyn FdDispatch + 'static>) -> io::Result<u32> {
+        let global = fd::alloc(resource)?;
+
+        self.resources.alloc_fd(global)
+    }
 }
