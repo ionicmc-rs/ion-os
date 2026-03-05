@@ -311,5 +311,5 @@ pub fn reserve_space_for_addr(
 
     // Initialize the allocator for the allocated region
     // Note: We don't pass the address_space here since we already mapped pages above
-    unsafe { RegionAllocator::init(alloc as usize, size) }
+    unsafe { RegionAllocator::init_with_space(alloc as usize, size, space.clone()) }
 }

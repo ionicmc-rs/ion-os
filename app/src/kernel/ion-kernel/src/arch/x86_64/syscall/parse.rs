@@ -3,6 +3,7 @@ use crate::arch::syscall::dispatch::SyscallFrame;
 #[derive(Debug, Clone)]
 pub enum ThreadCommand {
     ExitCurrent,
+    GetErrno,
     Unknown
 }
 
@@ -15,6 +16,7 @@ pub enum ProcessCommand {
 #[derive(Debug, Clone)]
 pub enum IoCommand {
     Write(usize, usize, usize), // fd, buf, len
+    Read(usize, usize, usize), // fd, buf, len
     Unknown
 }
 
@@ -45,10 +47,12 @@ impl Syscall {
             }),
             2 => Self::Io(match frame.rdi {
                 0 => IoCommand::Write(frame.rsi as usize, frame.rdx as usize, frame.r10 as usize),
+                1 => IoCommand::Read(frame.rsi as usize, frame.rdx as usize, frame.r10 as usize),
                 _ => IoCommand::Unknown
             }),
             3 => Self::Thread(match frame.rdi {
                 0 => ThreadCommand::ExitCurrent,
+                1 => ThreadCommand::GetErrno,
                 _ => ThreadCommand::Unknown
             }),
             _ => Self::Unknown

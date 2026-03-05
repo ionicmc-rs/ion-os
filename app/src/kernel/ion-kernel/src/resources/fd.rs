@@ -747,6 +747,20 @@ pub fn close(fd: u32) -> io::Result<()> {
     table.close(fd)
 }
 
+/// Duplicate a file descriptor.
+///
+/// Creates a new descriptor that references the same underlying resource.
+pub fn dup(fd: u32) -> io::Result<u32> {
+    let mut table = GLOBAL_RESOURCE_TABLE.lock();
+    table.dup(fd)
+}
+
+/// Duplicate a file descriptor into a specific descriptor number.
+pub fn dup2(old_fd: u32, new_fd: u32) -> io::Result<u32> {
+    let mut table = GLOBAL_RESOURCE_TABLE.lock();
+    table.dup2(old_fd, new_fd)
+}
+
 /// Read from a file descriptor (synchronous)
 /// 
 /// Reads data from the resource at the current offset and advances the offset.

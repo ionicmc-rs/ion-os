@@ -44,6 +44,10 @@ pub fn take() -> Surface {
     unsafe { lock.assume_init_read() }
 }
 
+pub unsafe fn clear_poison() {
+    unsafe { FRAMEBUFFER.clear_poison() };
+}
+
 unsafe fn map_framebuffer(
     phys_addr: usize,
     width: u32,

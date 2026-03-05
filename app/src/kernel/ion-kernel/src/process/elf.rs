@@ -184,10 +184,7 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8]) -> Result<LoadedElf, 
             2 * 1024 * 1024,
         )
     };
-
-    unsafe {
-        map_user_data(&mut space);
-    }
+    
 
     log::debug!("created new address space for ELF");
 

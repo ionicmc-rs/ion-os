@@ -172,6 +172,8 @@ pub fn draw_glyph_from_panic(
             if (byte >> (7 - bit)) & 1 != 0 {
                 let pos = Pos::new(x + bit , y + row as u32);
 
+                unsafe { framebuffer::clear_poison() };
+
                 let mut surface = super::framebuffer();
 
                 unsafe { surface.draw_pixel(

@@ -1,6 +1,7 @@
 //! Deprecated module for VGA printing
 #![deprecated(since = "0.1.1")]
 
+
 // //! Tools for handling On Screen Text
 // //!
 // //! # Safety

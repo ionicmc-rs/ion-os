@@ -6,7 +6,7 @@ use pc_keyboard::KeyState;
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE}}, asyncio, event, graphics::{self, Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}, with_renderer}, io::OpenOptions, log::{self, error}, privilege::UserID, process::{self, spawn_proc}, scheduler::{self, SCHEDULER}, thread::Thread};
+use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE}}, asyncio, event, graphics::{self, Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}, with_renderer}, io::OpenOptions, log::{self, error}, privilege::UserID, process::{self, spawn_proc}, resources, scheduler::{self, SCHEDULER}, thread::Thread};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -177,7 +177,7 @@ pub fn kernel_main() {
     let elf = asyncio::run_future(async {
         let file = OpenOptions::new()
             .read(true)
-            .open("@/test_programs/test.elf")
+            .open("@/core/ish")
             .await
             .expect("test ELF file not found");
 
@@ -201,13 +201,23 @@ pub fn kernel_main() {
 
     let mut thread = Thread::for_user(parsed, &elf).unwrap();
 
-    let pid = spawn_proc("test", UserID::os(), thread.id(), None);
+    let pid = spawn_proc("os0", UserID::os(), thread.id(), None);
 
     thread.set_pid(pid);
 
-    log::debug!("user thread: {thread:#?}");
+    {
+        let (rstdout, wstdout) = process::open_stream_pair_for_proc(pid, 4096).unwrap();
+        let (rstderr, wstderr) = process::open_stream_pair_for_proc(pid, 4096).unwrap();
+        let (rstdin, wstdin) = process::open_stream_pair_for_proc(pid, 4096).unwrap();
 
-    SCHEDULER.queue(thread); 
+        event::add_key_listener(move |k| {
+            if k.state != KeyState::Up {
+                process::write_proc_fd(pid, wstdin, &[k.code as u8]);
+            }
+        });
+    }
+    
+    SCHEDULER.queue(thread);
 
     // log::debug!("queued thread for test ELF");
     

@@ -105,9 +105,9 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
 
         with_renderer(|r| {
             r.clear(GColor::BLACK);
+            r.present();
+            draw_text_from_panic(Pos::new(20, 20), &font, &panic_text, GColor::WHITE);
         });
-
-        draw_text_from_panic(Pos::new(20, 20), &font, &panic_text, GColor::WHITE);
     } else {
         log::error!("fallback font not loaded - cancelling draw")
     }
