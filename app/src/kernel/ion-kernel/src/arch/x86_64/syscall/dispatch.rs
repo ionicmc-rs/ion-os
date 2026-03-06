@@ -53,8 +53,6 @@ pub unsafe extern "C" fn syscall_dispatch(
 
     let syscall = Syscall::parse(frame.clone());
 
-    log::debug!("syscall received: {syscall:?}");
-
     match syscall {
         Syscall::Ack => {
             set_metadata(0);
@@ -104,8 +102,10 @@ pub unsafe extern "C" fn syscall_dispatch(
 
                         // Keep a debug fallback path so misconfigured fd routing is visible.
                         if let Ok(s) = str::from_utf8(&kernel_buf) {
+                            log::error!("{e}");
                             log::debug!("fd write fallback fd={fd}: {s}");
                         } else {
+                            log::error!("{e}");
                             log::debug!("fd write fallback fd={fd}: {kernel_buf:?}");
                         }
 

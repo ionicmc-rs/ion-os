@@ -19,20 +19,19 @@ use crate::{
     },
 };
 
-#[allow(static_mut_refs)]
 fn handle_kbd() -> ! {
     {
         let sc_q = unsafe { SC_QUEUE.assume_init_ref() };
         loop {
             thread::block_until_true(|| {
-                !sc_q.is_empty()
+                !sc_q.lock().is_empty()
             });
 
-            let sc = if let Some(v) =  sc_q.pop() {
+            
+            let sc = if let Some(v) =  sc_q.try_lock().map(|mut s| s.pop()).flatten() {
                 v
             } else {
-                thread::yield_now();
-                continue;
+                panic!("could not lock scancode queue at this moment");
             };
 
             let ev: pc_keyboard::KeyEvent = match KEYBOARD
@@ -118,7 +117,7 @@ pub fn kernel_main() {
                         Some(DecodedKey::Unicode(c)) => {
                             // use crate::text::print;
 
-                            // print!("{c}");
+                            log::debug!("key: {c}");
                         }
                         Some(DecodedKey::RawKey(k)) => {
                             serial_println!("non decoded key: {k:?}");
@@ -207,6 +206,9 @@ pub fn kernel_main() {
 
     {
         let (rstdout, wstdout) = process::open_stream_pair_for_proc(pid, 4096).unwrap();
+
+        log::debug!("wstdout = {wstdout}");
+
         let (rstderr, wstderr) = process::open_stream_pair_for_proc(pid, 4096).unwrap();
         let (rstdin, wstdin) = process::open_stream_pair_for_proc(pid, 4096).unwrap();
 
@@ -215,6 +217,50 @@ pub fn kernel_main() {
                 process::write_proc_fd(pid, wstdin, &[k.code as u8]);
             }
         });
+
+        // new thread for temporary TTY shell
+
+        thread::spawn(move || {
+            let total_col = 80;
+            let total_lines = 10;
+            let mut row = 0;
+            let mut col = 0;
+            loop {
+                let mut buf_stdout = [0u8];
+                let mut buf_stderr = [0u8];
+                let mut buf_stdin = [0u8];
+    
+                process::read_proc_fd(pid, rstdout, &mut buf_stdout);
+                process::read_proc_fd(pid, rstderr, &mut buf_stderr);
+                process::read_proc_fd(pid, rstdin, &mut buf_stdin);
+                with_renderer(|r| {
+
+                    if buf_stdout != [0u8] {
+                        draw_text(&mut r.back, Pos::new(col * 10, row * 10), &font, str::from_utf8(&buf_stdout).unwrap(), Color::WHITE);
+                        col += 1;
+                    }
+                    if buf_stdin != [0u8] {
+                        draw_text(&mut r.back, Pos::new(col * 10, row * 10), &font, str::from_utf8(&buf_stdin).unwrap(), Color::WHITE);
+                        col += 1;
+                    }
+                    if buf_stderr != [0u8] {
+                        draw_text(&mut r.back, Pos::new(col * 10, row * 10), &font, str::from_utf8(&buf_stderr).unwrap(), Color::WHITE);
+                        col += 1;
+                    }
+    
+                    if col >= total_col {
+                        col = 0;
+                        row += 1;
+                    }
+    
+                    if row >= total_lines {
+                        todo!();
+                    }
+    
+                    r.present();
+                });
+            }
+        }, 16 * 1024);
     }
     
     SCHEDULER.queue(thread);

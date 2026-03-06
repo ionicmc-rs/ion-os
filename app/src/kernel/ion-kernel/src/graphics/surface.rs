@@ -12,96 +12,192 @@ pub struct Surface {
 }
 
 impl Surface {
-    #[inline]
+
+    #[inline(always)]
     pub fn draw_pixel(&mut self, x: u32, y: u32, color: Color) {
         if x >= self.width || y >= self.height {
             return;
         }
 
-        let bpp = match self.format {
-            PixelFormat::Xrgb8888 => 4,
-            PixelFormat::Rgb888   => 3,
-        };
-
-        let byte_offset =
-            y as usize * self.pitch_bytes as usize +
-            x as usize * bpp;
-
         unsafe {
-            let ptr = self.base.add(byte_offset);
-
             match self.format {
+
                 PixelFormat::Xrgb8888 => {
-                    ptr::write_unaligned(
-                        ptr as *mut u32,
-                        color.raw(),
-                    );
+                    let pitch = self.pitch_bytes as usize >> 2;
+                    let fb = self.base as *mut u32;
+
+                    fb.add(y as usize * pitch + x as usize)
+                        .write_unaligned(color.raw());
                 }
+
                 PixelFormat::Rgb888 => {
+                    let pitch = self.pitch_bytes as usize;
+                    let off =
+                        y as usize * pitch +
+                        x as usize * 3;
+
+                    let ptr = self.base.add(off);
                     let raw = color.raw().to_le_bytes();
-                    ptr::write(ptr,     raw[0]);
-                    ptr::write(ptr.add(1), raw[1]);
-                    ptr::write(ptr.add(2), raw[2]);
+
+                    ptr.write(raw[0]);
+                    ptr.add(1).write(raw[1]);
+                    ptr.add(2).write(raw[2]);
                 }
             }
         }
     }
 
     pub fn clear(&mut self, color: Color) {
-        for y in 0..self.height {
-            for x in 0..self.width {
-                self.draw_pixel(x, y, color);
-            }
-        }
+        self.fill_rect(
+            Rect::new(0, 0, self.width, self.height),
+            color
+        );
     }
 
     pub fn fill_rect(&mut self, rect: Rect, color: Color) {
+
         let start_x = rect.x().min(self.width);
         let start_y = rect.y().min(self.height);
         let end_x   = rect.right().min(self.width);
         let end_y   = rect.bottom().min(self.height);
 
-        for y in start_y..end_y {
-            for x in start_x..end_x {
-                self.draw_pixel(x, y, color);
+        if start_x >= end_x || start_y >= end_y {
+            return;
+        }
+
+        unsafe {
+            match self.format {
+
+                /* ----------------------------
+                   XRGB8888 FAST PATH
+                   ---------------------------- */
+
+                PixelFormat::Xrgb8888 => {
+
+                    let pitch = self.pitch_bytes as usize >> 2;
+                    let fb = self.base as *mut u32;
+                    let color = color.raw();
+
+                    let width = (end_x - start_x) as usize;
+
+                    for y in start_y..end_y {
+                        let mut row =
+                            fb.add(y as usize * pitch + start_x as usize);
+
+                        for _ in 0..width {
+                            row.write_unaligned(color);
+                            row = row.add(1);
+                        }
+                    }
+                }
+
+                /* ----------------------------
+                   RGB888 PATH
+                   ---------------------------- */
+
+                PixelFormat::Rgb888 => {
+
+                    let pitch = self.pitch_bytes as usize;
+                    let raw = color.raw().to_le_bytes();
+                    let width = (end_x - start_x) as usize;
+
+                    for y in start_y..end_y {
+
+                        let mut row =
+                            self.base.add(
+                                y as usize * pitch +
+                                start_x as usize * 3
+                            );
+
+                        for _ in 0..width {
+                            row.write(raw[0]);
+                            row.add(1).write(raw[1]);
+                            row.add(2).write(raw[2]);
+                            row = row.add(3);
+                        }
+                    }
+                }
             }
         }
     }
 
     pub fn blit(&mut self, src: &Surface, x: u32, y: u32) {
+
         if self.format != src.format {
             panic!("blit format mismatch");
         }
 
-        let bpp = match self.format {
-            PixelFormat::Xrgb8888 => 4,
-            PixelFormat::Rgb888   => 3,
-        };
+        unsafe {
+            match self.format {
 
-        for row in 0..src.height {
-            if y + row >= self.height {
-                break;
-            }
+                /* ----------------------------
+                   XRGB8888 FAST PATH
+                   ---------------------------- */
 
-            for col in 0..src.width {
-                if x + col >= self.width {
-                    break;
+                PixelFormat::Xrgb8888 => {
+
+                    let row_bytes = src.width as usize * 4;
+
+                    for row in 0..src.height {
+
+                        if y + row >= self.height {
+                            break;
+                        }
+
+                        let src_ptr =
+                            src.base.add(
+                                row as usize *
+                                src.pitch_bytes as usize
+                            );
+
+                        let dst_ptr =
+                            self.base.add(
+                                (y + row) as usize *
+                                self.pitch_bytes as usize +
+                                x as usize * 4
+                            );
+
+                        ptr::copy_nonoverlapping(
+                            src_ptr,
+                            dst_ptr,
+                            row_bytes
+                        );
+                    }
                 }
 
-                unsafe {
-                    let src_off =
-                        row as usize * src.pitch_bytes as usize +
-                        col as usize * bpp;
+                /* ----------------------------
+                   RGB888 PATH
+                   ---------------------------- */
 
-                    let dst_off =
-                        (y + row) as usize * self.pitch_bytes as usize +
-                        (x + col) as usize * bpp;
+                PixelFormat::Rgb888 => {
 
-                    ptr::copy_nonoverlapping(
-                        src.base.add(src_off),
-                        self.base.add(dst_off),
-                        bpp,
-                    );
+                    let row_bytes = src.width as usize * 3;
+
+                    for row in 0..src.height {
+
+                        if y + row >= self.height {
+                            break;
+                        }
+
+                        let src_ptr =
+                            src.base.add(
+                                row as usize *
+                                src.pitch_bytes as usize
+                            );
+
+                        let dst_ptr =
+                            self.base.add(
+                                (y + row) as usize *
+                                self.pitch_bytes as usize +
+                                x as usize * 3
+                            );
+
+                        ptr::copy_nonoverlapping(
+                            src_ptr,
+                            dst_ptr,
+                            row_bytes
+                        );
+                    }
                 }
             }
         }

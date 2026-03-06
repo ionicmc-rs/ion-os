@@ -141,7 +141,6 @@ impl<'a> BitmapFont<'a> {
  * ============================
  */
 
-/// Draw a single PSF1 glyph
 pub fn draw_glyph(
     surface: &mut Surface,
     x: u32,
@@ -150,16 +149,72 @@ pub fn draw_glyph(
     glyph: &[u8],
     color: Color,
 ) {
-    for (row, byte) in glyph.iter().enumerate() {
-        for bit in 0..8 {
-            if (byte >> (7 - bit)) & 1 != 0 {
-                surface.draw_pixel(x + bit, y + row as u32, color); 
+    unsafe {
+        match surface.format {
+
+            /* =========================
+               XRGB8888 FAST PATH
+               ========================= */
+
+            crate::graphics::pixel::PixelFormat::Xrgb8888 => {
+
+                let pitch = surface.pitch_bytes as usize >> 2;
+                let fb = surface.base as *mut u32;
+                let color = color.raw();
+
+                for (row, byte) in glyph.iter().enumerate() {
+
+                    let mut dst =
+                        fb.add((y as usize + row) * pitch + x as usize);
+
+                    let mut bits = *byte;
+
+                    for _ in 0..8 {
+                        if bits & 0x80 != 0 {
+                            dst.write_unaligned(color);
+                        }
+                        dst = dst.add(1);
+                        bits <<= 1;
+                    }
+                }
+            }
+
+            /* =========================
+               RGB888 PATH
+               ========================= */
+
+            crate::graphics::pixel::PixelFormat::Rgb888 => {
+
+                let pitch = surface.pitch_bytes as usize;
+                let raw = color.raw().to_le_bytes();
+
+                for (row, byte) in glyph.iter().enumerate() {
+
+                    let mut dst =
+                        surface.base.add(
+                            (y as usize + row) * pitch +
+                            x as usize * 3
+                        );
+
+                    let mut bits = *byte;
+
+                    for _ in 0..8 {
+
+                        if bits & 0x80 != 0 {
+                            dst.write(raw[0]);
+                            dst.add(1).write(raw[1]);
+                            dst.add(2).write(raw[2]);
+                        }
+
+                        dst = dst.add(3);
+                        bits <<= 1;
+                    }
+                }
             }
         }
     }
 }
 
-/// Draw a single PSF1 glyph
 pub fn draw_glyph_from_panic(
     x: u32,
     y: u32,
@@ -167,25 +222,11 @@ pub fn draw_glyph_from_panic(
     glyph: &[u8],
     color: Color,
 ) {
-    for (row, byte) in glyph.iter().enumerate() {
-        for bit in 0..8 {
-            if (byte >> (7 - bit)) & 1 != 0 {
-                let pos = Pos::new(x + bit , y + row as u32);
+    unsafe { framebuffer::clear_poison() };
 
-                unsafe { framebuffer::clear_poison() };
+    let mut surface = super::framebuffer();
 
-                let mut surface = super::framebuffer();
-
-                unsafe { surface.draw_pixel(
-                    pos.x,
-                    pos.y,
-                    color,
-                ) };
-
-                drop(surface);
-            }
-        }
-    }
+    draw_glyph(&mut surface, x, y, font, glyph, color);
 }
 
 /// Draw ASCII text using a PSF1 font

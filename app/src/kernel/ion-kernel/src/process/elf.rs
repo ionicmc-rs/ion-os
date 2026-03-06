@@ -245,7 +245,7 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8]) -> Result<LoadedElf, 
         }
 
         let src_vaddr = ph.p_vaddr as usize;
-        let dst_vaddr = src_vaddr + delta;
+        let dst_vaddr = load_base + (src_vaddr - min_vaddr);
 
         let memsz  = ph.p_memsz  as usize;
         let filesz = ph.p_filesz as usize;
@@ -293,7 +293,7 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8]) -> Result<LoadedElf, 
      * Entry point
      * ---------------------------- */
 
-    let entry = elf.ehdr.e_entry as usize + delta;
+    let entry = load_base + (elf.ehdr.e_entry as usize - min_vaddr);
 
     log::info!("ELF loaded: entry={:#x}, load_base={:#x}, stack_base={:#x}",
         entry, load_base, stack_base);
