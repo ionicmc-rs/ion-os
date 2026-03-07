@@ -73,16 +73,18 @@ impl InitErr {
 /// returns the first error, as an [`InitErr`]
 #[allow(static_mut_refs)]
 pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
+    // allocation (essential)
+    unsafe { arch::frame_allocator::init_global_frame_allocator(boot_info.mem_map_addr) };
+
     // interrupts
     interrupts::init_interrupt_operations();
 
-    // allocation
-
-    unsafe { arch::frame_allocator::init_global_frame_allocator(boot_info.mem_map_addr) };
-
+    
     // graphics (quick init to ensure users don't get a black screen)
-
+    
     graphics::init_from_boot();
+    
+    // allocation (essential, but not totally)
 
     serial_println!("mapping thread heap...");
     unsafe { init_thread_stack_region(); }
@@ -109,6 +111,8 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
 
     let alloc = alloc::boxed::Box::new(10);
     assert_eq!(*alloc, 10);
+
+    // init interrupts now, it is safe
 
     x86_64::instructions::interrupts::enable();
 

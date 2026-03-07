@@ -4,7 +4,7 @@
 //!
 //! These things are handled in Ion OS's initialization, so you wouldn't typically have to see them.
 
-use crate::{arch::interrupts::{pic8259::InterruptIndex, thread::YIELD_INTERRUPT_NUMBER}, c_lib::libc, serial_println};
+use crate::{address_space::{self, kernel_address_space}, arch::{PhysAddr, VirtAddr, interrupts::{apic::cpu_lapic, ioapic::IoApic, thread::YIELD_INTERRUPT_NUMBER}, mmu::{self, PageTable, PageTableFlags}}, c_lib::libc, serial_println};
 use lazy_static::lazy_static;
 use x86_64::{
     instructions::interrupts, set_general_handler, structures::idt::{InterruptDescriptorTable, InterruptStackFrame}
@@ -48,16 +48,6 @@ pub unsafe fn trigger<const N: u8>() {
 }
 
 // IDT
-
-macro set_index($idt:expr_2021, $($index:ident$((unsafe $stack:literal))? => $handler:expr_2021),*) {
-    $({
-        $(_ = $stack; let options = )?
-        $idt[InterruptIndex::$index.as_u8()]
-           .set_handler_fn($handler);
-        $(unsafe { options.set_stack_index($stack) };)?
-    })*
-}
-
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
@@ -67,8 +57,7 @@ lazy_static! {
             index: u8,
             error_code: Option<u64>,
         ) {            
-            serial_println!("handle irq {}\n\nerr code: {error_code:?}\n\n{stack_frame:#?}", index);
-            panic!()
+            todo!("handle irq {}\n\nerr code: {error_code:?}\n\n{stack_frame:#?}", index);
         }
 
         set_general_handler!(&mut idt, general_handler);
@@ -80,34 +69,71 @@ lazy_static! {
                 .set_stack_index(page_fault::PAGE_FAULT_IST_INDEX);
             idt.double_fault.set_handler_fn(double_fault::double_fault)
                 .set_stack_index(double_fault::DOUBLE_FAULT_IST_INDEX);
-            idt[InterruptIndex::Timer.as_u8()]
+        }
+        idt.general_protection_fault.set_handler_fn(gp::protection_fault);
+        
+        // Hardware Interrupts.
+        
+        // APIC
+        
+        unsafe {
+            idt[TIMER_VEC]
                 .set_handler_fn(thread::timer_trampoline)
-                // Safety: a timer interrupt cannot occur at the same time as a yield
                 .set_stack_index(thread::TIMER_IST);
             idt[YIELD_INTERRUPT_NUMBER]
                 .set_handler_fn(thread::yield_trampoline)
                 .set_stack_index(thread::YIELD_IST);
         }
-        idt.general_protection_fault.set_handler_fn(gp::protection_fault);
 
-        // Hardware Interrupts.
-
-        set_index!(
-            idt,
-            Keyboard => keyboard::keyboard_interrupt_handler
-        );
+        idt[KEYBOARD_VEC]
+            .set_handler_fn(keyboard::keyboard_interrupt_handler);
 
         idt
     };
 }
 
+const TIMER_VEC: u8 = 48;
+const KEYBOARD_VEC: u8 = 49;
+
+static mut IOAPIC: IoApic = unsafe { IoApic::new(0xFEC00000) };
+
 /// inits the IDT, GDT, TSS, PIC8259, and interrupts.
 pub fn init_interrupt_operations() {
     gdt::init();
     IDT.load();
-    pic8259::init();
+    unsafe { 
+
+        address_space::map_4k_into_space(
+            &mut kernel_address_space(),
+            VirtAddr::new(apic::lapic_base() as usize),
+            PhysAddr::new(apic::lapic_base() as usize),
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE | PageTableFlags::NO_EXECUTE,
+        );
+
+        address_space::map_4k_into_space(
+            &mut kernel_address_space(),
+            VirtAddr::new(0xFEC00000),
+            PhysAddr::new(0xFEC00000),
+            PageTableFlags::PRESENT
+                | PageTableFlags::WRITABLE
+                | PageTableFlags::NO_CACHE
+                | PageTableFlags::NO_EXECUTE,
+        );
+
+        apic::init_cpu0_lapic();
+        cpu_lapic().enable(0xFF);
+
+        cpu_lapic().setup_timer(TIMER_VEC, 10_000_000);
+
+        IOAPIC.route_irq(1, KEYBOARD_VEC);
+    };
+
     // no interrupts here
     serial_println!("Initialized interrupt operations properly");
+}
+
+pub fn ioapic() -> &'static IoApic {
+    unsafe { &IOAPIC }
 }
 
 extern "x86-interrupt" fn breakpoint_handler(_stack_frame: InterruptStackFrame) {
@@ -176,7 +202,8 @@ pub use gdt::selectors as gdt_selectors;
 /// Keyboard Interrupt Handling.
 pub mod keyboard;
 mod page_fault;
-mod pic8259;
+mod apic;
+mod ioapic;
 mod thread;
 pub use thread::{
     ticks,

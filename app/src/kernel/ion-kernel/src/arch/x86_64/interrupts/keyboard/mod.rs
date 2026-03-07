@@ -9,7 +9,7 @@ use core::{any::Any, mem::MaybeUninit, sync::atomic::AtomicUsize};
 use x86_64::{ instructions::port::Port, structures::idt::InterruptStackFrame};
 use spin::Mutex;
 use crate::{
-    arch::interrupts::pic8259::handlers::notify, c_lib::libc::{self, OsError}, log::{self, warn}
+    arch::interrupts::apic::handlers::notify, c_lib::libc::{self, OsError}, log::{self, warn}
 };
 
 use pc_keyboard::{
