@@ -23,13 +23,13 @@ boot_info_data:
     dq 0              ; +0x30 kernel_entry
 
 section .text
-bits 32
+bits 32 ; the boot loader puts us in 32-bit "protected mode"
 start:
     ; Set initial stack pointer
     mov     esp, stack_top
 
 
-    mov     [boot_info_data + 0x00], eax
+    mov     [boot_info_data + 0x00], eax ; multiboot magic
     mov     [boot_info_data + 0x04], ebx ; multiboot info.
 
     ; Preserve entry registers
@@ -84,9 +84,9 @@ start:
     ; refresh cpuid flags in boot info
 
     mov eax, 1
-    cpuid
-    mov [boot_info_data + 0x8], edx
-    mov [boot_info_data + 0xC], ecx
+    cpuid ; cpuid(1)
+    mov [boot_info_data + 0x8], edx ; feature flags (eg. FPU)
+    mov [boot_info_data + 0xC], ecx ; extended features (eg. POPCNT)
 
     ; Marker S6
     mov     dword [0xb8000+20], 0x0F364F53
@@ -117,6 +117,7 @@ start:
     mov     al, 'G'
     out     0xE9, al
 
+    ; preforms the jump into 64-bit "long mode"
     jmp     gdt64.code_segment:long_mode_start
 
     ; If we reach here, far jump failed
@@ -247,27 +248,27 @@ check_multiboot:
     mov     dword [0xb8000+40], 0x0F4D4F53  ; "SM"
     mov     al, 'M'
     out     0xE9, al
-    mov     al, "M"
     jmp     error
 
 check_cpuid:
     pushfd
-    pop     eax
-    mov     ecx, eax
-    xor     eax, 1 << 21
+    pop     eax ; pop EFlags into eax
+    mov     ecx, eax 
+    xor     eax, 1 << 21 ; set bit 21 (CPUID) to 0 if it was set
     push    eax
     popfd
-    pushfd
-    pop     eax
+    pushfd 
+    pop     eax ; pop EFlags into eax to check if bit 21 was modified
     push    ecx
-    popfd
-    cmp     eax, ecx
-    je      .no_cpuid
+    popfd   ; restore EFlags
+    cmp     eax, ecx ; compare both versions of EFlags
+    je      .no_cpuid ; if they are the same, then bit 21 was not modified, meaning CPUID is not supported
 
     mov     eax, 1
-    cpuid
-    mov     [boot_info_data + 0x08], edx
-    mov     [boot_info_data + 0x0C], ecx
+    cpuid   ; cpuid(1)
+    mov     [boot_info_data + 0x08], edx ; feature flags (eg. FPU)
+    mov     [boot_info_data + 0x0C], ecx ; extended features (eg. POPCNT)
+
     ret
 .no_cpuid:
     mov     dword [0xb8000+44], 0x0F434F53  ; "SC"

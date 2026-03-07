@@ -9,10 +9,12 @@ bits 64
 long_mode_start:
     mov rsp, stack_top
 
+    ; we do not use segmentation in long mode - we can zero these segments
+    ; the kernel will restore needed segments later on
     mov ax, 0
     mov ss, ax
     mov ds, ax
-    mov es, ax
+    mov es, ax 
     mov fs, ax
     mov gs, ax
 
