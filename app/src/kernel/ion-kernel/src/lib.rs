@@ -12,13 +12,12 @@
 #![allow(static_mut_refs)]
 // #![deny(warnings, missing_docs, missing_abi, missing_debug_implementations)]
 #![feature(
-    lang_items,
     decl_macro,
     panic_can_unwind,
     custom_test_frameworks,
     try_trait_v2,
-    const_trait_impl,
     const_range,
+    const_trait_impl,
     const_destruct,
     abi_x86_interrupt,
     debug_closure_helpers,
@@ -27,7 +26,6 @@
     allocator_api,
     lazy_type_alias,
     ptr_metadata,
-    thread_local,
     const_convert,
     never_type,
     formatting_options

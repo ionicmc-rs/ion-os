@@ -4,9 +4,8 @@
 //! 
 //! This is handled once in the keyboard handler thread.
 
-use core::{any::Any, mem::MaybeUninit};
+use core::{any::Any, mem::MaybeUninit, sync::atomic::AtomicUsize};
 
-use crossbeam_queue::ArrayQueue;
 use x86_64::{ instructions::port::Port, structures::idt::InterruptStackFrame};
 use spin::Mutex;
 use crate::{
@@ -60,7 +59,7 @@ impl ScancodeQueue {
 
     fn shift_back(&mut self) {
         for x in 0..49 {
-            self.buffer[49 - x] = self.buffer[49 - (x + 1)];
+            self.buffer[x] = self.buffer[x + 1];
         }
     }
 
@@ -68,6 +67,9 @@ impl ScancodeQueue {
         self.buffer[0].is_none()
     }
 }
+
+
+pub static SCANCODES_PUSHED: AtomicUsize = AtomicUsize::new(0);
 
 /// Scancode Queue
 // it is way safer to have this zeroed so that it isn't accident read incorrectly
@@ -90,6 +92,8 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: Interrupt
         warn!("cannot scan code push at this time.")
     }
     
+    SCANCODES_PUSHED.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+
     notify!(unsafe Keyboard);
     // log::debug!("restoring rflags: {:?}", _stack_frame.cpu_flags);
 }

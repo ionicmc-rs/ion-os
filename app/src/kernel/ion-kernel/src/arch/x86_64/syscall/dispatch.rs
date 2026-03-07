@@ -123,7 +123,7 @@ pub unsafe extern "C" fn syscall_dispatch(
 
                 match read_current_fd(fd as u32, &mut kernel_buf) {
                     Ok(read) => {
-                        copy_to_user(buf as *mut u8, kernel_buf.as_ptr(), len);
+                        copy_to_user(buf as *mut u8, kernel_buf.as_ptr(), read as usize);
                         read
                     }
                     Err(e) => {

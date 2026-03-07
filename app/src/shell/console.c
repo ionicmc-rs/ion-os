@@ -29,8 +29,11 @@ int read_stdin_line(char* buffer, size_t max) {
             0
         );
 
-        if (r == 0)
+        
+        if (r <= 0)
             continue;
+
+        write_stdout(&c, 1);
 
         if (c == '\n')
             break;

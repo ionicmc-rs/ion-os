@@ -2,11 +2,11 @@
 
 use alloc::{string::String, vec::Vec};
 use elf::endian::AnyEndian;
-use pc_keyboard::KeyState;
+use pc_keyboard::{DecodedKey, KeyCode, KeyState};
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE}}, asyncio, event, graphics::{self, Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}, with_renderer}, io::OpenOptions, log::{self, error}, privilege::UserID, process::{self, spawn_proc}, resources, scheduler::{self, SCHEDULER}, thread::Thread};
+use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE, SCANCODES_PUSHED}}, asyncio, event, graphics::{self, Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}, with_renderer}, io::OpenOptions, log::{self, error}, privilege::UserID, process::{self, spawn_proc}, resources, scheduler::{self, SCHEDULER}, thread::Thread};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -24,15 +24,12 @@ fn handle_kbd() -> ! {
         let sc_q = unsafe { SC_QUEUE.assume_init_ref() };
         loop {
             thread::block_until_true(|| {
-                !sc_q.lock().is_empty()
+                SCANCODES_PUSHED.load(core::sync::atomic::Ordering::SeqCst) != 0
             });
 
+            SCANCODES_PUSHED.fetch_sub(1, core::sync::atomic::Ordering::SeqCst);
             
-            let sc = if let Some(v) =  sc_q.try_lock().map(|mut s| s.pop()).flatten() {
-                v
-            } else {
-                panic!("could not lock scancode queue at this moment");
-            };
+            let sc = sc_q.try_lock().map(|mut q| q.pop()).flatten().expect("scancode queue was empty after being woken");
 
             let ev: pc_keyboard::KeyEvent = match KEYBOARD
                 .lock()
@@ -58,6 +55,7 @@ fn handle_kbd() -> ! {
             event::wake_kbd_wakers();
 
             unsafe { scheduler::wake_kbd() };
+
         }
     }
 }
@@ -212,15 +210,42 @@ pub fn kernel_main() {
         let (rstderr, wstderr) = process::open_stream_pair_for_proc(pid, 4096).unwrap();
         let (rstdin, wstdin) = process::open_stream_pair_for_proc(pid, 4096).unwrap();
 
-        event::add_key_listener(move |k| {
-            if k.state != KeyState::Up {
-                process::write_proc_fd(pid, wstdin, &[k.code as u8]);
+        log::debug!("wstdin = {wstdin}");
+
+        event::add_key_listener(move |ev| {
+
+            let bytes: &[u8] = match KEYBOARD.lock().process_keyevent(ev.clone()) {
+                Some(DecodedKey::Unicode(c)) => {
+                    &[c as u8]
+                }
+
+                Some(DecodedKey::RawKey(code)) => {
+                    let res: &[u8] = match code {
+                        KeyCode::Return => b"\n" as &[u8],
+                        KeyCode::Backspace => b"\x08" as &[u8],
+                        KeyCode::Tab => b"\t" as &[u8],
+                        KeyCode::ArrowUp => b"\x1b[A" as &[u8],
+                        KeyCode::ArrowDown => b"\x1b[B" as &[u8],
+                        KeyCode::ArrowLeft => b"\x1b[D" as &[u8],
+                        KeyCode::ArrowRight => b"\x1b[C" as &[u8],
+                        _ => {&[]}
+                    };
+                    res
+                }
+
+                None => {&[]}
+            };
+            if ev.state != KeyState::Up {
+                process::write_proc_fd(pid, wstdin, bytes);
             }
         });
 
         // new thread for temporary TTY shell
 
         thread::spawn(move || {
+            with_renderer(|r| {
+                r.clear(Color::BLACK);
+            });
             let total_col = 80;
             let total_lines = 10;
             let mut row = 0;
@@ -228,22 +253,20 @@ pub fn kernel_main() {
             loop {
                 let mut buf_stdout = [0u8];
                 let mut buf_stderr = [0u8];
-                let mut buf_stdin = [0u8];
     
                 process::read_proc_fd(pid, rstdout, &mut buf_stdout);
                 process::read_proc_fd(pid, rstderr, &mut buf_stderr);
-                process::read_proc_fd(pid, rstdin, &mut buf_stdin);
                 with_renderer(|r| {
 
+                    let mut changed = false;
+
                     if buf_stdout != [0u8] {
+                        changed = true;
                         draw_text(&mut r.back, Pos::new(col * 10, row * 10), &font, str::from_utf8(&buf_stdout).unwrap(), Color::WHITE);
                         col += 1;
                     }
-                    if buf_stdin != [0u8] {
-                        draw_text(&mut r.back, Pos::new(col * 10, row * 10), &font, str::from_utf8(&buf_stdin).unwrap(), Color::WHITE);
-                        col += 1;
-                    }
                     if buf_stderr != [0u8] {
+                        changed = true;
                         draw_text(&mut r.back, Pos::new(col * 10, row * 10), &font, str::from_utf8(&buf_stderr).unwrap(), Color::WHITE);
                         col += 1;
                     }
@@ -256,8 +279,10 @@ pub fn kernel_main() {
                     if row >= total_lines {
                         todo!();
                     }
-    
-                    r.present();
+
+                    if changed {
+                        r.present();
+                    }
                 });
             }
         }, 16 * 1024);

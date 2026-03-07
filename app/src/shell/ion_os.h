@@ -56,6 +56,6 @@ static inline long syscall(
 #define SYS_IO_READ 1
 
 #define WSTDOUT_FD 1
-#define RSTDIN_FD 5
+#define RSTDIN_FD 4
 
 #endif

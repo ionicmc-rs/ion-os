@@ -149,6 +149,10 @@ pub fn create_user(
     privilege: PrivilegeLevel,
 ) -> Option<UserID> {
 
+    if privilege == PrivilegeLevel::Os {
+        return None;
+    }
+
     if name.len() > 16 || name.len() == 0 {
         return None;
     }

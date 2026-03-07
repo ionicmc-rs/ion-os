@@ -97,23 +97,23 @@ pub extern "x86-interrupt" fn timer_trampoline(_: InterruptStackFrame /* unused 
 #[unsafe(no_mangle)]
 pub extern "C" fn timer_handler(regs: &mut InterruptRegs, frame: &mut InterruptStackFrame) {
     let next = SCHEDULER.pick_preempt();
-
+    
     if let Some(v) = next {
         if let Some(old) = v.0 {
             old.save_from_interrupt(regs, unsafe { frame.as_mut().read_only() }); // does not need the actual memory
         }
         v.1.load_with_interrupt_frame(regs, unsafe { frame.as_mut() });
     }
-
+    
     let t = TICKS.fetch_add(1, Ordering::Relaxed);
     if t.is_multiple_of(50) {
         serial_println!("reached notable tick: {t}");
     }
-
+    
     scheduler::request_reschedule();
     scheduler::wake_done();
 
-    notify!(unsafe Timer)
+    notify!(unsafe Timer);
 }
 
 pub(super) const TIMER_IST: u16 = 4;

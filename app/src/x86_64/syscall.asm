@@ -45,6 +45,5 @@ syscall_entry:
     mov rsp, rbp
     pop rbp
 
-    ; Encode SYSRETQ explicitly (REX.W + SYSRET).
-    ; Plain `sysret` encodes as SYSRETL, which is not valid for 64-bit user return.
-    db 0x48, 0x0F, 0x07
+    ; o64 is required as nasm will produce sysretl by default
+    o64 sysret

@@ -170,9 +170,6 @@ impl FdDispatch for ChannelEndpoint {
 
         let mut core = self.core.lock();
         let read = core.ring.read_into(buf);
-        if read == 0 {
-            return Err(ErrorKind::WouldBlock.into());
-        }
 
         self.cursor = self.cursor.saturating_add(read as u64);
         Ok(read as u64)

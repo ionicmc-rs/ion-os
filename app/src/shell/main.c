@@ -10,15 +10,13 @@ void _start() {
 
     char buffer[BUFFER_LEN];
 
-    write_stdout(prompt, sizeof(prompt) - 1);
     while (1) {
+        write_stdout(prompt, sizeof(prompt) - 1);
+
         int len = read_stdin_line(buffer, BUFFER_LEN);
 
-        if (len <= 0)
+        if (len < 0)
             continue;
-        
-        
-        write_stdout(prompt, sizeof(prompt) - 1);
     }
 }
 

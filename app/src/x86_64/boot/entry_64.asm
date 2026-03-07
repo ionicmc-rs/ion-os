@@ -31,6 +31,6 @@ long_mode_start:
     mov rax, kernel_main
     mov [boot_info_data + 0x30], rax
 
-    call rax
+    call rax ; enter the kernel
 
     hlt
