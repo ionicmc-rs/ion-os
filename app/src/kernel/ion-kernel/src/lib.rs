@@ -69,6 +69,7 @@ pub mod disk;
 pub mod vfs;
 pub mod graphics;
 pub mod mmio;
+pub mod event_logger;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {
