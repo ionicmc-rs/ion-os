@@ -163,6 +163,40 @@ impl RegionAllocator {
             cur = &mut a.next;
         }
     }
+
+    #[allow(invalid_reference_casting)]
+    pub fn allocate_with_flags(&self, layout: Layout, flags: PageTableFlags) -> Option<NonNull<[u8]>> {
+        let this = unsafe { &mut *((self as *const _ as *mut RegionAllocator)) };
+
+        let base = this.alloc_inner(layout)?;
+
+        // If we have an address space, map the pages
+        if let Some(ref mut space) = this.address_space {
+            let pages = (layout.size() + 0xFFF) / 0x1000;
+            for i in 0..pages {
+                let va = base + i * 0x1000;
+                let phys = alloc_4k_frame().expect("out of physical memory");
+                
+                unsafe {
+                    address_space::map_4k_into_space(
+                        space,
+                        VirtAddr::new(va),
+                        PhysAddr::new(phys),
+                        PageTableFlags::USER_PAGE
+                            | PageTableFlags::WRITABLE
+                            | PageTableFlags::PRESENT,
+                    );
+                }
+            }
+        }
+
+        Some(unsafe {
+            NonNull::slice_from_raw_parts(
+                NonNull::new_unchecked(base as *mut u8),
+                layout.size(),
+            )
+        })
+    }
 }
 
 /* ============================================================

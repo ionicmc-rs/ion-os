@@ -9,8 +9,17 @@ struct IonRequests {
     uint32_t magic;
     uint16_t version;
     uint16_t size;
+
+    // stack request
+
+    uint32_t stack_tag_ty; // = 1
+    uint32_t stack_tag_size;
+
     uint64_t stack_size;
     uint64_t stack_align;
+    
+    uint32_t end_tag_ty; // = 0
+    uint32_t end_tag_size;
 } __attribute__((packed));
 
 static inline long syscall(
@@ -25,7 +34,6 @@ static inline long syscall(
     register long r10 __asm__("r10") = arg2;
     register long r8  __asm__("r8")  = arg3;
     register long r9  __asm__("r9")  = arg4;
-
     long ret;
 
     __asm__ volatile (

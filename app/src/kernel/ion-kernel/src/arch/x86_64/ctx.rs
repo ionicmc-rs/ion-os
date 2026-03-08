@@ -5,10 +5,11 @@
 
 #![cfg(target_arch = "x86_64")]
 
-use core::{arch::{asm, naked_asm}, fmt, mem::{offset_of, size_of}};
+use core::{arch::{asm, naked_asm}, ffi::CStr, fmt, mem::{offset_of, size_of}, ptr};
 
+use alloc::vec::Vec;
 use bitflags::Flags;
-use linked_list_allocator::align_up_size;
+use linked_list_allocator::{align_down_size, align_up, align_up_size};
 use volatile::Volatile;
 use x86_64::{VirtAddr, registers::rflags::{self, RFlags}, structures::{gdt::SegmentSelector, idt::InterruptStackFrameValue}};
 
@@ -46,6 +47,23 @@ pub fn current() -> Context {
     capture()
 }
 
+pub enum ArgLevel {
+    Normal,     // 0
+    Raw,        // 1
+    None,       // 2
+}
+
+impl ArgLevel {
+    pub fn from_u8(byte: u8) -> Option<Self> {
+        match byte {
+            0 => Some(Self::Normal),
+            1 => Some(Self::Raw),
+            2 => Some(Self::None),
+            _ => None
+        }
+    }
+}
+
 impl Context {
     /// creates a "zero"ed context
     /// 
@@ -80,8 +98,16 @@ impl Context {
         }
     }
 
-    pub fn user(entry: usize, arg: usize, stack: usize) -> Self {
+    pub fn user(
+        entry: usize,
+        arg: usize,
+        stack: usize,
+        argv: &[&str],
+        level: ArgLevel,
+    ) -> Self {
+
         let mut ctx = Self::initial(entry, arg, stack);
+
         let mut seg_cs = super::interrupts::gdt_selectors().user_code;
         seg_cs.set_rpl(x86_64::PrivilegeLevel::Ring3);
         ctx.segments.cs = seg_cs.0;
@@ -90,7 +116,75 @@ impl Context {
         seg_ss.set_rpl(x86_64::PrivilegeLevel::Ring3);
         ctx.segments.ss = seg_ss.0;
 
-        unsafe { *(ctx.regs.rsp as *mut usize) = 0xdeadbeefdeadbeef }; // there is no use in keeping a kernel-mapped fallback
+        let mut rsp = align_down_size(ctx.regs.rsp as usize, 16);
+
+        if let ArgLevel::None = level {
+            ctx.regs.rsp = rsp as u64;
+            ctx.regs.rdi = 0;
+            ctx.regs.rsi = 0;
+            return ctx;
+        }
+
+        let mut arg_ptrs = Vec::with_capacity(argv.len());
+
+        /* ----------------------------
+        * Copy argument strings
+        * ---------------------------- */
+
+        for arg in argv.iter().rev() {
+
+            if arg.as_bytes().contains(&0) {
+                panic!("argument cannot contain interior NULL bytes");
+            }
+
+            let len = arg.len() + 1;
+
+            rsp -= len;
+
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    arg.as_ptr(),
+                    rsp as *mut u8,
+                    arg.len(),
+                );
+
+                *((rsp + arg.len()) as *mut u8) = 0;
+            }
+
+            arg_ptrs.push(rsp);
+        }
+
+        rsp = align_down_size(rsp, 16);
+
+        /* ----------------------------
+        * Normal Linux-style argv
+        * ---------------------------- */
+
+        if let ArgLevel::Normal = level {
+
+            rsp -= size_of::<usize>();
+            unsafe { *(rsp as *mut usize) = 0 };
+
+            for ptr in arg_ptrs.iter() {
+                rsp -= size_of::<usize>();
+                unsafe { *(rsp as *mut usize) = *ptr };
+            }
+
+            let argv_ptr = rsp;
+
+            rsp -= size_of::<usize>();
+            unsafe { *(rsp as *mut usize) = argv.len() };
+
+            ctx.regs.rdi = argv.len() as u64;
+            ctx.regs.rsi = argv_ptr as u64;
+
+        } else {
+            // Raw mode: user parses manually
+            ctx.regs.rdi = argv.len() as u64;
+            ctx.regs.rsi = rsp as u64;
+        }
+
+        ctx.regs.rsp = rsp as u64;
 
         ctx
     }

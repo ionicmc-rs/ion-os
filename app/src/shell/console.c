@@ -16,7 +16,10 @@ void write_stdout(const char* buf, size_t len) {
 int read_stdin_line(char* buffer, size_t max) {
     size_t i = 0;
 
-    while (1) {
+    if (max != BUFFER_LEN)
+        exit(1);
+
+    while (1) {        
         char c;
 
         long r = syscall(
@@ -28,7 +31,6 @@ int read_stdin_line(char* buffer, size_t max) {
             0,
             0
         );
-
         
         if (r <= 0)
             continue;

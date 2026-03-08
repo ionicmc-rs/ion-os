@@ -123,8 +123,20 @@ pub unsafe extern "C" fn syscall_dispatch(
 
                 match read_current_fd(fd as u32, &mut kernel_buf) {
                     Ok(read) => {
-                        copy_to_user(buf as *mut u8, kernel_buf.as_ptr(), read as usize);
-                        read
+                        let x = copy_to_user(buf as *mut u8, kernel_buf.as_ptr(), read as usize).map_err(|e| e.to_os_error());
+
+                        if read != 0 {
+                            log::debug!("read {read} bytes from fd {fd}: {kernel_buf:?}");
+                        }
+
+                        match x {
+                            Ok(()) => read,
+                            Err(e) => {
+                                libc::set_os_error(e);
+                                u64::MAX
+                            }
+                        }
+
                     }
                     Err(e) => {
                         libc::set_os_error(io_error_to_os_error(e.kind()));

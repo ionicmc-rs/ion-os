@@ -1,12 +1,12 @@
 //! Main entry point
 
-use alloc::{string::String, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 use elf::endian::AnyEndian;
 use pc_keyboard::{DecodedKey, KeyCode, KeyState};
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE, SCANCODES_PUSHED}}, asyncio, event, graphics::{self, Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}, with_renderer}, io::OpenOptions, log::{self, error}, privilege::UserID, process::{self, spawn_proc}, resources, scheduler::{self, SCHEDULER}, thread::Thread};
+use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE, SCANCODES_PUSHED}}, asyncio, event, graphics::{self, Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}, with_renderer}, io::OpenOptions, log::{self, error}, privilege::UserID, process::{self, FdHandle, spawn_proc}, resources::{self, ResourceTable, channel, fd}, scheduler::{self, SCHEDULER}, thread::Thread};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -64,8 +64,6 @@ fn handle_kbd() -> ! {
 
 /// final init.
 pub fn kernel_main() {
-    serial_println!("in kernel main");
-
     #[cfg(debug_assertions)]
     event::add_key_listener(|ev| {
         if ev.state != KeyState::Up {
@@ -196,24 +194,36 @@ pub fn kernel_main() {
 
     // log::debug!("creating thread for test ELF");
 
-    let mut thread = Thread::for_user(parsed, &elf).unwrap();
+    let mut table = ResourceTable::new();
 
-    let pid = spawn_proc("os0", UserID::os(), thread.id(), None);
+    let (rstdout, wstdout) = channel::ring_channel_boxed(4096).unwrap();
+    let (rstderr, wstderr) = channel::ring_channel_boxed(4096).unwrap();
+    let (rstdin, wstdin) = channel::ring_channel_boxed(4096).unwrap();
 
-    thread.set_pid(pid);
+    let rsdtout = fd::alloc(rstdout).unwrap();
+    let wstodut = fd::alloc(wstdout).unwrap();
+    let rstderr = fd::alloc(rstderr).unwrap();
+    let wstderr = fd::alloc(wstderr).unwrap();
+    let rstdin = fd::alloc(rstdin).unwrap();
+    let wstdin = fd::alloc(wstdin).unwrap();
+
+    let rstdout = table.alloc(FdHandle(rsdtout)).unwrap();
+    table.alloc(FdHandle(wstodut)).unwrap();
+    let rstderr = table.alloc(FdHandle(rstderr)).unwrap();
+    table.alloc(FdHandle(wstderr)).unwrap();
+    table.alloc(FdHandle(rstdin)).unwrap();
+    table.alloc(FdHandle(wstdin)).unwrap();
+
+    let mut pid = asyncio::run_future(process::exec(
+        UserID::os(), 
+        "@/core/ish", 
+        &["@/core/ish"], 
+        None,
+        table
+    )).unwrap();
 
     {
-        let (rstdout, wstdout) = process::open_stream_pair_for_proc(pid, 4096).unwrap();
-
-        log::debug!("wstdout = {wstdout}");
-
-        let (rstderr, wstderr) = process::open_stream_pair_for_proc(pid, 4096).unwrap();
-        let (rstdin, wstdin) = process::open_stream_pair_for_proc(pid, 4096).unwrap();
-
-        log::debug!("wstdin = {wstdin}");
-
         event::add_key_listener(move |ev| {
-
             let bytes: &[u8] = match KEYBOARD.lock().process_keyevent(ev.clone()) {
                 Some(DecodedKey::Unicode(c)) => {
                     &[c as u8]
@@ -237,6 +247,7 @@ pub fn kernel_main() {
             };
             if ev.state != KeyState::Up {
                 process::write_proc_fd(pid, wstdin, bytes);
+                log::debug!("wrote: {bytes:?}");
             }
         });
 
@@ -262,20 +273,35 @@ pub fn kernel_main() {
 
                     if buf_stdout != [0u8] {
                         changed = true;
-                        draw_text(&mut r.back, Pos::new(col * 10, row * 10), &font, str::from_utf8(&buf_stdout).unwrap(), Color::WHITE);
-                        col += 1;
+
+                        if buf_stdout[0] == b'\n' {
+                            col = 0;
+                            row += 1;
+                        } else {
+                            draw_text(&mut r.back, Pos::new(col * 10, row * 10), &font, str::from_utf8(&buf_stdout).unwrap(), Color::WHITE);
+                            col += 1;
+                            if col >= total_col {
+                                col = 0;
+                                row += 1;
+                            }
+                        }
                     }
                     if buf_stderr != [0u8] {
                         changed = true;
-                        draw_text(&mut r.back, Pos::new(col * 10, row * 10), &font, str::from_utf8(&buf_stderr).unwrap(), Color::WHITE);
-                        col += 1;
+
+                        if buf_stderr[0] == b'\n' {
+                            col = 0;
+                            row += 1;
+                        } else {
+                            draw_text(&mut r.back, Pos::new(col * 10, row * 10), &font, str::from_utf8(&buf_stderr).unwrap(), Color::WHITE);
+                            col += 1;
+                            if col >= total_col {
+                                col = 0;
+                                row += 1;
+                            }
+                        }
                     }
-    
-                    if col >= total_col {
-                        col = 0;
-                        row += 1;
-                    }
-    
+
                     if row >= total_lines {
                         todo!();
                     }
@@ -287,8 +313,6 @@ pub fn kernel_main() {
             }
         }, 16 * 1024);
     }
-    
-    SCHEDULER.queue(thread);
 
     // log::debug!("queued thread for test ELF");
     

@@ -1,14 +1,9 @@
 use core::{cell::Cell, fmt::Debug};
 
-use alloc::{boxed::Box, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
 
 use crate::{
-    io::{self, ErrorKind},
-    log,
-    privilege::UserID,
-    resources::{self, FdDispatch, OpenFlags, ResourceTable, channel, fd},
-    serial_println,
-    thread::{self, ThreadID, sync::Mutex, tls::tcb},
+    asyncio, io::{self, ErrorKind, OpenOptions}, log, privilege::UserID, resources::{self, FdDispatch, OpenFlags, ResourceTable, channel, fd}, scheduler::SCHEDULER, serial_println, thread::{self, Thread, ThreadID, sync::Mutex, tls::tcb}
 };
 
 pub mod elf;
@@ -50,7 +45,7 @@ pub struct Resources {
 }
 
 #[derive(Debug)]
-pub struct FdHandle(u32);
+pub struct FdHandle(pub u32);
 
 impl FdDispatch for FdHandle {
     fn read(&mut self, buf: &mut [u8]) -> crate::io::Result<u64> {
@@ -345,9 +340,7 @@ impl ProcManager {
     }
 }
 
-/// Spawn a new kernel-side process.
-///
-/// User-mode execution is blocked until ELF loading exists.
+/// Spawn a new process - assuming its components already exist
 pub fn spawn_proc(
     name: impl Into<String>,
     owner: UserID,
@@ -402,6 +395,65 @@ pub fn spawn_proc(
     });
 
     pid
+}
+
+pub async fn exec(owner: UserID, path: &str, args: &[&str], parent: Option<ProcessID>, local_fds: ResourceTable<FdHandle>) -> io::Result<ProcessID> {
+    // get the ELF first
+
+    let file = OpenOptions::new()
+        .read(true)
+        .open(path)
+        .await?;
+
+    let meta = file.metadata().await?;
+
+    if meta.is_dir() {
+        return Err(io::Error::new(
+            ErrorKind::IsADirectory,
+            "cannot execute a directory"
+        ));
+    }
+
+    if meta.is_empty() {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "cannot execute an empty file"
+        ));
+    }
+
+    let file_bytes = file.read_all().await?;
+
+    let parsed = ::elf::ElfBytes::minimal_parse(&file_bytes).map_err(
+        |e| io::Error::new(ErrorKind::InvalidData, e)
+    )?;
+
+    let mut main = Thread::for_user(parsed, &file_bytes, args)
+        .map_err(io::Error::other)?;
+
+    // actual spawn
+
+    let pid = spawn_proc(path, owner, main.id(), parent);
+
+    PROCESSES
+        .lock()
+        .with_mut(pid, |proc| {
+            proc.resources = Resources {
+                local_fd_mappings: local_fds,
+                inheritable_fds: Vec::new(),
+                child_fd_templates: Vec::new(),
+            };
+        });
+
+    if pid.0 != 0 && parent.is_none() {
+        panic!("only the init process can be an orphan process")
+    }
+
+    main.set_pid(pid);
+    main.set_name(&format!("{owner:?} <{path}> {args:?} - child of {parent:?}"));
+
+    SCHEDULER.queue(main);
+
+    Ok(pid)
 }
 
 /// Exit a process.

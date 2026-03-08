@@ -22,7 +22,7 @@ pub mod pool;
 pub mod stack;
 pub mod sync;
 
-use alloc::{alloc::{Allocator, Global}, sync::Arc};
+use alloc::{alloc::{Allocator, Global}, string::ToString as _, sync::Arc};
 use elf::endian::AnyEndian;
 pub use join::{JoinError, JoinErrorKind, JoinHandle, spawn, spawn_at};
 
@@ -124,9 +124,9 @@ impl Thread {
         })
     }
 
-    pub fn for_user(elf: elf::ElfBytes<AnyEndian>, elf_data: &[u8]) -> Result<Self, ElfLoadError> {
+    pub fn for_user(elf: elf::ElfBytes<AnyEndian>, elf_data: &[u8], args: &[&str]) -> Result<Self, ElfLoadError> {
         log::debug!("loading ELF file");
-        let loaded = load_elf(elf, elf_data)?;
+        let loaded = load_elf(elf, elf_data, args)?;
 
         log::debug!("loaded ELF file, entry point: {:#x}", loaded.context.instruction_pointer());
 
@@ -149,6 +149,13 @@ impl Thread {
         let ptr = self.tls as *mut ThreadSelf;
         unsafe {
             (*ptr).pid = Some(pid);
+        }
+    }
+
+    pub fn set_name(&mut self, name: &str) {
+        let ptr = self.tls as *mut ThreadSelf;
+        unsafe {
+            (*ptr).name = name.to_string();
         }
     }
 
