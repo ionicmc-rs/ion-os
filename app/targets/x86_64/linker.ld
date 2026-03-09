@@ -11,14 +11,15 @@ SECTIONS
     .ap_init 0x8000 :
     {
         KEEP(*(.ap_init))
-    }: text
-
-    . = 1M;
-
+    }: load
+    
     .boot : ALIGN(16)
     {
         KEEP(*(.multiboot_header))
     }: load
+
+    . = 1M;
+
 
     .text : ALIGN(16)
     {

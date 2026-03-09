@@ -1,8 +1,9 @@
 use core::{ptr::write_volatile, sync::atomic::{self, AtomicUsize, Ordering}};
 
 use alloc::vec::Vec;
+use linked_list_allocator::{align_down_size, align_up_size};
 
-use crate::{address_space, arch::interrupts::apic::{self, AcpiSdtHeader, Xsdt, rsdp}, log};
+use crate::{address_space, arch::{self, interrupts::apic::{self, AcpiSdtHeader, Xsdt, rsdp}}, log};
 
 const MAX_CPUS: usize = 64;
 
@@ -11,7 +12,9 @@ pub struct CpuInfo {
     pub apic_id: u32,
 }
 
-static CPU_STACKS: [[u8; 4096]; MAX_CPUS] = [[0; 4096]; MAX_CPUS];
+const STACK_SIZE: usize = 4096 * 4;
+
+static CPU_STACKS: [[u8; STACK_SIZE]; MAX_CPUS] = [[0; STACK_SIZE]; MAX_CPUS];
 static mut CPUS: [Option<CpuInfo>; MAX_CPUS] = [None; MAX_CPUS];
 static CPU_COUNT: AtomicUsize = AtomicUsize::new(0);
 
@@ -184,8 +187,16 @@ pub unsafe fn start_aps(trampoline: u64) {
             continue;
         }
 
-        unsafe { write_volatile(unsafe { &mut ap_stack }, &CPU_STACKS[i] as *const _ as u64) };
-        unsafe { write_volatile(unsafe { &mut ap_pml4_ptr }, address_space::kernel_address_space().ptr().as_inner() as u64) };
+        unsafe { 
+            write_volatile(unsafe { &mut ap_stack }, 
+            align_up_size(
+                (&CPU_STACKS[i] as *const [u8; STACK_SIZE])
+                    .wrapping_add(1) as usize, 
+                    16
+                ) as u64
+            ) 
+        };
+        unsafe { write_volatile(unsafe { &mut ap_pml4_ptr }, arch::mmu::active_pml4().as_usize() as u64) };
 
         atomic::fence(Ordering::SeqCst);
 

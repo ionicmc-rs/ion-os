@@ -1,6 +1,6 @@
 [BITS 16]
 
-section .ap_trampoline exec
+section .ap_init exec
 global smp_start16
 
 extern ap_entry
@@ -15,7 +15,10 @@ smp_start16:
     ; -------------------------
     ; load temporary GDT
     ; -------------------------
-    lgdt [gdt_ptr - $$]
+    lgdt [gdt_ptr]
+
+    mov al, 'B'
+    out 0xE9, al
 
     ; -------------------------
     ; enable protected mode
@@ -24,7 +27,10 @@ smp_start16:
     or eax, 1
     mov cr0, eax
 
-    jmp 0x08:(protected_mode - $$)
+    mov al, 'C'
+    out 0xE9, al
+
+    jmp DWORD 0x08:protected_mode
 
 ; --------------------------------------------------
 
@@ -32,14 +38,23 @@ smp_start16:
 
 protected_mode:
 
+    mov al, 'P'
+    out 0xE9, al
+
     ; enable PAE
     mov eax, cr4
     or eax, (1 << 5)
     mov cr4, eax
 
+    mov al, 'D'
+    out 0xE9, al
+
     ; load kernel page table
     mov eax, [ap_pml4_ptr]
     mov cr3, eax
+
+    mov al, 'E'
+    out 0xE9, al
 
     ; enable long mode
     mov ecx, 0xC0000080
@@ -47,12 +62,15 @@ protected_mode:
     or eax, (1 << 8)
     wrmsr
 
+    mov al, 'L'
+    out 0xE9, al
+
     ; enable paging
     mov eax, cr0
     or eax, (1 << 31)
     mov cr0, eax
 
-    jmp 0x28:long_mode
+    jmp 0x10:long_mode
 
 ; --------------------------------------------------
 
