@@ -4,7 +4,7 @@
 //!
 //! These things are handled in Ion OS's initialization, so you wouldn't typically have to see them.
 
-use crate::{address_space::{self, kernel_address_space}, arch::{PhysAddr, VirtAddr, interrupts::{apic::cpu_lapic, ioapic::IoApic, thread::YIELD_INTERRUPT_NUMBER}, mmu::{self, PageTable, PageTableFlags}}, c_lib::libc, serial_println};
+use crate::{address_space::{self, kernel_address_space}, arch::{PhysAddr, VirtAddr, interrupts::{ ioapic::IoApic, thread::YIELD_INTERRUPT_NUMBER}, mmu::{self, PageTable, PageTableFlags}}, c_lib::libc, serial_println};
 use lazy_static::lazy_static;
 use x86_64::{
     instructions::interrupts, set_general_handler, structures::idt::{InterruptDescriptorTable, InterruptStackFrame}
@@ -121,6 +121,8 @@ pub fn init_interrupt_operations() {
         );
 
         apic::init_cpu0_lapic();
+        // Initialize BSP's per-CPU LAPIC entry (CPU0 is always at index 0)
+        apic::init_bsp_cpu_lapic();
         cpu_lapic().enable(0xFF);
 
         cpu_lapic().setup_timer(TIMER_VEC, 10_000_000);
@@ -210,6 +212,13 @@ pub use thread::{
     set_yield_reason,
     YieldReason,
 };
+
+pub use apic::cpu_lapic;
+pub use apic::current_cpu_lapic;
+pub use apic::LocalApic;
+pub use apic::init_cpu0_lapic;
+pub use apic::init_cpu_lapic;
+pub use apic::init_bsp_cpu_lapic;
 pub(in crate::arch) use thread::InterruptRegs;
 mod gp;
 mod ud;

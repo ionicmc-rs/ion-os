@@ -190,8 +190,42 @@ pub unsafe fn init_cpu0_lapic() {
 
 static mut CPU0_LAPIC: MaybeUninit<LocalApic> = MaybeUninit::uninit();
 
+/// Per-CPU LAPIC storage
+static mut CPUS_LAPIC: [MaybeUninit<LocalApic>; 64] = [const { MaybeUninit::uninit() }; 64];
+
 pub fn cpu_lapic() -> &'static LocalApic {
     unsafe { CPU0_LAPIC.assume_init_ref() }
+}
+
+/// Get the current CPU's LAPIC (for SMP)
+/// Returns the per-CPU LAPIC if initialized, falls back to BSP LAPIC otherwise
+pub fn current_cpu_lapic() -> Option<&'static LocalApic> {
+    // SAFETY: We read the LAPIC ID from the BSP LAPIC - this is safe as we just need
+    // the ID to look up which CPU we're on.
+    let lapic_id = unsafe { cpu_lapic().id() };
+    
+    // Look up this CPU's index in the CPU array
+    if let Some(index) = crate::arch::smp::cpu_index_from_apic_id(lapic_id) {
+        // SAFETY: The per-CPU LAPIC is initialized by init_cpu_lapic or init_bsp_cpu_lapic
+        // before this function is called
+        unsafe { Some(CPUS_LAPIC[index].assume_init_ref()) }
+    } else {
+        None
+    }
+}
+
+/// Initialize LAPIC for a specific CPU index
+/// # Safety
+/// Must be called with the correct CPU index
+pub unsafe fn init_cpu_lapic(index: usize) {
+    CPUS_LAPIC[index].write(LocalApic::new(lapic_base()));
+}
+
+/// Initialize the per-CPU LAPIC for CPU0 (BSP)
+/// This must be called after init_cpu0_lapic
+pub unsafe fn init_bsp_cpu_lapic() {
+    // CPU0 is always at index 0
+    CPUS_LAPIC[0].write(LocalApic::new(lapic_base()));
 }
 
 #[repr(C, packed)]

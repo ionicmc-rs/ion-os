@@ -26,6 +26,20 @@ pub fn cpu(index: usize) -> CpuInfo {
     unsafe { CPUS[index].unwrap() }
 }
 
+/// Get the CPU index (array index) from a LAPIC ID
+/// Returns None if the LAPIC ID is not found
+pub fn cpu_index_from_apic_id(apic_id: u32) -> Option<usize> {
+    let count = CPU_COUNT.load(Ordering::Acquire);
+    for i in 0..count {
+        if let Some(cpu) = unsafe { CPUS[i] } {
+            if cpu.apic_id == apic_id {
+                return Some(i);
+            }
+        }
+    }
+    None
+}
+
 fn register_cpu(apic_id: u32) {
     let idx = CPU_COUNT.fetch_add(1, Ordering::SeqCst);
 

@@ -1,4 +1,4 @@
-use crate::{arch::{self, interrupts, smp::{self, discover_cpus, get_madt}}, hlt_loop, log};
+use crate::{arch::{self, interrupts, smp::{self, discover_cpus, get_madt}}, cls, hlt_loop, log};
 
 pub struct CpuInfo(smp::CpuInfo);
 
@@ -17,9 +17,12 @@ pub fn start() {
         log::debug!("discovered CPU{x}: {cpu:#?}");
     }
 
-    if smp::cpu_count() == 0 {
+    if smp::cpu_count() <= 1 {
         log::debug!("no other cores found!");
     }
+
+    // Initialize CPU local storage for BSP
+    cls::init();
 
     // actual start
 
@@ -29,6 +32,22 @@ pub fn start() {
 #[unsafe(no_mangle)]
 pub extern "C" fn ap_entry() -> ! {
     log::debug!("Hello from the other core!");
+
+    // Initialize LAPIC for this AP
+    unsafe { arch::interrupts::init_cpu0_lapic() };
+
+    // Get this CPU's index and initialize its per-CPU LAPIC
+    let apic_id = unsafe { arch::interrupts::cpu_lapic().id() };
+    if let Some(index) = smp::cpu_index_from_apic_id(apic_id) {
+        // Initialize the per-CPU LAPIC for this core
+        unsafe { arch::interrupts::init_cpu_lapic(index) };
+        
+        // Initialize CLS for this AP (using its index in the CPU array)
+        let cls = cls::cpu_cls(index);
+        if let Some(cls) = cls {
+            cls.scheduler.init();
+        }
+    }
 
     hlt_loop()
 }

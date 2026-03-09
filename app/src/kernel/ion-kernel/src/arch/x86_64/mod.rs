@@ -6,7 +6,8 @@ pub mod defs;
 pub mod cpu;
 /// interrupt instructions
 pub mod interrupts;
-/// context 
+pub use interrupts::{cpu_lapic, current_cpu_lapic, LocalApic, init_cpu0_lapic, init_cpu_lapic, init_bsp_cpu_lapic};
+/// context
 pub mod ctx;
 /// Thread-local storage
 pub mod tls;
