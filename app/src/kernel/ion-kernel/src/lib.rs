@@ -71,6 +71,7 @@ pub mod graphics;
 pub mod mmio;
 pub mod event_logger;
 pub mod smp;
+pub mod cls;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {
