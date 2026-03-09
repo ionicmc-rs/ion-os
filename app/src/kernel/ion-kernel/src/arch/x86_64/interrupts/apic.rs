@@ -2,12 +2,16 @@
 //!
 //! Minimal LAPIC implementation for early kernel use.
 //! Assumes LAPIC is mapped at its physical address.
+#![allow(unsafe_op_in_unsafe_fn)]
 
 use core::mem::MaybeUninit;
 use core::ptr::{read_volatile, write_volatile};
 
 use x86_64::instructions::port::Port;
 use x86_64::registers::model_specific::{ApicBase as IA32_APIC_BASE, ApicBaseFlags};
+
+use crate::{boot_info, log};
+use crate::c_lib::{MultibootAcpi, MultibootTag};
 
 const APIC_ENABLE: u64 = 1 << 11;
 
@@ -24,6 +28,13 @@ const APIC_LVT_ERROR: usize = 0x370;
 
 const APIC_MASK: u32 = 1 << 16;
 
+const APIC_ID: usize = 0x20;
+
+const APIC_ICR_LOW: usize = 0x300;
+const APIC_ICR_HIGH: usize = 0x310;
+
+const APIC_DELIVERY_PENDING: u32 = 1 << 12;
+
 
 /// Local APIC interface
 pub struct LocalApic {
@@ -35,6 +46,39 @@ impl LocalApic {
     pub const unsafe fn new(base: u64) -> Self {
         Self {
             base: base as *mut u32,
+        }
+    }
+
+    pub unsafe fn id(&self) -> u32 {
+        self.read(APIC_ID) >> 24
+    }
+    
+    unsafe fn send_ipi_raw(&self, apic_id: u32, value: u32) {
+        self.write(APIC_ICR_HIGH, apic_id << 24);
+        self.write(APIC_ICR_LOW, value);
+
+        while self.read(APIC_ICR_LOW) & APIC_DELIVERY_PENDING != 0 {}
+    }
+    
+    pub unsafe fn send_init_ipi(&self, apic_id: u32) {
+        const INIT: u32 = 0b101 << 8;
+        const LEVEL: u32 = 1 << 14;
+        const ASSERT: u32 = 1 << 15;
+
+        self.send_ipi_raw(apic_id, INIT | LEVEL | ASSERT);
+    }
+
+    pub unsafe fn send_startup_ipi(&self, apic_id: u32, vector: u8) {
+        const STARTUP: u32 = 0b110 << 8;
+
+        self.send_ipi_raw(apic_id, STARTUP | vector as u32);
+    }
+
+    pub fn send_init_deassert(&self) {
+        let icr = (0b101 << 8) | (1 << 15); // INIT, level trigger, level=0 (deassert)
+
+        unsafe {
+            self.write_icr(0, icr);
         }
     }
     
@@ -77,6 +121,28 @@ impl LocalApic {
 
         // initial count
         self.write(APIC_TIMER_INIT, initial);
+    }
+}
+
+impl LocalApic {
+    unsafe fn write_icr(&self, apic_id: u32, icr_low: u32) {
+        let icr_high = apic_id << 24;
+
+        // wait until previous IPI finished
+        while core::ptr::read_volatile(self.base.add(0x300 / 4)) & (1 << 12) != 0 {
+            core::hint::spin_loop();
+        }
+
+        // write destination
+        core::ptr::write_volatile(self.base.add(0x310 / 4), icr_high);
+
+        // send command
+        core::ptr::write_volatile(self.base.add(0x300 / 4), icr_low);
+
+        // wait for completion
+        while core::ptr::read_volatile(self.base.add(0x300 / 4)) & (1 << 12) != 0 {
+            core::hint::spin_loop();
+        }
     }
 }
 
@@ -126,6 +192,64 @@ static mut CPU0_LAPIC: MaybeUninit<LocalApic> = MaybeUninit::uninit();
 
 pub fn cpu_lapic() -> &'static LocalApic {
     unsafe { CPU0_LAPIC.assume_init_ref() }
+}
+
+#[repr(C, packed)]
+pub struct AcpiSdtHeader {
+    pub signature: [u8; 4],
+    pub length: u32,
+    pub revision: u8,
+    pub checksum: u8,
+    pub oem_id: [u8; 6],
+    pub oem_table_id: [u8; 8],
+    pub oem_revision: u32,
+    pub creator_id: u32,
+    pub creator_revision: u32,
+}
+
+
+#[repr(C, packed)]
+pub struct Xsdt {
+    pub header: AcpiSdtHeader,
+    pub tables: [u64; 0],
+}
+
+#[repr(C, packed)]
+#[derive(Debug)]
+pub struct Rsdp {
+    pub signature: [u8; 8],
+    pub checksum: u8,
+    pub oem_id: [u8; 6],
+    pub revision: u8,
+    pub rsdt_address: u32,
+
+    // ACPI 2+
+    pub length: u32,
+    pub xsdt_address: u64,
+    pub extended_checksum: u8,
+    pub reserved: [u8; 3],
+}
+
+pub fn rsdp() -> Option<&'static Rsdp> {
+    let mut tag = boot_info().multiboot_info.into_inner().wrapping_byte_add(8);
+
+    loop {
+        let t = unsafe { &*tag };
+
+        match t.typ {
+            14 | 15 => {
+                let acpi = tag as *const MultibootAcpi;
+                return Some(unsafe { &*((*acpi).rsdp.as_ptr() as *const Rsdp) });
+            }
+
+            0 => return None,
+            _ => {
+                log::debug!("tag of type: {t:?}");
+            }
+        }
+
+        tag = ((tag as usize + t.size as usize + 7) & !7) as *const MultibootTag;
+    }
 }
 
 /// Contains the basic handlers for Hardware Interrupts.

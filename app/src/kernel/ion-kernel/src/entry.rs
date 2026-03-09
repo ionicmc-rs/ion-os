@@ -6,7 +6,7 @@ use pc_keyboard::{DecodedKey, KeyCode, KeyState};
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE, SCANCODES_PUSHED}}, asyncio, event, graphics::{self, Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}, with_renderer}, io::OpenOptions, log::{self, error}, privilege::UserID, process::{self, FdHandle, spawn_proc}, resources::{self, ResourceTable, channel, fd}, scheduler::{self, SCHEDULER}, thread::Thread};
+use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE, SCANCODES_PUSHED}}, asyncio, event, graphics::{self, Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}, with_renderer}, io::OpenOptions, log::{self, error}, privilege::UserID, process::{self, FdHandle, spawn_proc}, resources::{self, ResourceTable, channel, fd}, scheduler::{self, SCHEDULER}, smp, thread::Thread};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -167,32 +167,15 @@ pub fn kernel_main() {
         r.present();
     });
 
-    // get test elf
+    // SMP
 
-    let elf = asyncio::run_future(async {
-        let file = OpenOptions::new()
-            .read(true)
-            .open("@/core/ish")
-            .await
-            .expect("test ELF file not found");
+    log::debug!("attempting to start APs (cores)");
 
-        let elf_data = file
-            .read_all()
-            .await
-            .expect("could not read test ELF file");
+    smp::start();
 
-        elf_data
-    });
+    log::debug!("finished starting APs!");
 
-    log::debug!("got test ELF file, size: {} bytes", elf.len());
-
-    let parsed: elf::ElfBytes<'_, AnyEndian> = elf::ElfBytes::minimal_parse(&elf).expect("failed to parse test ELF");
-
-    log::debug!("elf location: {:#?}", elf.as_ptr());
-
-    log::debug!("parsed ELF file, entry point: {:#x}", parsed.ehdr.e_entry);
-
-    // log::debug!("creating thread for test ELF");
+    // init (CPU0)
 
     let mut table = ResourceTable::new();
 

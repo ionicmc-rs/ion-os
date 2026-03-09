@@ -6,6 +6,13 @@ PHDRS {
 
 SECTIONS
 {
+    . = 0x8000;
+
+    .ap_init 0x8000 :
+    {
+        KEEP(*(.ap_init))
+    }: text
+
     . = 1M;
 
     .boot : ALIGN(16)

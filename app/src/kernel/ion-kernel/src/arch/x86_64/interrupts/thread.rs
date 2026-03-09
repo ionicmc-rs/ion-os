@@ -4,7 +4,7 @@ use spin::Mutex;
 use x86_64::structures::idt::InterruptStackFrame;
 
 use crate::{
-    arch::{cpu, interrupts::{self, InterruptGuard, apic::handlers::notify, without_interrupts}}, log, scheduler::{self, SCHEDULER, ScheduleReason}, serial_println
+    arch::{cpu, interrupts::{self, InterruptGuard, apic::handlers::notify, without_interrupts}}, event_logger::{self, Event, push_event}, log, scheduler::{self, SCHEDULER, ScheduleReason}, serial_println
 };
 
 // pub extern "x86-interrupt" fn timer_isr_entry(_: InterruptStackFrame) {

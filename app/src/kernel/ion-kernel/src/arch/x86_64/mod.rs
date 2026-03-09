@@ -18,3 +18,5 @@ pub mod mmu;
 pub mod port;
 /// Syscall **implementation**
 pub mod syscall;
+/// Multi-core **initialization**
+pub mod smp;

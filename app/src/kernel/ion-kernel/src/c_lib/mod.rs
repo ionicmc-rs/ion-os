@@ -327,6 +327,15 @@ pub struct MultibootMemoryIntermediate {
     // no entries here
 }
 
+#[repr(C)]
+#[derive(Debug)]
+pub struct MultibootAcpi {
+    pub typ: MultibootTagType,
+    pub size: u32,
+    pub rsdp: [u8; 0],
+    
+}
+
 /// Multiboot Memory Data.
 #[repr(C)]
 #[derive(Debug)]

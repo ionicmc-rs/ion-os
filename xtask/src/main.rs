@@ -212,7 +212,8 @@ fn docker(cmd: &[&str]) -> Result<()> {
     ]);
 
     c.args(cmd);
-    sh(&mut c)
+    sh(&mut c)?;
+    Ok(())
 }
 
 //
@@ -522,7 +523,9 @@ fn run_qemu(iso: &str) -> Result<()> {
         "-d",
         "cpu_reset",
         "-cpu", 
-        "qemu64,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+avx2,+xsave,+xsaveopt"
+        "qemu64,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+avx2,+xsave,+xsaveopt",
+        "-smp",
+        "2"
     ]);
 
     let status = cmd.status()?.code();

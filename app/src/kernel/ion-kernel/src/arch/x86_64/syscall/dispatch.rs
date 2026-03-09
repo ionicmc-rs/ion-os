@@ -1,6 +1,6 @@
 use alloc::vec;
 
-use crate::{arch::{VirtAddr, syscall::parse::{IoCommand, ProcessCommand, Syscall, ThreadCommand}}, c_lib::libc::{self, OsError}, io::ErrorKind, lib_alloc::user::{USER_DATA_BASE, USER_DATA_SIZE}, log::{self, info}, process::{current_process, exit_proc, read_current_fd, write_current_fd}, thread};
+use crate::{arch::{VirtAddr, syscall::parse::{IoCommand, ProcessCommand, Syscall, ThreadCommand}}, c_lib::libc::{self, OsError}, event_logger::{Event, EventData, EventLevel, SyscallEvent, push_event}, io::ErrorKind, lib_alloc::user::{USER_DATA_BASE, USER_DATA_SIZE}, log::{self, info}, process::{current_process, exit_proc, read_current_fd, write_current_fd}, thread};
 
 /// Represents inputs to a syscall
 #[repr(C)]
@@ -52,6 +52,18 @@ pub unsafe extern "C" fn syscall_dispatch(
     let frame = unsafe { &*frame };
 
     let syscall = Syscall::parse(frame.clone());
+
+    push_event(Event {
+        cpu: super::super::cpu::core_id() as u16,
+        ticks: super::super::interrupts::ticks(),
+        level: EventLevel::Trace,
+        data: EventData::Syscall(
+            SyscallEvent::Enter { 
+                group: frame.rax as u32,
+                command: frame.rdi as u32,
+            }
+        )
+    });
 
     match syscall {
         Syscall::Ack => {

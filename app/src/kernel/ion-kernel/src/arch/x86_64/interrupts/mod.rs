@@ -202,7 +202,6 @@ pub use gdt::selectors as gdt_selectors;
 /// Keyboard Interrupt Handling.
 pub mod keyboard;
 mod page_fault;
-mod apic;
 mod ioapic;
 mod thread;
 pub use thread::{
@@ -214,3 +213,5 @@ pub use thread::{
 pub(in crate::arch) use thread::InterruptRegs;
 mod gp;
 mod ud;
+
+pub(in crate::arch::x86_64) mod apic;

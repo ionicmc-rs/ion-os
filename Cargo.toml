@@ -1,16 +1,12 @@
 [workspace]
 members = [
     "app/src/kernel/ion-kernel", 
-    "app/src/kernel/ion_api"
+    "app/src/kernel/ion_api",
+    "xtask"
 ]
 
 default-members = [
     "app/src/kernel/ion-kernel"
-]
-
-# Prevents xtask thinking its part of a workspace
-exclude = [
-    "xtask"
 ]
 
 resolver = "3"
