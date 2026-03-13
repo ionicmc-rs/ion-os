@@ -217,9 +217,6 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
 
-    // FIXME(asm): this tag is currently always corrupt
-    let _ptr = unsafe { boot_info.multiboot_info.into_inner().as_ref().unwrap() };
-
     match init::init(boot_info) {
         Ok(()) => {
             info!("Initialized Ion OS basics");

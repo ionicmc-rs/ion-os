@@ -1,6 +1,6 @@
 [alias]
 # xtask commands
-xtask = "run --manifest-path xtask/Cargo.toml --"
+xtask = "run -p xtask --"
 
 # Running
 xrun = "xtask run"
