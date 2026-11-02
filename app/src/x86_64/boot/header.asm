@@ -23,3 +23,4 @@ header_start:
     dw 0
     dd 0
 header_end:
+section .note.GNU-stack noalloc noexec nowrite progbits

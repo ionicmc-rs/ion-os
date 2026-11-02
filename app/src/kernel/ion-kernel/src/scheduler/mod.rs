@@ -13,19 +13,19 @@ use alloc::{boxed::Box, collections::vec_deque::VecDeque, vec::Vec};
 use x86_64::structures::idt::InterruptStackFrameValue;
 
 use crate::{
-    address_space::kernel_address_space, arch::{self, ctx, interrupts::InterruptGuard}, hlt_loop, log, process::{self, PROCESSES}, serial_println, thread::{
+    address_space::kernel_address_space, arch::{self, ctx, interrupts::InterruptGuard}, cls, hlt_loop, log, process::{self, PROCESSES}, serial_println, thread::{
         self, State, Thread, ThreadID,
         build::TPriority,
         tls::{ThreadSelf, install_tls},
     }
 };
 
-/// The global Scheduler
-///
-/// this static handles all the running threads for this CPU (only CPU for now).
-/// # Using this static
-/// mostly, you will use the safe apis in [`thread`](crate::thread) rather than this static, as threads are currently very unstable.
-pub static SCHEDULER: Scheduler = Scheduler::new();
+// /// The global Scheduler
+// ///
+// /// this static handles all the running threads for this CPU (only CPU for now).
+// /// # Using this static
+// /// mostly, you will use the safe apis in [`thread`](crate::thread) rather than this static, as threads are currently very unstable.
+// pub static SCHEDULER: Scheduler = Scheduler::new();
 
 // this is unsafe and should be changed
 macro_rules! unsafe_cell_ref {
@@ -154,7 +154,9 @@ pub extern "C" fn idle_entry(_: usize) -> ! {
     thread::set_name("idle");
     serial_println!("in the idle thread");
     loop {
-        if unsafe_cell_ref!(SCHEDULER.queues).has_targets() {
+        let scheduler = &cls::current().expect("CPU running a scheduler should always have CLS").scheduler;
+
+        if unsafe_cell_ref!(scheduler.queues).has_targets() {
             yield_now();
         }
 
@@ -631,21 +633,29 @@ impl Scheduler {
     }
 }
 
+#[track_caller]
+pub fn current_scheduler() -> &'static Scheduler {
+    &cls::current()
+        .expect("a scheduler must exist for this CPU")
+        .scheduler
+}
+
+fn try_current_scheduler() -> Option<&'static Scheduler> {
+    cls::current().map(|c| &c.scheduler)
+}
+
 pub fn current() -> Option<&'static Thread> {
-    SCHEDULER.current()
+    try_current_scheduler().map(|sched| sched.current()).flatten()
 }
 
 fn schedule(reason: ScheduleReason) {
-    if !SCHEDULER.can_reschedule.load(Ordering::Acquire) {
-        return;
-    }
-
     use crate::arch;
     arch::interrupts::set_yield_reason(reason);
     arch::cpu::full_fence(Ordering::SeqCst);
     unsafe { arch::interrupts::trigger_yield() };
 }
 
+#[track_caller]
 pub fn exit_current() -> ! {
     wake_waiters_of(thread::id());
     if let Some(v) = process::current_process() {
@@ -666,7 +676,7 @@ pub fn exit_current() -> ! {
         });
     }
     loop {
-        if SCHEDULER.can_reschedule.load(Ordering::Acquire) {
+        if current_scheduler().can_reschedule.load(Ordering::Acquire) {
             break;
         }
 
@@ -717,28 +727,36 @@ pub fn yield_now() {
 }
 
 pub fn request_reschedule() {
-    SCHEDULER.request_rescheduling();
+    current_scheduler().request_rescheduling();
 }
 
 pub fn wake_done() {
-    unsafe_cell_ref!(mut SCHEDULER.queues).restore_done();
+    unsafe_cell_ref!(mut current_scheduler().queues).restore_done();
 }
 
 pub fn reschedule_if_needed() {
-    SCHEDULER.reschedule_if_needed();
+    current_scheduler().reschedule_if_needed();
 }
 
 pub fn critical_moment<R>(f: impl FnOnce() -> R) -> R {
-    SCHEDULER.critical_moment(f)
+    if let Some(sched) = try_current_scheduler() {
+        sched.critical_moment(f)
+    } else {
+        f()
+    }
 }
 
 #[track_caller]
 pub fn critical_moment_raw<R>(f: impl FnOnce() -> R) -> R {
-    SCHEDULER.critical_moment_raw(f)
+    if let Some(sched) = try_current_scheduler() {
+        sched.critical_moment_raw(f)
+    } else {
+        f()
+    }   
 }
 
 pub fn has_panicked(id: ThreadID) -> bool {
-    SCHEDULER.has_panicked(id)
+    current_scheduler().has_panicked(id)
 }
 
 #[cold]
@@ -747,7 +765,7 @@ pub unsafe fn start() {
 }
 
 pub unsafe fn remove_panic_id(id: ThreadID) {
-    SCHEDULER.remove_panic(id);
+    current_scheduler().remove_panic(id);
 }
 
 pub unsafe fn panic_current() -> ! {
@@ -757,17 +775,17 @@ pub unsafe fn panic_current() -> ! {
 }
 
 pub unsafe fn wake_kbd() {
-    SCHEDULER.wake_kbd();
+    current_scheduler().wake_kbd();
 }
 
 fn wake_waiters_of(id: ThreadID) {
-    SCHEDULER.wake_waiters_of(id);
+    current_scheduler().wake_waiters_of(id);
 }
 
 pub unsafe fn kill(id: ThreadID) {
     debug_assert_ne!(id, thread::id(), "killing the current thread causes a page fault");
     wake_waiters_of(id);
-    SCHEDULER.kill(id);
+    current_scheduler().kill(id);
 }
 
 #[derive(Debug)]

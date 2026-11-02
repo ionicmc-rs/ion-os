@@ -4,7 +4,7 @@ use spin::Mutex;
 use x86_64::structures::idt::InterruptStackFrame;
 
 use crate::{
-    arch::{cpu, interrupts::{self, InterruptGuard, apic::handlers::notify, without_interrupts}}, event_logger::{self, Event, push_event}, log, scheduler::{self, SCHEDULER, ScheduleReason}, serial_println
+    arch::{cpu, interrupts::{self, InterruptGuard, apic::handlers::notify, without_interrupts}}, event_logger::{self, Event, push_event}, log, scheduler::{self, ScheduleReason, current_scheduler}, serial_println, thread
 };
 
 // pub extern "x86-interrupt" fn timer_isr_entry(_: InterruptStackFrame) {
@@ -96,7 +96,20 @@ pub extern "x86-interrupt" fn timer_trampoline(_: InterruptStackFrame /* unused 
 #[allow(unused)]
 #[unsafe(no_mangle)]
 pub extern "C" fn timer_handler(regs: &mut InterruptRegs, frame: &mut InterruptStackFrame) {
-    let next = SCHEDULER.pick_preempt();
+    let t = TICKS.fetch_add(1, Ordering::Relaxed);
+    if t.is_multiple_of(50) {
+        serial_println!("reached notable tick: {t}");
+    }
+
+    if !thread::current().is_some() {
+        // The timer is enabled before the first scheduler thread starts.
+        // Acknowledge that early interrupt too, or the LAPIC leaves it in
+        // service and will not deliver subsequent timer ticks.
+        notify!(unsafe Timer);
+        return;
+    }
+
+    let next = current_scheduler().pick_preempt();
     
     if let Some(v) = next {
         if let Some(old) = v.0 {
@@ -105,10 +118,6 @@ pub extern "C" fn timer_handler(regs: &mut InterruptRegs, frame: &mut InterruptS
         v.1.load_with_interrupt_frame(regs, unsafe { frame.as_mut() });
     }
     
-    let t = TICKS.fetch_add(1, Ordering::Relaxed);
-    if t.is_multiple_of(50) {
-        serial_println!("reached notable tick: {t}");
-    }
     
     scheduler::request_reschedule();
     scheduler::wake_done();
@@ -169,7 +178,7 @@ extern "C" fn yield_handler(regs: &mut InterruptRegs, frame: &mut InterruptStack
     without_interrupts(|| {
         if let Some(mut lock) = YIELD_REASON.try_lock() {
             if let Some(reason) = lock.take() {
-                if let Some(v) = SCHEDULER.pick(reason.0) {
+                if let Some(v) = current_scheduler().pick(reason.0) {
                     fence(Ordering::SeqCst);
                     if let Some(old) = v.0 {
                         old.save_from_interrupt(regs, unsafe { frame.as_mut().read_only() });

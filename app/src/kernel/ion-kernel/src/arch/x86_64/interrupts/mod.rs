@@ -219,6 +219,7 @@ pub use apic::LocalApic;
 pub use apic::init_cpu0_lapic;
 pub use apic::init_cpu_lapic;
 pub use apic::init_bsp_cpu_lapic;
+pub use apic::lapic_base;
 pub(in crate::arch) use thread::InterruptRegs;
 mod gp;
 mod ud;

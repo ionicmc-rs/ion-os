@@ -47,3 +47,4 @@ syscall_entry:
 
     ; o64 is required as nasm will produce sysretl by default
     o64 sysret
+section .note.GNU-stack noalloc noexec nowrite progbits

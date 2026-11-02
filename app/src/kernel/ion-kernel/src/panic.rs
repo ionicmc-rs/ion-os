@@ -40,7 +40,7 @@ fn panic(info: &PanicInfo) -> ! {
 
     // arch::cpu::full_fence(core::sync::atomic::Ordering::SeqCst);
 
-    if arch::tls::read_ptr().is_null() {
+    if thread::current().is_none() {
         // panic before thread init - unsafe to use panic thread
         panic_raw(info);
     }

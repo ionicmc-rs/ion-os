@@ -531,3 +531,11 @@ pub fn inode_index(fd: u32) -> io::Result<u64> {
     };
     Ok(handle.with(|h| h.inode()))
 }
+
+pub fn disk_id(fd: u32) -> io::Result<DiskId> {
+    let handle = {
+        let table = GLOBAL_FD_TABLE.lock();
+        table.get(fd)?
+    };
+    Ok(handle.with(|h| h.disk()))
+}

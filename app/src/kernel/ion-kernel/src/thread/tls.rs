@@ -133,6 +133,7 @@ pub unsafe fn install_tls(thread_self: *mut ThreadSelf) {
     arch::tls::write_ptr(thread_self.cast());
 }
 
+#[track_caller]
 pub fn tcb() -> &'static mut ThreadSelf {
     let ptr = arch::tls::read_ptr().cast_mut();
     assert!(!ptr.is_null());

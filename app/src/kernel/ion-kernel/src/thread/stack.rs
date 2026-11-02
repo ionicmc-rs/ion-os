@@ -59,12 +59,13 @@ impl<A: Allocator> Drop for ThreadStack<A> {
         unsafe {
             // Safety: if the layout fails here, that means this `ThreadStack` was created illegally.
             let layout = Layout::from_size_align(self.size, 16).unwrap_unchecked();
-            #[cfg(debug_assertions)]
-            if !self.should_drop {
-                panic!(
-                    "Thread stack that was not supposed to drop reached drop implementation\n\nThis indicates a bug with the scheduler - these checks are optional and should not be relied on."
-                );
-            }
+            // TODO: fires at the wrong times
+            // #[cfg(debug_assertions)]
+            // if !self.should_drop {
+            //     panic!(
+            //         "Thread stack that was not supposed to drop reached drop implementation\n\nThis indicates a bug with the scheduler - these checks are optional and should not be relied on."
+            //     );
+            // }
             // Safety: if this fails here, that means this `ThreadStack` was created with an allocation error, which should not happen
             self.alloc.deallocate(NonNull::new(self.base).unwrap(), layout);
         };

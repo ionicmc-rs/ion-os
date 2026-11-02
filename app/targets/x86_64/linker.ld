@@ -1,7 +1,11 @@
 ENTRY(start)
 
 PHDRS {
-    load PT_LOAD FLAGS(0x7);
+    boot PT_LOAD FLAGS(0x5);   /* low-memory boot and AP trampoline code */
+    ap_data PT_LOAD FLAGS(0x6); /* mutable AP trampoline state */
+    text PT_LOAD FLAGS(0x5);   /* read + execute */
+    rodata PT_LOAD FLAGS(0x4); /* read only */
+    data PT_LOAD FLAGS(0x6);   /* read + write */
 }
 
 SECTIONS
@@ -11,12 +15,17 @@ SECTIONS
     .ap_init 0x8000 :
     {
         KEEP(*(.ap_init))
-    }: load
+    }: boot
     
     .boot : ALIGN(16)
     {
         KEEP(*(.multiboot_header))
-    }: load
+    }: boot
+
+    .ap_data : ALIGN(8)
+    {
+        KEEP(*(.ap_data))
+    }: ap_data
 
     . = 1M;
 
@@ -24,38 +33,38 @@ SECTIONS
     .text : ALIGN(16)
     {
         *(.text .text.*)
-    }: load
+    }: text
 
     .rodata : ALIGN(16)
     {
         *(.rodata .rodata.*)
-    }: load
+    }: rodata
 
     .data : ALIGN(16)
     {
         *(.data .data.*)
-    }: load
+    }: data
 
     .tdata : ALIGN(16)
     {
         __tdata_start = .;
         *(.tdata .tdata.*)
         __tdata_end = .;
-    }: load
+    }: data
 
     .tbss : ALIGN(16)
     {
         __tbss_start = .;
         *(.tbss .tbss.*)
         __tbss_end = .;
-    }: load
+    }: data
 
     .bss : ALIGN(16) {
         __bss_start = .;
         *(.bss .bss.*)
         *(COMMON)
         __bss_end = .;
-    }: load
+    }: data
     /tls/ : { }
     __kernel_end = .;
     __tls_start = ADDR(.tdata);

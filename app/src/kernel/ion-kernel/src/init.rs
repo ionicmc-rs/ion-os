@@ -108,6 +108,7 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
     // disk
 
     disk::init();
+    crate::vfs::init_mounts();
 
     let alloc = alloc::boxed::Box::new(10);
     assert_eq!(*alloc, 10);

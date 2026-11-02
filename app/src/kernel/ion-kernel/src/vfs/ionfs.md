@@ -30,8 +30,7 @@ IonFS uses reserved prefixes for top‑level paths:
 | Prefix | Meaning |
 |------|--------|
 | `@/` | Root filesystem |
-| `#/` | Temporary files |
-| `$<mnt>/` | Mount points (specifically under `<mnt>`) |
+| `#<mount-id>/` | Additional mounted IonFS partitions |
 
 These prefixes are resolved by the VFS layer, not IonFS itself.
 

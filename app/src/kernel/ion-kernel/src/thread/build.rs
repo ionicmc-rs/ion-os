@@ -218,7 +218,7 @@ impl<T: Send + 'static> ThreadBuilder<T> {
                 if let Some(func) = self.func {
                     func()
                 } else {
-                    panic!("ThreadBuilder received no function to run.");
+                    core::panic!("ThreadBuilder received no function to run.");
                 }
             },
             self.priority,
@@ -243,6 +243,11 @@ pub fn kill_safe() -> bool {
 }
 
 pub fn set_kill_safe(safe: bool) {
+    // Early initialization can run futures before the scheduler creates the
+    // boot thread's TCB. In that context there is no per-thread state to set.
+    if arch::tls::read_ptr().is_null() {
+        return;
+    }
     unsafe { tcb().is_kill_safe = safe }
 }
 

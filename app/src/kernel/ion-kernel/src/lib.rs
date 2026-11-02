@@ -208,7 +208,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
         .unwrap_or_else(|_| {
             let err = Error::last_os_err();
             libc::set_errno(6);
-            panic!("Invalid Boot Info: {err}")
+            core::panic!("Invalid Boot Info: {err}")
         })
         .into_rust();
     
@@ -229,6 +229,10 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
         }
     }
 
+    smp::start();
+
+    smp::init_cpu0_cls();
+
     // this is the main thread.
     log::debug!("initializing threads");
     thread::init();
@@ -243,6 +247,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     builder.build();
 
     // from this point onwards - execution is passed to interrupt handlers and whatever threads we have now (and whatever threads we make.)
+
     log::info!("starting threads");
     unsafe { thread::start() };
     log::error!("return to the boot stack is prohibited");

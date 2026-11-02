@@ -14,38 +14,44 @@ use crate::{
 
 use crate::resources::OpenFlags;
 
-/// Helper to get the primary disk
-fn get_main_disk() -> io::Result<&'static mut dyn crate::disk::AsyncBlockDevice> {
-    let disk = get_disk(DiskId::new(0).ok_or_else(|| 
-        io::Error::new(io::ErrorKind::NotFound, "failed to get disk")
-    )?);
-    Ok(disk)
+fn resolve_disk_and_path(path: &str) -> io::Result<(DiskId, String)> {
+    crate::vfs::resolve_virtual_path(path)
+}
+
+fn split_mount_prefix(path: &str) -> io::Result<(&str, &str)> {
+    if let Some(rest) = path.strip_prefix("@/") {
+        return Ok(("@/", rest));
+    }
+
+    if let Some(rest) = path.strip_prefix('#')
+        && let Some((mount_id, inner)) = rest.split_once('/')
+    {
+        let prefix_len = 1 + mount_id.len() + 1;
+        return Ok((&path[..prefix_len], inner));
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "path must start with @/ or #<mount-id>/",
+    ))
 }
 
 /// Split a path into parent directory and filename
-fn split_path_into_parent_and_name(path: &str) -> io::Result<(&str, &str)> {
-    // Ensure path is absolute
-    if !path.starts_with("@/") {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "path must be absolute (start with @/)"
-        ));
-    }
-    
+fn split_path_into_parent_and_name(path: &str) -> io::Result<(String, String)> {
+    let (prefix, rest) = split_mount_prefix(path)?;
+
     // Find last slash
-    if let Some(last_slash) = path.rfind('/') {
-        if last_slash == 1 {
-            // File in root directory
-            Ok(("@/", &path[2..]))
+    if let Some(last_slash) = rest.rfind('/') {
+        if last_slash == 0 {
+            Ok((prefix.to_string(), rest[1..].to_string()))
         } else {
-            let parent = &path[..=last_slash];
-            Ok((parent, &path[last_slash+1..]))
+            Ok((
+                format!("{prefix}{}", &rest[..=last_slash]),
+                rest[last_slash + 1..].to_string(),
+            ))
         }
     } else {
-        Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "path must contain at least one slash"
-        ))
+        Ok((prefix.to_string(), rest.to_string()))
     }
 }
 
@@ -54,12 +60,13 @@ fn split_path_into_parent_and_name(path: &str) -> io::Result<(&str, &str)> {
 /// Creates or truncates the file at the given path and writes the provided data.
 pub async fn write<C: AsRef<[u8]>>(path: &str, contents: C) -> io::Result<()> {
     let data = contents.as_ref();
-    let disk = get_main_disk()?;
-    
+    let (disk_id, fs_path) = resolve_disk_and_path(path)?;
+    let disk = get_disk(disk_id);
+
     let (parent_path, filename) = split_path_into_parent_and_name(path)?;
     
     // Resolve parent directory
-    let mut parent = crate::vfs::resolve_path(disk, parent_path).await?;
+    let mut parent = crate::vfs::resolve_path(disk, &crate::vfs::resolve_virtual_path(&parent_path)?.1).await?;
     
     if parent.kind() != InodeKind::Directory {
         return Err(io::Error::new(
@@ -69,7 +76,7 @@ pub async fn write<C: AsRef<[u8]>>(path: &str, contents: C) -> io::Result<()> {
     }
     
     // Try to find existing file
-    let file_inode_idx = if let Some(idx) = crate::vfs::lookup_in_dir(&parent, disk, filename).await? {
+    let file_inode_idx = if let Some(idx) = crate::vfs::lookup_in_dir(&parent, disk, &filename).await? {
         idx
     } else {
         let new = alloc_inode(disk).await?;
@@ -119,9 +126,10 @@ pub async fn read_to_string(path: &str) -> io::Result<String> {
 
 /// Read entire file contents as bytes
 pub async fn read(path: &str) -> io::Result<Vec<u8>> {
-    let disk = get_main_disk()?;
-    
-    let inode = crate::vfs::resolve_path(disk, path).await?;
+    let (disk_id, fs_path) = resolve_disk_and_path(path)?;
+    let disk = get_disk(disk_id);
+
+    let inode = crate::vfs::resolve_path(disk, &fs_path).await?;
     
     if inode.kind() != InodeKind::File {
         return Err(io::Error::new(
@@ -150,10 +158,11 @@ pub async fn read(path: &str) -> io::Result<Vec<u8>> {
 /// Create a directory at the given path
 pub async fn create_dir(path: &str) -> io::Result<()> {
     let path = ensure_trailing_slash(path);
-    let disk = get_main_disk()?;
+    let (disk_id, fs_path) = resolve_disk_and_path(&path)?;
+    let disk = get_disk(disk_id);
     
     // Check if directory already exists
-    if crate::vfs::resolve_path(disk, &path).await.is_ok() {
+    if crate::vfs::resolve_path(disk, &fs_path).await.is_ok() {
         return Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
             "directory already exists"
@@ -162,7 +171,7 @@ pub async fn create_dir(path: &str) -> io::Result<()> {
     
     let (parent_path, dirname) = split_path_into_parent_and_name(&path)?;
     
-    let mut parent = crate::vfs::resolve_path(disk, parent_path).await?;
+    let mut parent = crate::vfs::resolve_path(disk, &crate::vfs::resolve_virtual_path(&parent_path)?.1).await?;
     
     if parent.kind() != InodeKind::Directory {
         return Err(io::Error::new(
@@ -203,13 +212,15 @@ pub async fn create_dir(path: &str) -> io::Result<()> {
 /// Create a directory and all parent directories
 pub async fn create_dir_all(path: &str) -> io::Result<()> {
     let path = ensure_trailing_slash(path);
-    
+    let (prefix, rest) = split_mount_prefix(&path)?;
     let parts: Vec<&str> = path
+        .strip_prefix(prefix)
+        .unwrap_or(rest)
         .split('/')
-        .filter(|s| !s.is_empty() && s != &"@")
+        .filter(|s| !s.is_empty())
         .collect();
     
-    let mut current = String::from("@/");
+    let mut current = String::from(prefix);
     
     for part in parts {
         current.push_str(part);
@@ -224,9 +235,10 @@ pub async fn create_dir_all(path: &str) -> io::Result<()> {
 
 /// Remove a file
 pub async fn remove_file(path: &str) -> io::Result<()> {
-    let disk = get_main_disk()?;
-    
-    let inode = crate::vfs::resolve_path(disk, path).await?;
+    let (disk_id, fs_path) = resolve_disk_and_path(path)?;
+    let disk = get_disk(disk_id);
+
+    let inode = crate::vfs::resolve_path(disk, &fs_path).await?;
     
     if inode.kind() != InodeKind::File {
         return Err(io::Error::new(
@@ -238,7 +250,7 @@ pub async fn remove_file(path: &str) -> io::Result<()> {
     // Note: Full implementation would require freeing inode and data blocks
     // For now, just mark the inode as unused in the allocation table
     let (parent_path, filename) = split_path_into_parent_and_name(path)?;
-    let mut parent = crate::vfs::resolve_path(disk, parent_path).await?;
+    let mut parent = crate::vfs::resolve_path(disk, &crate::vfs::resolve_virtual_path(&parent_path)?.1).await?;
     
     // Remove from parent directory
     let mut entries = parent.read_dir(disk).await?;
@@ -255,9 +267,10 @@ pub async fn remove_file(path: &str) -> io::Result<()> {
 /// Remove a directory
 pub async fn remove_dir(path: &str) -> io::Result<()> {
     let path = ensure_trailing_slash(path);
-    let disk = get_main_disk()?;
-    
-    let inode = crate::vfs::resolve_path(disk, &path).await?;
+    let (disk_id, fs_path) = resolve_disk_and_path(&path)?;
+    let disk = get_disk(disk_id);
+
+    let inode = crate::vfs::resolve_path(disk, &fs_path).await?;
     
     if inode.kind() != InodeKind::Directory {
         return Err(io::Error::new(
@@ -277,7 +290,7 @@ pub async fn remove_dir(path: &str) -> io::Result<()> {
     
     // Remove from parent directory
     let (parent_path, dirname) = split_path_into_parent_and_name(&path)?;
-    let mut parent = crate::vfs::resolve_path(disk, parent_path).await?;
+    let mut parent = crate::vfs::resolve_path(disk, &crate::vfs::resolve_virtual_path(&parent_path)?.1).await?;
     
     let mut entries = parent.read_dir(disk).await?;
     entries.retain(|(name, _)| name != dirname.as_bytes());
@@ -290,9 +303,10 @@ pub async fn remove_dir(path: &str) -> io::Result<()> {
 /// Remove a directory and all its contents
 pub async fn remove_dir_all(path: &str) -> io::Result<()> {
     let path = ensure_trailing_slash(path);
-    let disk = get_main_disk()?;
-    
-    let inode = crate::vfs::resolve_path(disk, &path).await?;
+    let (disk_id, fs_path) = resolve_disk_and_path(&path)?;
+    let disk = get_disk(disk_id);
+
+    let inode = crate::vfs::resolve_path(disk, &fs_path).await?;
     
     if inode.kind() != InodeKind::Directory {
         return Err(io::Error::new(
@@ -304,12 +318,14 @@ pub async fn remove_dir_all(path: &str) -> io::Result<()> {
     // Read and remove all entries (non-recursive to avoid async recursion)
     let entries = inode.read_dir(disk).await?;
     
+    let (prefix, _) = split_mount_prefix(&path)?;
+
     for (name, _idx) in entries {
         let entry_name = String::from_utf8_lossy(&name);
-        let entry_path = format!("@/{}{}", path.trim_start_matches("@/"), entry_name);
+        let entry_path = format!("{prefix}{}{}", path.trim_start_matches(prefix), entry_name);
         
         // Remove based on type
-        let entry_inode = crate::vfs::resolve_path(disk, &entry_path).await?;
+        let entry_inode = crate::vfs::resolve_path(disk, &crate::vfs::resolve_virtual_path(&entry_path)?.1).await?;
         if entry_inode.kind() == InodeKind::Directory {
             // Delete empty subdirectories first
             let subdir_entries = entry_inode.read_dir(disk).await.unwrap_or_default();
@@ -345,7 +361,7 @@ pub async fn rename(from: &str, to: &str) -> io::Result<()> {
 
 /// Get metadata about a file
 pub async fn metadata(fd: u32) -> io::Result<Metadata> {
-    let disk = get_main_disk()?;
+    let disk = get_disk(fd::disk_id(fd)?);
 
     let inode = fd::inode_index(fd)?;
     let inode = read_inode(disk, inode).await?;
@@ -447,10 +463,11 @@ impl OpenOptions {
 
     /// Open a file with these options
     pub async fn open(&self, path: &str) -> io::Result<File> {
-        let disk = get_main_disk()?;
+        let (disk_id, fs_path) = resolve_disk_and_path(path)?;
+        let disk = get_disk(disk_id);
         
         // Try to resolve the file
-        let exists = crate::vfs::resolve_path(disk, path).await.is_ok();
+        let exists = crate::vfs::resolve_path(disk, &fs_path).await.is_ok();
         
         if !exists && !self.create && !self.create_new {
             return Err(io::Error::new(
@@ -476,7 +493,7 @@ impl OpenOptions {
             write(path, &[]).await?;
         }
 
-        let inode = crate::vfs::resolve_path(disk, path).await?;
+        let inode = crate::vfs::resolve_path(disk, &fs_path).await?;
         
         let mut flags = OpenFlags::empty();
 
@@ -493,7 +510,7 @@ impl OpenOptions {
             flags |= OpenFlags::CREATE;
         }
 
-        Ok(File { fd: fd::open(DiskId::new(0).unwrap(), inode.index(), flags).await? })
+        Ok(File { fd: fd::open(disk_id, inode.index(), flags).await? })
     }
 }
 
@@ -587,9 +604,10 @@ impl DirEntry {
 /// Read the contents of a directory
 pub async fn read_dir(path: &str) -> io::Result<ReadDir> {
     let path = ensure_trailing_slash(path);
-    let disk = get_main_disk()?;
-    
-    let inode = crate::vfs::resolve_path(disk, &path).await?;
+    let (disk_id, fs_path) = resolve_disk_and_path(&path)?;
+    let disk = get_disk(disk_id);
+
+    let inode = crate::vfs::resolve_path(disk, &fs_path).await?;
     if inode.kind() != InodeKind::Directory {
         return Err(io::Error::new(
             io::ErrorKind::NotADirectory,

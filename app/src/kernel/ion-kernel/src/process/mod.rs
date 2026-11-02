@@ -3,7 +3,7 @@ use core::{cell::Cell, fmt::Debug};
 use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
 
 use crate::{
-    asyncio, io::{self, ErrorKind, OpenOptions}, log, privilege::UserID, resources::{self, FdDispatch, OpenFlags, ResourceTable, channel, fd}, scheduler::SCHEDULER, serial_println, thread::{self, Thread, ThreadID, sync::Mutex, tls::tcb}
+    asyncio, io::{self, ErrorKind, OpenOptions}, log, privilege::UserID, resources::{self, FdDispatch, OpenFlags, ResourceTable, channel, fd}, scheduler::current_scheduler, serial_println, thread::{self, Thread, ThreadID, sync::Mutex, tls::tcb}
 };
 
 pub mod elf;
@@ -451,7 +451,7 @@ pub async fn exec(owner: UserID, path: &str, args: &[&str], parent: Option<Proce
     main.set_pid(pid);
     main.set_name(&format!("{owner:?} <{path}> {args:?} - child of {parent:?}"));
 
-    SCHEDULER.queue(main);
+    current_scheduler().queue(main);
 
     Ok(pid)
 }

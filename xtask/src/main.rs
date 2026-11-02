@@ -47,6 +47,9 @@ enum Cmd {
         /// Target architecture (e.g. x86_64, aarch64)
         #[arg(long, default_value = "x86_64", global = true)]
         arch: String,
+        /// Firmware to use when running the disk image
+        #[arg(long, value_enum, default_value = "bios")]
+        firmware: Firmware,
     },
     /// Run the output ISO.
     Run {
@@ -62,6 +65,9 @@ enum Cmd {
         /// Target architecture (e.g. x86_64, aarch64)
         #[arg(long, default_value = "x86_64", global = true)]
         arch: String,
+        /// Firmware to use when running the disk image
+        #[arg(long, value_enum, default_value = "bios")]
+        firmware: Firmware,
     },
 
     /// Run checks on tools, project, and git.
@@ -89,25 +95,31 @@ enum FsCmd {
     /// Create a new IonFS filesystem
     Make {
         /// Output path for disk image
-        #[arg(long, default_value = "dist/disk.img")]
+        #[arg(long, default_value = "dist/rootfs.img")]
         path: String,
         /// Create the disk image file
         #[arg(long, default_value_t = false)]
         create: bool,
+        /// GPT partition index to format when `path` points to a whole-disk image
+        #[arg(long)]
+        partition: Option<u32>,
     },
     /// Read and display IonFS filesystem contents
     Tree {
         /// Path to disk image
-        #[arg(long, default_value = "dist/disk.img")]
+        #[arg(long, default_value = "dist/rootfs.img")]
         path: String,
         /// Inode numbers to display contents for
         #[arg(long, value_name = "INODE")]
         read_inode: Vec<u64>,
+        /// GPT partition index to inspect when `path` points to a whole-disk image
+        #[arg(long)]
+        partition: Option<u32>,
     },
     /// Port files from host to disk image
     Port {
         /// Path to disk image
-        #[arg(long, default_value = "dist/disk.img")]
+        #[arg(long, default_value = "dist/rootfs.img")]
         path: String,
         /// Destination path in filesystem (default: @/)
         #[arg(long, default_value = "/")]
@@ -118,38 +130,50 @@ enum FsCmd {
         /// Recursively port directories maintaining structure. Required for: porting directories, using non-root destinations, or porting multiple files
         #[arg(short, long)]
         recursive: bool,
+        /// GPT partition index to update when `path` points to a whole-disk image
+        #[arg(long)]
+        partition: Option<u32>,
     },
     /// Create a directory
     Mkdir {
         /// Path to disk image
-        #[arg(long, default_value = "dist/disk.img")]
+        #[arg(long, default_value = "dist/rootfs.img")]
         path: String,
         /// Directory path in filesystem (e.g. @/foo or @/foo/bar)
         #[arg(value_name = "DIR")]
         dir: String,
+        /// GPT partition index to update when `path` points to a whole-disk image
+        #[arg(long)]
+        partition: Option<u32>,
     },
     /// Create an empty file
     Touch {
         /// Path to disk image
-        #[arg(long, default_value = "dist/disk.img")]
+        #[arg(long, default_value = "dist/rootfs.img")]
         path: String,
         /// File path in filesystem (e.g. @/foo.txt or @/dir/file.txt)
         #[arg(value_name = "FILE")]
         file: String,
+        /// GPT partition index to update when `path` points to a whole-disk image
+        #[arg(long)]
+        partition: Option<u32>,
     },
     /// Remove a file or empty directory
     Rm {
         /// Path to disk image
-        #[arg(long, default_value = "dist/disk.img")]
+        #[arg(long, default_value = "dist/rootfs.img")]
         path: String,
         /// Path to remove (e.g. @/foo.txt or @/dir)
         #[arg(value_name = "PATH")]
         path_to_remove: String,
+        /// GPT partition index to update when `path` points to a whole-disk image
+        #[arg(long)]
+        partition: Option<u32>,
     },
     /// List directory contents (like Unix ls command)
     Ls {
         /// Path to disk image
-        #[arg(long, default_value = "dist/disk.img")]
+        #[arg(long, default_value = "dist/rootfs.img")]
         path: String,
         /// Directory to list (default: /)
         #[arg(default_value = "/")]
@@ -160,15 +184,21 @@ enum FsCmd {
         /// Show all entries (currently same as normal)
         #[arg(short, long)]
         all: bool,
+        /// GPT partition index to inspect when `path` points to a whole-disk image
+        #[arg(long)]
+        partition: Option<u32>,
     },
     /// Quick view file contents
     Cat {
         /// Path to disk image
-        #[arg(long, default_value = "dist/disk.img")]
+        #[arg(long, default_value = "dist/rootfs.img")]
         path: String,
         /// File path in filesystem (e.g. @/file.txt or @/dir/file.txt)
         #[arg(value_name = "FILE")]
         file: String,
+        /// GPT partition index to inspect when `path` points to a whole-disk image
+        #[arg(long)]
+        partition: Option<u32>,
     },
 }
 
@@ -178,6 +208,12 @@ enum Vm {
     Qemu,
     /// Bochs, unimplemented.
     Bochs,
+}
+
+#[derive(ValueEnum, Clone, Copy)]
+enum Firmware {
+    Bios,
+    Uefi,
 }
 
 //
@@ -192,7 +228,7 @@ fn sh(cmd: &mut Command) -> Result<()> {
     Ok(())
 }
 
-fn docker(cmd: &[&str]) -> Result<()> {
+fn docker_with_options(cmd: &[&str], privileged: bool) -> Result<()> {
     if cmd.is_empty() {
         bail!("docker(): empty command");
     }
@@ -200,10 +236,11 @@ fn docker(cmd: &[&str]) -> Result<()> {
     let pwd = std::env::current_dir()?;
 
     let mut c = Command::new("docker");
+    c.args(["run", "--rm", "-t"]);
+    if privileged {
+        c.arg("--privileged");
+    }
     c.args([
-        "run",
-        "--rm",
-        "-t",
         "-v",
         &format!("{}:/root/env", pwd.display()),
         "-w",
@@ -214,6 +251,14 @@ fn docker(cmd: &[&str]) -> Result<()> {
     c.args(cmd);
     sh(&mut c)?;
     Ok(())
+}
+
+fn docker(cmd: &[&str]) -> Result<()> {
+    docker_with_options(cmd, false)
+}
+
+fn docker_privileged(cmd: &[&str]) -> Result<()> {
+    docker_with_options(cmd, true)
 }
 
 //
@@ -227,7 +272,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Cmd::Build { release, test, .. } => build(&cli, test, release),
-        Cmd::Test { vm , no_build, ref arch } => {
+        Cmd::Test { vm , no_build, ref arch, firmware } => {
             if !SUPPORTED_ARCHS.contains(&arch.as_str()) {
                 bail!(
                     "unsupported architecture: {}\n\nThe supported architectures are: \n{}",
@@ -241,13 +286,14 @@ fn main() -> Result<()> {
                     "build complete, you may need to change the permissions of kernel.iso before executing."
                 );
             }
-            run_vm(vm, arch.clone(), true)
+            run_vm(vm, arch.clone(), true, firmware)
         }
         Cmd::Run {
             no_build,
             vm,
             release,
-            ref arch
+            ref arch,
+            firmware,
         } => {
             if !SUPPORTED_ARCHS.contains(&arch.as_str()) {
                 bail!(
@@ -262,7 +308,7 @@ fn main() -> Result<()> {
                     "build complete, you may need to change the permissions of kernel.iso before executing."
                 );
             }
-            run_vm(vm, arch.clone(), false)
+            run_vm(vm, arch.clone(), false, firmware)
         }
         Cmd::Doctor {
             minimal,
@@ -270,7 +316,7 @@ fn main() -> Result<()> {
             verbose,
         } => doctor(minimal, vm, verbose),
         Cmd::Fs { subcommand } => match subcommand {
-            FsCmd::Make { path, create } => {
+            FsCmd::Make { path, create, partition } => {
                 let p = PathBuf::from(path);
                 if create {
                     let f = fs::OpenOptions::new()
@@ -281,35 +327,35 @@ fn main() -> Result<()> {
                         .open(&p)?;
                     f.set_len(64 * 1024 * 1024)?; // 64 MiB
                 }
-                fs_make(&p)
+                fs_make(&p, partition)
             }
-            FsCmd::Tree { path, read_inode } => {
+            FsCmd::Tree { path, read_inode, partition } => {
                 let p = PathBuf::from(path);
-                fs_read(&p, &read_inode)
+                fs_read(&p, partition, &read_inode)
             }
-            FsCmd::Port { path, dest, files, recursive } => {
+            FsCmd::Port { path, dest, files, recursive, partition } => {
                 let p = PathBuf::from(path);
-                fs_port(&p, &dest, &files, recursive)
+                fs_port(&p, partition, &dest, &files, recursive)
             }
-            FsCmd::Mkdir { path, dir } => {
+            FsCmd::Mkdir { path, dir, partition } => {
                 let p = PathBuf::from(path);
-                fs_mkdir(&p, &dir)
+                fs_mkdir(&p, partition, &dir)
             }
-            FsCmd::Touch { path, file } => {
+            FsCmd::Touch { path, file, partition } => {
                 let p = PathBuf::from(path);
-                fs_touch(&p, &file)
+                fs_touch(&p, partition, &file)
             }
-            FsCmd::Rm { path, path_to_remove } => {
+            FsCmd::Rm { path, path_to_remove, partition } => {
                 let p = PathBuf::from(path);
-                fs_rm(&p, &path_to_remove)
+                fs_rm(&p, partition, &path_to_remove)
             }
-            FsCmd::Ls { path, dir, long, all } => {
+            FsCmd::Ls { path, dir, long, all, partition } => {
                 let p = PathBuf::from(path);
-                fs_ls(&p, &dir, long, all)
+                fs_ls(&p, partition, &dir, long, all)
             }
-            FsCmd::Cat { path, file } => {
+            FsCmd::Cat { path, file, partition } => {
                 let p = PathBuf::from(path);
-                fs_cat(&p, &file)
+                fs_cat(&p, partition, &file)
             }
         },
     }
@@ -370,6 +416,7 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
             "-mno-red-zone",
             "-fno-omit-frame-pointer",
             "-fno-pic",
+            "-Wa,--noexecstack",
             "-I",
             "app/src/kernel/c_entry",
             c.to_str().unwrap(),
@@ -398,6 +445,8 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
         "ion-kernel",
         "--target",
         &target_json,
+        "-Z",
+        "json-target-spec",
         "-Z",
         "build-std=core,alloc",
         "-Z",
@@ -484,6 +533,252 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
         "app/targets/x86_64/iso",
     ])?;
 
+    build_boot_disk(Path::new(&elf), Path::new(&dist_root), &arch, test)?;
+
+    Ok(())
+}
+
+fn ensure_rootfs_image() -> Result<PathBuf> {
+    let path = PathBuf::from("dist/rootfs.img");
+
+    if path.exists() {
+        return Ok(path);
+    }
+
+    fs::create_dir_all(path.parent().unwrap())?;
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&path)?;
+    file.set_len(DEFAULT_ROOTFS_SIZE_BYTES)?;
+
+    drop(file);
+    fs_make(&path, None)?;
+    Ok(path)
+}
+
+fn build_boot_disk(elf: &Path, dist_root: &Path, arch: &str, test: bool) -> Result<()> {
+    let rootfs = ensure_rootfs_image()?;
+    let rootfs_size = fs::metadata(&rootfs)?.len();
+    let layout = default_disk_layout(rootfs_size);
+
+    let image_name = if test {
+        format!("ion_os_{arch}_test.img")
+    } else {
+        format!("ion_os_{arch}.img")
+    };
+    let disk_image = dist_root.join(image_name);
+
+    write_gpt_disk_image(&disk_image, layout)?;
+    copy_rootfs_into_disk(&disk_image, layout.root, &rootfs)?;
+
+    let grub_cfg = dist_root.join("grub-disk.cfg");
+    fs::write(
+        &grub_cfg,
+        "set timeout=0\nset default=0\nset root=(hd0,gpt2)\nmenuentry \"Ion OS\" {\n    multiboot2 /kernel.elf\n    boot\n}\n",
+    )?;
+
+    let efi_boot = dist_root.join("BOOTX64.EFI");
+    let cfg_binding = grub_cfg.display().to_string();
+    let efi_binding = efi_boot.display().to_string();
+    docker(&[
+        "grub-mkstandalone",
+        "-d",
+        "/usr/lib/grub/x86_64-efi",
+        "-O",
+        "x86_64-efi",
+        "-o",
+        &efi_binding,
+        &format!("boot/grub/grub.cfg={}", cfg_binding),
+    ])?;
+
+    populate_esp(&disk_image, layout.esp, elf, &grub_cfg, &efi_boot)?;
+    install_bios_grub(&disk_image, layout.esp, &grub_cfg, dist_root)?;
+    Ok(())
+}
+
+fn write_gpt_disk_image(path: &Path, layout: DiskLayout) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)?;
+    file.set_len(layout.total_bytes)?;
+
+    let total_lbas = layout.total_bytes / BLOCK_SIZE as u64;
+    let partition_entries_lba = 2u64;
+    let partition_entries_lbas = bytes_to_lba((GPT_ENTRY_COUNT * GPT_ENTRY_SIZE) as u64);
+    let backup_entries_lba = total_lbas - 1 - partition_entries_lbas;
+    let backup_header_lba = total_lbas - 1;
+
+    let entries = build_partition_entries(layout);
+    let entries_crc = crc32fast::hash(&entries);
+
+    write_protective_mbr(&mut file, total_lbas)?;
+
+    file.seek(SeekFrom::Start(partition_entries_lba * BLOCK_SIZE as u64))?;
+    file.write_all(&entries)?;
+
+    file.seek(SeekFrom::Start(backup_entries_lba * BLOCK_SIZE as u64))?;
+    file.write_all(&entries)?;
+
+    let primary = build_gpt_header(
+        1,
+        backup_header_lba,
+        layout.bios_grub.first_lba,
+        layout.root.last_lba,
+        partition_entries_lba,
+        entries_crc,
+    );
+
+    let backup = build_gpt_header(
+        backup_header_lba,
+        1,
+        layout.bios_grub.first_lba,
+        layout.root.last_lba,
+        backup_entries_lba,
+        entries_crc,
+    );
+
+    file.seek(SeekFrom::Start(BLOCK_SIZE as u64))?;
+    file.write_all(&primary)?;
+
+    file.seek(SeekFrom::Start(backup_header_lba * BLOCK_SIZE as u64))?;
+    file.write_all(&backup)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+fn build_partition_entries(layout: DiskLayout) -> Vec<u8> {
+    let mut entries = vec![0u8; GPT_ENTRY_COUNT * GPT_ENTRY_SIZE];
+    let partitions = [
+        (layout.bios_grub, "BIOSBOOT"),
+        (layout.esp, "EFI"),
+        (layout.root, "IONROOT"),
+    ];
+
+    for (slot, (part, name)) in partitions.into_iter().enumerate() {
+        let entry = &mut entries[slot * GPT_ENTRY_SIZE..(slot + 1) * GPT_ENTRY_SIZE];
+        entry[0..16].copy_from_slice(&part.type_guid);
+        entry[16..32].copy_from_slice(&part.unique_guid);
+        entry[32..40].copy_from_slice(&part.first_lba.to_le_bytes());
+        entry[40..48].copy_from_slice(&part.last_lba.to_le_bytes());
+        entry[56..128].copy_from_slice(&encode_gpt_name(name));
+    }
+
+    entries
+}
+
+fn build_gpt_header(
+    current_lba: u64,
+    backup_lba: u64,
+    first_usable_lba: u64,
+    last_usable_lba: u64,
+    entries_lba: u64,
+    entries_crc: u32,
+) -> [u8; BLOCK_SIZE] {
+    let mut header = [0u8; BLOCK_SIZE];
+    header[0..8].copy_from_slice(GPT_HEADER_SIGNATURE);
+    header[8..12].copy_from_slice(&0x0001_0000u32.to_le_bytes());
+    header[12..16].copy_from_slice(&92u32.to_le_bytes());
+    header[24..32].copy_from_slice(&current_lba.to_le_bytes());
+    header[32..40].copy_from_slice(&backup_lba.to_le_bytes());
+    header[40..48].copy_from_slice(&first_usable_lba.to_le_bytes());
+    header[48..56].copy_from_slice(&last_usable_lba.to_le_bytes());
+    header[56..72].copy_from_slice(&DISK_GUID);
+    header[72..80].copy_from_slice(&entries_lba.to_le_bytes());
+    header[80..84].copy_from_slice(&(GPT_ENTRY_COUNT as u32).to_le_bytes());
+    header[84..88].copy_from_slice(&(GPT_ENTRY_SIZE as u32).to_le_bytes());
+    header[88..92].copy_from_slice(&entries_crc.to_le_bytes());
+
+    let crc = crc32fast::hash(&header[..92]);
+    header[16..20].copy_from_slice(&crc.to_le_bytes());
+    header
+}
+
+fn write_protective_mbr(file: &mut fs::File, total_lbas: u64) -> Result<()> {
+    let mut mbr = [0u8; BLOCK_SIZE];
+    let entry = &mut mbr[446..462];
+    entry[4] = 0xEE;
+    entry[8..12].copy_from_slice(&1u32.to_le_bytes());
+    entry[12..16].copy_from_slice(&(total_lbas.saturating_sub(1).min(u32::MAX as u64) as u32).to_le_bytes());
+    mbr[510] = 0x55;
+    mbr[511] = 0xAA;
+
+    file.seek(SeekFrom::Start(0))?;
+    file.write_all(&mbr)?;
+    Ok(())
+}
+
+fn copy_rootfs_into_disk(disk_image: &Path, root: GptPartition, rootfs: &Path) -> Result<()> {
+    let mut src = fs::File::open(rootfs)?;
+    let mut dst = fs::OpenOptions::new().read(true).write(true).open(disk_image)?;
+
+    dst.seek(SeekFrom::Start(root.byte_offset()))?;
+    std::io::copy(&mut src, &mut dst)?;
+    dst.sync_all()?;
+    Ok(())
+}
+
+fn populate_esp(disk_image: &Path, esp: GptPartition, elf: &Path, grub_cfg: &Path, efi_boot: &Path) -> Result<()> {
+    let disk_binding = disk_image.display().to_string();
+    let esp_offset_sectors = esp.first_lba.to_string();
+    docker(&[
+        "mkfs.fat",
+        "-F",
+        "32",
+        "--offset",
+        &esp_offset_sectors,
+        &disk_binding,
+    ])?;
+
+    let image_binding = format!("{}@@{}", disk_image.display(), esp.byte_offset());
+    docker(&["mmd", "-i", &image_binding, "::/EFI"])?;
+    docker(&["mmd", "-i", &image_binding, "::/EFI/BOOT"])?;
+    docker(&["mmd", "-i", &image_binding, "::/boot"])?;
+    docker(&["mmd", "-i", &image_binding, "::/boot/grub"])?;
+
+    let elf_binding = elf.display().to_string();
+    let cfg_binding = grub_cfg.display().to_string();
+    let efi_binding = efi_boot.display().to_string();
+
+    docker(&["mcopy", "-i", &image_binding, &elf_binding, "::/kernel.elf"])?;
+    docker(&["mcopy", "-i", &image_binding, &cfg_binding, "::/boot/grub/grub.cfg"])?;
+    docker(&["mcopy", "-i", &image_binding, &efi_binding, "::/EFI/BOOT/BOOTX64.EFI"])?;
+    Ok(())
+}
+
+fn install_bios_grub(disk_image: &Path, esp: GptPartition, grub_cfg: &Path, dist_root: &Path) -> Result<()> {
+    let _ = grub_cfg;
+    let _ = dist_root;
+    let disk_binding = format!("/root/env/{}", disk_image.display());
+    let esp_mount = "/tmp/ion-esp";
+    let boot_dir_binding = format!("{esp_mount}/boot");
+    let esp_offset = esp.byte_offset();
+
+    let script = format!(
+        "set -e\n\
+         loop=$(losetup -f --show '{disk}')\n\
+         trap 'umount {esp} >/dev/null 2>&1 || true; losetup -d \"$loop\" >/dev/null 2>&1 || true' EXIT\n\
+         mkdir -p {esp}\n\
+         mount -t vfat -o offset={offset} \"$loop\" {esp}\n\
+         grub-install --target=i386-pc --boot-directory='{boot}' --modules='biosdisk part_gpt fat multiboot2 normal configfile search' --install-modules='biosdisk part_gpt fat multiboot2 normal configfile search' --no-floppy --force --skip-fs-probe \"$loop\"\n\
+         umount {esp}\n",
+        disk = disk_binding,
+        esp = esp_mount,
+        boot = boot_dir_binding,
+        offset = esp_offset,
+    );
+
+    docker_privileged(&["sh", "-lc", &script])?;
+
     Ok(())
 }
 
@@ -491,31 +786,30 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
 // ---------------- run ----------------
 //
 
-fn run_vm(vm: Vm, arch: String, test: bool) -> Result<()> {
-    let mut iso = format!("dist/{}/", arch);
+fn run_vm(vm: Vm, arch: String, test: bool, firmware: Firmware) -> Result<()> {
+    let mut disk = format!("dist/{}/", arch);
 
     if test {
-        iso.push_str(&format!("test/ion_os_{arch}_test.iso"));
+        disk.push_str(&format!("test/ion_os_{arch}_test.img"));
     } else {
-        iso.push_str(&format!("ion_os_{arch}.iso"));
+        disk.push_str(&format!("ion_os_{arch}.img"));
     }
 
     match vm {
-        Vm::Qemu => run_qemu(&iso),
+        Vm::Qemu => run_qemu(&disk, firmware),
         Vm::Bochs => bail!("bochs backend not implemented yet"),
     }
 }
 
-fn run_qemu(iso: &str) -> Result<()> {
+fn run_qemu(disk_image: &str, firmware: Firmware) -> Result<()> {
     let mut binding = Command::new("qemu-system-x86_64");
-    let cmd = binding.args([
-        iso,
+    binding.args([
         "-debugcon",
         "stdio",
         "-device",
         "isa-debug-exit,iobase=0xf4,iosize=0x04",
         "-drive",
-        "file=dist/disk.img,if=none,id=disk0",
+        &format!("file={disk_image},if=none,id=disk0,format=raw"),
         "-device", 
         "virtio-blk-pci,drive=disk0,disable-legacy=on",
         "-machine",
@@ -528,10 +822,23 @@ fn run_qemu(iso: &str) -> Result<()> {
         "2"
     ]);
 
-    let status = cmd.status()?.code();
+    if matches!(firmware, Firmware::Uefi) {
+        let ovmf = [
+            "/usr/share/OVMF/OVMF_CODE.fd",
+            "/usr/share/edk2/x64/OVMF_CODE.fd",
+            "/usr/share/edk2-ovmf/x64/OVMF_CODE.fd",
+        ]
+        .into_iter()
+        .find(|path| Path::new(path).exists())
+        .ok_or_else(|| anyhow!("UEFI requested but no OVMF firmware image was found in a standard location"))?;
+
+        binding.args(["-bios", ovmf]);
+    }
+
+    let status = binding.status()?.code();
     if status != Some(33) {
         // qemu exit code for `OK`
-        bail!("qemu failed: {:?}", cmd);
+        bail!("qemu failed: {:?}", binding);
     }
     Ok(())
 }
@@ -790,9 +1097,276 @@ const ALLOC_MAGIC: u32 = 0xab87befd;
 
 const VERSION: [u8; 4] = [0, 1, 0, 0];
 
+const GPT_HEADER_SIGNATURE: &[u8; 8] = b"EFI PART";
+const GPT_ENTRY_COUNT: usize = 128;
+const GPT_ENTRY_SIZE: usize = 128;
+
+const BIOS_GRUB_PARTITION_SIZE_BYTES: u64 = 1 * 1024 * 1024;
+const ESP_PARTITION_SIZE_BYTES: u64 = 64 * 1024 * 1024;
+const DEFAULT_ROOTFS_SIZE_BYTES: u64 = 64 * 1024 * 1024;
+const IMAGE_ALIGNMENT_BYTES: u64 = 1024 * 1024;
+
+const BIOS_BOOT_TYPE_GUID: [u8; 16] = [
+    0x48, 0x61, 0x68, 0x21, 0x49, 0x64, 0x6F, 0x6E,
+    0x74, 0x4E, 0x65, 0x65, 0x64, 0x45, 0x46, 0x49,
+];
+
+const EFI_SYSTEM_TYPE_GUID: [u8; 16] = [
+    0x28, 0x73, 0x2A, 0xC1, 0x1F, 0xF8, 0xD2, 0x11,
+    0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B,
+];
+
+const LINUX_FILESYSTEM_TYPE_GUID: [u8; 16] = [
+    0xAF, 0x3D, 0xC6, 0x0F, 0x83, 0x84, 0x72, 0x47,
+    0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4,
+];
+
+const BIOS_PARTITION_GUID: [u8; 16] = [0x11; 16];
+const EFI_PARTITION_GUID: [u8; 16] = [0x22; 16];
+const ROOT_PARTITION_GUID: [u8; 16] = [0x33; 16];
+const DISK_GUID: [u8; 16] = [0x44; 16];
+
+#[derive(Clone, Copy, Debug)]
+struct GptPartition {
+    index: u32,
+    type_guid: [u8; 16],
+    unique_guid: [u8; 16],
+    first_lba: u64,
+    last_lba: u64,
+}
+
+impl GptPartition {
+    fn byte_offset(self) -> u64 {
+        self.first_lba * BLOCK_SIZE as u64
+    }
+
+    fn byte_len(self) -> u64 {
+        (self.last_lba - self.first_lba + 1) * BLOCK_SIZE as u64
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct DiskLayout {
+    bios_grub: GptPartition,
+    esp: GptPartition,
+    root: GptPartition,
+    total_bytes: u64,
+}
+
+struct OffsetFile {
+    inner: fs::File,
+    base_offset: u64,
+}
+
+impl OffsetFile {
+    fn open(path: &Path, write: bool, partition: Option<u32>) -> Result<Self> {
+        let inner = fs::OpenOptions::new()
+            .read(true)
+            .write(write)
+            .open(path)?;
+
+        let base_offset = resolve_ionfs_base_offset(path, partition)?;
+        Ok(Self { inner, base_offset })
+    }
+
+    fn create(path: &Path, truncate: bool) -> Result<Self> {
+        let inner = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(truncate)
+            .open(path)?;
+
+        Ok(Self {
+            inner,
+            base_offset: 0,
+        })
+    }
+
+    fn sync_all(&self) -> Result<()> {
+        self.inner.sync_all()?;
+        Ok(())
+    }
+}
+
+impl Read for OffsetFile {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+impl Write for OffsetFile {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.inner.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+impl Seek for OffsetFile {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        match pos {
+            SeekFrom::Start(offset) => self.inner.seek(SeekFrom::Start(self.base_offset + offset)),
+            other => self.inner.seek(other),
+        }
+    }
+}
+
+fn align_up(value: u64, align: u64) -> u64 {
+    if value % align == 0 {
+        value
+    } else {
+        value + (align - (value % align))
+    }
+}
+
+fn bytes_to_lba(bytes: u64) -> u64 {
+    bytes.div_ceil(BLOCK_SIZE as u64)
+}
+
+fn encode_gpt_name(name: &str) -> [u8; 72] {
+    let mut buf = [0u8; 72];
+
+    for (idx, unit) in name.encode_utf16().take(36).enumerate() {
+        let bytes = unit.to_le_bytes();
+        let off = idx * 2;
+        buf[off] = bytes[0];
+        buf[off + 1] = bytes[1];
+    }
+
+    buf
+}
+
+fn default_disk_layout(rootfs_bytes: u64) -> DiskLayout {
+    let partition_entries_lba = 2u64;
+    let partition_entries_bytes = (GPT_ENTRY_COUNT * GPT_ENTRY_SIZE) as u64;
+    let partition_entries_lbas = bytes_to_lba(partition_entries_bytes);
+
+    let first_usable_lba = align_up(
+        (partition_entries_lba + partition_entries_lbas) * BLOCK_SIZE as u64,
+        IMAGE_ALIGNMENT_BYTES,
+    ) / BLOCK_SIZE as u64;
+
+    let bios_blocks = bytes_to_lba(BIOS_GRUB_PARTITION_SIZE_BYTES);
+    let esp_blocks = bytes_to_lba(ESP_PARTITION_SIZE_BYTES);
+    let root_blocks = bytes_to_lba(rootfs_bytes.max(DEFAULT_ROOTFS_SIZE_BYTES));
+
+    let bios_first = first_usable_lba;
+    let bios_last = bios_first + bios_blocks - 1;
+
+    let esp_first = align_up((bios_last + 1) * BLOCK_SIZE as u64, IMAGE_ALIGNMENT_BYTES) / BLOCK_SIZE as u64;
+    let esp_last = esp_first + esp_blocks - 1;
+
+    let root_first = align_up((esp_last + 1) * BLOCK_SIZE as u64, IMAGE_ALIGNMENT_BYTES) / BLOCK_SIZE as u64;
+    let root_last = root_first + root_blocks - 1;
+
+    let backup_entries_lba = root_last + 1;
+    let backup_header_lba = backup_entries_lba + partition_entries_lbas;
+    let total_bytes = (backup_header_lba + 1) * BLOCK_SIZE as u64;
+
+    DiskLayout {
+        bios_grub: GptPartition {
+            index: 1,
+            type_guid: BIOS_BOOT_TYPE_GUID,
+            unique_guid: BIOS_PARTITION_GUID,
+            first_lba: bios_first,
+            last_lba: bios_last,
+        },
+        esp: GptPartition {
+            index: 2,
+            type_guid: EFI_SYSTEM_TYPE_GUID,
+            unique_guid: EFI_PARTITION_GUID,
+            first_lba: esp_first,
+            last_lba: esp_last,
+        },
+        root: GptPartition {
+            index: 3,
+            type_guid: LINUX_FILESYSTEM_TYPE_GUID,
+            unique_guid: ROOT_PARTITION_GUID,
+            first_lba: root_first,
+            last_lba: root_last,
+        },
+        total_bytes,
+    }
+}
+
+fn read_gpt_partitions(path: &Path) -> Result<Vec<GptPartition>> {
+    let mut file = fs::File::open(path)?;
+    let mut header = [0u8; BLOCK_SIZE];
+    file.seek(SeekFrom::Start(BLOCK_SIZE as u64))?;
+    file.read_exact(&mut header)?;
+
+    if &header[0..8] != GPT_HEADER_SIGNATURE {
+        return Ok(Vec::new());
+    }
+
+    let entry_lba = u64::from_le_bytes(header[72..80].try_into()?);
+    let entry_count = u32::from_le_bytes(header[80..84].try_into()?) as usize;
+    let entry_size = u32::from_le_bytes(header[84..88].try_into()?) as usize;
+
+    if entry_size < GPT_ENTRY_SIZE {
+        bail!("unsupported GPT entry size: {}", entry_size);
+    }
+
+    let mut entries = vec![0u8; entry_count * entry_size];
+    file.seek(SeekFrom::Start(entry_lba * BLOCK_SIZE as u64))?;
+    file.read_exact(&mut entries)?;
+
+    let mut partitions = Vec::new();
+    for (idx, entry) in entries.chunks(entry_size).enumerate() {
+        if entry[..16].iter().all(|b| *b == 0) {
+            continue;
+        }
+
+        partitions.push(GptPartition {
+            index: (idx + 1) as u32,
+            type_guid: entry[0..16].try_into()?,
+            unique_guid: entry[16..32].try_into()?,
+            first_lba: u64::from_le_bytes(entry[32..40].try_into()?),
+            last_lba: u64::from_le_bytes(entry[40..48].try_into()?),
+        });
+    }
+
+    Ok(partitions)
+}
+
+fn resolve_ionfs_base_offset(path: &Path, partition: Option<u32>) -> Result<u64> {
+    let mut file = fs::File::open(path)?;
+    let mut superblock = [0u8; 4];
+    file.read_exact(&mut superblock)?;
+    if u32::from_le_bytes(superblock) == SUPER_MAGIC {
+        return Ok(0);
+    }
+
+    let partitions = read_gpt_partitions(path)?;
+    if partitions.is_empty() {
+        return Ok(0);
+    }
+
+    if let Some(index) = partition {
+        let part = partitions
+            .into_iter()
+            .find(|part| part.index == index)
+            .ok_or_else(|| anyhow!("GPT partition {} was not found", index))?;
+        return Ok(part.byte_offset());
+    }
+
+    for part in partitions {
+        file.seek(SeekFrom::Start(part.byte_offset()))?;
+        file.read_exact(&mut superblock)?;
+        if u32::from_le_bytes(superblock) == SUPER_MAGIC {
+            return Ok(part.byte_offset());
+        }
+    }
+
+    bail!("failed to find an IonFS partition in {}", path.display())
+}
+
 
 fn write_block(
-    file: &mut std::fs::File,
+    file: &mut OffsetFile,
     block: u64,
     buf: &[u8],
 ) -> anyhow::Result<()> {
@@ -802,7 +1376,7 @@ fn write_block(
     Ok(())
 }
 
-fn write_superblock(file: &mut std::fs::File) -> Result<()> {
+fn write_superblock(file: &mut OffsetFile) -> Result<()> {
     let mut buf = vec![0u8; BLOCK_SIZE];
 
     buf[0..4].copy_from_slice(&SUPER_MAGIC.to_le_bytes());
@@ -812,7 +1386,7 @@ fn write_superblock(file: &mut std::fs::File) -> Result<()> {
     write_block(file, 0, &buf)
 }
 
-fn write_alloc_block(file: &mut std::fs::File) -> Result<()> {
+fn write_alloc_block(file: &mut OffsetFile) -> Result<()> {
     let mut buf = vec![0u8; BLOCK_SIZE];
 
     buf[0..4].copy_from_slice(&ALLOC_MAGIC.to_le_bytes());
@@ -850,11 +1424,8 @@ fn write_alloc_block(file: &mut std::fs::File) -> Result<()> {
     write_block(file, 1, &buf)
 }
 
-fn fs_make(path: &std::path::Path) -> Result<()> {
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)?;
+fn fs_make(path: &std::path::Path, partition: Option<u32>) -> Result<()> {
+    let mut file = OffsetFile::open(path, true, partition)?;
 
     write_superblock(&mut file)?;
     write_alloc_block(&mut file)?;
@@ -864,10 +1435,8 @@ fn fs_make(path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-fn fs_read(path: &std::path::Path, read_inodes: &[u64]) -> Result<()> {
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .open(path)?;
+fn fs_read(path: &std::path::Path, partition: Option<u32>, read_inodes: &[u64]) -> Result<()> {
+    let mut file = OffsetFile::open(path, false, partition)?;
 
     // Read and verify superblock
     let mut superblock = vec![0u8; BLOCK_SIZE];
@@ -1016,7 +1585,7 @@ fn fs_read(path: &std::path::Path, read_inodes: &[u64]) -> Result<()> {
 }
 
 fn print_dir_tree(
-    file: &mut std::fs::File,
+    file: &mut OffsetFile,
     inode_idx: u64,
     prefix: &str,
     all_inodes: &[(u64, Inode)],
@@ -1075,7 +1644,7 @@ fn print_all_dirs(all_inodes: &[(u64, Inode)]) -> Result<()> {
     Ok(())
 }
 
-fn read_file_contents(file: &mut std::fs::File, inode: &Inode) -> Result<Vec<u8>> {
+fn read_file_contents(file: &mut OffsetFile, inode: &Inode) -> Result<Vec<u8>> {
     let mut contents = vec![0u8; inode.size as usize];
     file.seek(SeekFrom::Start(inode.data_offset))?;
     file.read_exact(&mut contents)?;
@@ -1106,7 +1675,7 @@ fn parse_inode(buf: &[u8]) -> Result<Inode> {
     })
 }
 
-fn read_directory(file: &mut std::fs::File, inode: &Inode) -> Result<Vec<(Vec<u8>, u64)>> {
+fn read_directory(file: &mut OffsetFile, inode: &Inode) -> Result<Vec<(Vec<u8>, u64)>> {
     if inode.size == 0 {
         return Ok(Vec::new());
     }
@@ -1145,10 +1714,8 @@ fn read_directory(file: &mut std::fs::File, inode: &Inode) -> Result<Vec<(Vec<u8
     Ok(entries)
 }
 
-fn fs_ls(path: &std::path::Path, dir: &str, long: bool, _all: bool) -> Result<()> {
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .open(path)?;
+fn fs_ls(path: &std::path::Path, partition: Option<u32>, dir: &str, long: bool, _all: bool) -> Result<()> {
+    let mut file = OffsetFile::open(path, false, partition)?;
 
     // Read allocation block to get inode block location
     let mut alloc_block = vec![0u8; BLOCK_SIZE];
@@ -1238,10 +1805,8 @@ fn fs_ls(path: &std::path::Path, dir: &str, long: bool, _all: bool) -> Result<()
     Ok(())
 }
 
-fn fs_cat(path: &std::path::Path, file_path: &str) -> Result<()> {
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .open(path)?;
+fn fs_cat(path: &std::path::Path, partition: Option<u32>, file_path: &str) -> Result<()> {
+    let mut file = OffsetFile::open(path, false, partition)?;
 
     // Read allocation block
     let mut alloc_block = vec![0u8; BLOCK_SIZE];
@@ -1335,16 +1900,13 @@ fn fs_cat(path: &std::path::Path, file_path: &str) -> Result<()> {
     std::result::Result::Ok(())
 }
 
-fn fs_port(path: &std::path::Path, dest: &str, files: &[PathBuf], recursive: bool) -> Result<()> {
+fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[PathBuf], recursive: bool) -> Result<()> {
     if files.is_empty() {
         println!("[fs] No files specified to port");
         return Ok(());
     }
 
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)?;
+    let mut file = OffsetFile::open(path, true, partition)?;
 
     // Read allocation block
     let mut alloc_block = vec![0u8; BLOCK_SIZE];
@@ -1643,7 +2205,7 @@ fn normalize_path_for_output(path: &str) -> String {
 }
 
 /// Read all inodes from the filesystem
-fn read_all_inodes(file: &mut std::fs::File, inode_block_num: u64) -> Result<Vec<(u64, Inode)>> {
+fn read_all_inodes(file: &mut OffsetFile, inode_block_num: u64) -> Result<Vec<(u64, Inode)>> {
     let mut inode_block = vec![0u8; BLOCK_SIZE];
     file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64))?;
     file.read_exact(&mut inode_block)?;
@@ -1670,7 +2232,7 @@ fn read_all_inodes(file: &mut std::fs::File, inode_block_num: u64) -> Result<Vec
 /// Navigate to a directory by path and return its inode index
 /// Returns the inode index of the directory at the given path
 fn navigate_to_dir(
-    file: &mut std::fs::File,
+    file: &mut OffsetFile,
     all_inodes: &[(u64, Inode)],
     path: &str,
 ) -> Result<u64> {
@@ -1714,7 +2276,7 @@ fn navigate_to_dir(
 
 /// Parse a path and return (parent_inode_idx, filename)
 fn parse_path(
-    file: &mut std::fs::File,
+    file: &mut OffsetFile,
     all_inodes: &[(u64, Inode)],
     path: &str,
 ) -> Result<(u64, String)> {
@@ -1744,11 +2306,8 @@ fn parse_path(
     Ok((parent_inode, filename))
 }
 
-fn fs_mkdir(path: &std::path::Path, dir_path: &str) -> Result<()> {
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)?;
+fn fs_mkdir(path: &std::path::Path, partition: Option<u32>, dir_path: &str) -> Result<()> {
+    let mut file = OffsetFile::open(path, true, partition)?;
 
     // Read allocation metadata
     let mut alloc_block = vec![0u8; BLOCK_SIZE];
@@ -1865,11 +2424,8 @@ fn fs_mkdir(path: &std::path::Path, dir_path: &str) -> Result<()> {
     Ok(())
 }
 
-fn fs_touch(path: &std::path::Path, file_path: &str) -> Result<()> {
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)?;
+fn fs_touch(path: &std::path::Path, partition: Option<u32>, file_path: &str) -> Result<()> {
+    let mut file = OffsetFile::open(path, true, partition)?;
 
     // Read allocation metadata
     let mut alloc_block = vec![0u8; BLOCK_SIZE];
@@ -1986,11 +2542,8 @@ fn fs_touch(path: &std::path::Path, file_path: &str) -> Result<()> {
     Ok(())
 }
 
-fn fs_rm(path: &std::path::Path, path_to_remove: &str) -> Result<()> {
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)?;
+fn fs_rm(path: &std::path::Path, partition: Option<u32>, path_to_remove: &str) -> Result<()> {
+    let mut file = OffsetFile::open(path, true, partition)?;
 
     // Read allocation block
     let mut alloc_block = vec![0u8; BLOCK_SIZE];

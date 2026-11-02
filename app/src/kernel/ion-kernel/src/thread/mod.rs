@@ -10,7 +10,7 @@ use core::{fmt::Debug, sync::atomic::{AtomicU64, Ordering}};
 #[cfg(debug_assertions)]
 use crate::scheduler::idle_entry;
 use crate::{
-    address_space::{AddressSpace, kernel_address_space}, arch::ctx::Context, lib_alloc::THREAD_STACK_ALLOC, log, process::{ProcessID, elf::{ElfLoadError, load_elf}}, scheduler::{self, SCHEDULER, WakeEvent}, serial_println, thread::{
+    address_space::{AddressSpace, kernel_address_space}, arch::ctx::Context, lib_alloc::THREAD_STACK_ALLOC, log, process::{ProcessID, elf::{ElfLoadError, load_elf}}, scheduler::{self, current_scheduler, WakeEvent}, serial_println, thread::{
         stack::ThreadStack,
         tls::{ThreadSelf, TlsAllocation, alloc_thread_self},
     }
@@ -230,6 +230,7 @@ pub fn sleep(ms: u64) {
     scheduler::sleep_current(ms / 10);
 }
 
+#[track_caller] // for panics.
 pub fn id() -> ThreadID {
     current()
         .expect("should not retrieve thread id before initialization.")
@@ -237,7 +238,7 @@ pub fn id() -> ThreadID {
 }
 
 pub fn init() {
-    SCHEDULER.init();
+    current_scheduler().init();
 }
 
 pub mod build;

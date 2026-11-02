@@ -6,7 +6,7 @@ use pc_keyboard::{DecodedKey, KeyCode, KeyState};
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE, SCANCODES_PUSHED}}, asyncio, event, graphics::{self, Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}, with_renderer}, io::OpenOptions, log::{self, error}, privilege::UserID, process::{self, FdHandle, spawn_proc}, resources::{self, ResourceTable, channel, fd}, scheduler::{self, SCHEDULER}, smp, thread::Thread};
+use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE, SCANCODES_PUSHED}}, asyncio, event, graphics::{self, Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}, with_renderer}, io::OpenOptions, log::{self, error}, privilege::UserID, process::{self, FdHandle, spawn_proc}, resources::{self, ResourceTable, channel, fd}, scheduler::{self, current_scheduler}, thread::Thread};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -167,14 +167,6 @@ pub fn kernel_main() {
         r.present();
     });
 
-    // SMP
-
-    log::debug!("attempting to start APs (cores)");
-
-    smp::start();
-
-    log::debug!("finished starting APs!");
-
     // init (CPU0)
 
     let mut table = ResourceTable::new();
@@ -235,8 +227,8 @@ pub fn kernel_main() {
         });
 
         // new thread for temporary TTY shell
-
         thread::spawn(move || {
+            log::info!("starting TTY shell for ish (pid {pid:?})");
             with_renderer(|r| {
                 r.clear(Color::BLACK);
             });

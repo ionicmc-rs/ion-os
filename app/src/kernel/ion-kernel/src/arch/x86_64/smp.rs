@@ -82,7 +82,6 @@ pub unsafe fn discover_cpus(madt_ptr: *const u8, madt_len: usize) {
     log::debug!("madt_len: {madt_len}");
 
     while offset < madt_len {
-        log::debug!("loop");
         let entry = madt_ptr.add(offset) as *const MadtEntryHeader;
         let typ = (*entry).typ;
         let len = (*entry).length as usize;

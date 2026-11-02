@@ -3,7 +3,7 @@ use core::fmt::Display;
 use alloc::{boxed::Box, format};
 
 use crate::{
-    address_space::kernel_address_space, hlt_loop, log, scheduler::{self, SCHEDULER}, serial_println, thread::{self, Thread, ThreadID, build::TPriority}
+    address_space::kernel_address_space, hlt_loop, log, scheduler::{self, current_scheduler}, serial_println, thread::{self, Thread, ThreadID, build::TPriority}
 };
 
 /// Handle used to retrieve the result of a spawned thread.
@@ -125,7 +125,7 @@ pub fn spawn<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
     // Safety: We fulfill all requirements
     let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size);
     let id = thread.id();
-    SCHEDULER.queue(thread);
+    current_scheduler().queue(thread);
 
     JoinHandle {
         result: result_ptr,
@@ -181,7 +181,7 @@ pub fn spawn_at<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
     }
     let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size);
     let id = thread.id();
-    SCHEDULER.queue_at(prio, thread);
+    current_scheduler().queue_at(prio, thread);
 
     JoinHandle {
         result: result_ptr,

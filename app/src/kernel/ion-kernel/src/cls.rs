@@ -1,6 +1,6 @@
 use core::num::NonZeroU8;
 
-use crate::{arch::{smp, smp::cpu_index_from_apic_id, current_cpu_lapic}, scheduler::Scheduler};
+use crate::{arch::{current_cpu_lapic, smp::{self, cpu_index_from_apic_id}}, scheduler::Scheduler, serial_println};
 
 pub struct CpuLocalStorage {
     pub id: u8,
@@ -15,6 +15,8 @@ pub fn init() {
 
     for x in 0..count {
         let scheduler = Scheduler::new();
+
+        serial_println!("initialized CPU {x} Local Storage");
 
         unsafe { CPU_LS[x] = Some(CpuLocalStorage {
             id: x as u8,

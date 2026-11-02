@@ -36,3 +36,4 @@ long_mode_start:
     call rax ; enter the kernel
 
     hlt
+section .note.GNU-stack noalloc noexec nowrite progbits

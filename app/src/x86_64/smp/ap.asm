@@ -41,6 +41,15 @@ protected_mode:
     mov al, 'P'
     out 0xE9, al
 
+    ; Entering protected mode only updates CS via the far jump above. Load a
+    ; flat data/stack selector before any memory access.
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+
     ; enable PAE
     mov eax, cr4
     or eax, (1 << 5)
@@ -70,13 +79,21 @@ protected_mode:
     or eax, (1 << 31)
     mov cr0, eax
 
-    jmp 0x10:long_mode
+    jmp 0x18:long_mode
 
 ; --------------------------------------------------
 
 [BITS 64]
 
 long_mode:
+
+    ; Match the BSP long-mode entry path before calling into Rust.
+    mov ax, 0
+    mov ss, ax
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
 
     mov rsp, [rel ap_stack]
 
@@ -89,6 +106,8 @@ long_mode:
 ; --------------------------------------------------
 ; Data used by BSP to configure trampoline
 ; --------------------------------------------------
+
+section .ap_data write
 
 global ap_pml4_ptr
 
@@ -116,6 +135,9 @@ gdt:
 .code32:
     dq 0x00CF9A000000FFFF
 
+.data:
+    dq 0x00CF92000000FFFF
+
 .code64:
     dq 0x00AF9A000000FFFF
 
@@ -124,3 +146,5 @@ gdt_ptr:
     dd gdt
 
 gdt_end:
+
+section .note.GNU-stack noalloc noexec nowrite progbits
