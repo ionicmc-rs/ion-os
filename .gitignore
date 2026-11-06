@@ -19,3 +19,4 @@ target/
 dist/
 build/
 kernel.bin
+kernel.elf
