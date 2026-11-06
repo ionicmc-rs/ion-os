@@ -32,8 +32,21 @@ int read_stdin_line(char* buffer, size_t max) {
             0
         );
         
-        if (r <= 0)
+        if (r < 0)
+            exit(1);
+
+        if (r == 0) {
+            syscall(
+                SYS_GROUP_THREAD,
+                SYS_THREAD_YIELD,
+                0,
+                0,
+                0,
+                0,
+                0
+            );
             continue;
+        }
 
         write_stdout(&c, 1);
 

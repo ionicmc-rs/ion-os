@@ -4,6 +4,7 @@ use crate::arch::syscall::dispatch::SyscallFrame;
 pub enum ThreadCommand {
     ExitCurrent,
     GetErrno,
+    Yield,
     Unknown
 }
 
@@ -53,6 +54,7 @@ impl Syscall {
             3 => Self::Thread(match frame.rdi {
                 0 => ThreadCommand::ExitCurrent,
                 1 => ThreadCommand::GetErrno,
+                2 => ThreadCommand::Yield,
                 _ => ThreadCommand::Unknown
             }),
             _ => Self::Unknown

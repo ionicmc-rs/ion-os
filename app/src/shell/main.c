@@ -1,12 +1,71 @@
-#include <stdint.h>
-#include "ion_os.h"
-
-#include <stdint.h>
 #include "console.h"
 #include "ion_os.h"
 
+static int strings_equal(const char *left, const char *right) {
+    while (*left && *right && *left == *right) {
+        ++left;
+        ++right;
+    }
+
+    return *left == *right;
+}
+
+static size_t string_length(const char *text) {
+    size_t length = 0;
+    while (text[length])
+        ++length;
+    return length;
+}
+
+static void print_help(void) {
+    static const char message[] =
+        "Built-in commands:\n"
+        "  help          Show this list\n"
+        "  echo <text>   Print text\n"
+        "  clear         Clear the terminal\n"
+        "  exit          Exit the shell\n";
+    write_stdout(message, sizeof(message) - 1);
+}
+
+static void run_command(char *line) {
+    char *command = line;
+
+    while (*command == ' ' || *command == '\t')
+        ++command;
+
+    if (*command == '\0')
+        return;
+
+    char *argument = command;
+    while (*argument && *argument != ' ' && *argument != '\t')
+        ++argument;
+
+    if (*argument) {
+        *argument++ = '\0';
+        while (*argument == ' ' || *argument == '\t')
+            ++argument;
+    }
+
+    if (strings_equal(command, "help")) {
+        print_help();
+    } else if (strings_equal(command, "echo")) {
+        write_stdout(argument, string_length(argument));
+        write_stdout("\n", 1);
+    } else if (strings_equal(command, "clear")) {
+        static const char clear_screen[] = "\033[2J\033[H";
+        write_stdout(clear_screen, sizeof(clear_screen) - 1);
+    } else if (strings_equal(command, "exit")) {
+        exit(0);
+    } else {
+        static const char unknown[] = "ish: command not found\n";
+        write_stdout(unknown, sizeof(unknown) - 1);
+    }
+}
+
 __attribute__((noreturn))
 void _start() {
+
+    write_stdout(welcome_message, sizeof(welcome_message) - 1);
 
     char buffer[BUFFER_LEN];
 
@@ -19,6 +78,7 @@ void _start() {
             exit(1);
         
         write_stdout("\n", 1);
+        run_command(buffer);
     }
 }
 

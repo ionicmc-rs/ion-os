@@ -122,83 +122,68 @@ impl Surface {
     }
 
     pub fn blit(&mut self, src: &Surface, x: u32, y: u32) {
+        if self.format != src.format {
+            panic!("blit format mismatch");
+        }
+
+        if x >= self.width || y >= self.height {
+            return;
+        }
+
+        let width = src.width.min(self.width - x);
+        let height = src.height.min(self.height - y);
+        let bytes_per_pixel = match self.format {
+            PixelFormat::Xrgb8888 => 4,
+            PixelFormat::Rgb888 => 3,
+        };
+        let copy_bytes = width as usize * bytes_per_pixel;
+
+        unsafe {
+            for row in 0..height {
+                let src_ptr = src.base.add(row as usize * src.pitch_bytes as usize);
+                let dst_ptr = self.base.add(
+                    (y + row) as usize * self.pitch_bytes as usize
+                        + x as usize * bytes_per_pixel,
+                );
+                ptr::copy_nonoverlapping(src_ptr, dst_ptr, copy_bytes);
+            }
+        }
+    }
+
+    /// Copy a clipped rectangle from another surface.
+    pub fn blit_region(&mut self, src: &Surface, rect: Rect) {
 
         if self.format != src.format {
             panic!("blit format mismatch");
         }
 
+        let start_x = rect.x().min(self.width).min(src.width);
+        let start_y = rect.y().min(self.height).min(src.height);
+        let end_x = rect.right().min(self.width).min(src.width);
+        let end_y = rect.bottom().min(self.height).min(src.height);
+
+        if start_x >= end_x || start_y >= end_y {
+            return;
+        }
+
+        let bytes_per_pixel = match self.format {
+            PixelFormat::Xrgb8888 => 4,
+            PixelFormat::Rgb888 => 3,
+        };
+        let copy_bytes = (end_x - start_x) as usize * bytes_per_pixel;
+
         unsafe {
-            match self.format {
+            for row in start_y..end_y {
+                let src_ptr = src.base.add(
+                    row as usize * src.pitch_bytes as usize
+                        + start_x as usize * bytes_per_pixel,
+                );
+                let dst_ptr = self.base.add(
+                    row as usize * self.pitch_bytes as usize
+                        + start_x as usize * bytes_per_pixel,
+                );
 
-                /* ----------------------------
-                   XRGB8888 FAST PATH
-                   ---------------------------- */
-
-                PixelFormat::Xrgb8888 => {
-
-                    let row_bytes = src.width as usize * 4;
-
-                    for row in 0..src.height {
-
-                        if y + row >= self.height {
-                            break;
-                        }
-
-                        let src_ptr =
-                            src.base.add(
-                                row as usize *
-                                src.pitch_bytes as usize
-                            );
-
-                        let dst_ptr =
-                            self.base.add(
-                                (y + row) as usize *
-                                self.pitch_bytes as usize +
-                                x as usize * 4
-                            );
-
-                        ptr::copy_nonoverlapping(
-                            src_ptr,
-                            dst_ptr,
-                            row_bytes
-                        );
-                    }
-                }
-
-                /* ----------------------------
-                   RGB888 PATH
-                   ---------------------------- */
-
-                PixelFormat::Rgb888 => {
-
-                    let row_bytes = src.width as usize * 3;
-
-                    for row in 0..src.height {
-
-                        if y + row >= self.height {
-                            break;
-                        }
-
-                        let src_ptr =
-                            src.base.add(
-                                row as usize *
-                                src.pitch_bytes as usize
-                            );
-
-                        let dst_ptr =
-                            self.base.add(
-                                (y + row) as usize *
-                                self.pitch_bytes as usize +
-                                x as usize * 3
-                            );
-
-                        ptr::copy_nonoverlapping(
-                            src_ptr,
-                            dst_ptr,
-                            row_bytes
-                        );
-                    }
-                }
+                ptr::copy_nonoverlapping(src_ptr, dst_ptr, copy_bytes);
             }
         }
     }

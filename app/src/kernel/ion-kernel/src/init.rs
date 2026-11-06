@@ -18,9 +18,8 @@
 use core::fmt::Display;
 
 use crossbeam_queue::ArrayQueue;
-use spin::Mutex;
 
-use crate::{arch::{self, interrupts::{self, keyboard::{SC_QUEUE, ScancodeQueue}}, syscall::init_syscalls}, c_lib::BootInfo, disk, graphics::{self, Surface}, lib_alloc::{init_heap, init_thread_stack_region, user::init_user_data}, privilege::init_users, serial_println};
+use crate::{arch::{self, interrupts::{self, keyboard::SC_QUEUE}, syscall::init_syscalls}, c_lib::BootInfo, disk, graphics::{self, Surface}, lib_alloc::{init_heap, init_thread_stack_region, user::init_user_data}, privilege::init_users, serial_println};
 
 /// An error while Initializing the Kernel
 ///
@@ -98,7 +97,7 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
     
     // keyboard
 
-    unsafe { SC_QUEUE.write(Mutex::new(ScancodeQueue::new())) };
+    unsafe { SC_QUEUE.write(ArrayQueue::new(256)) };
 
     // user
 

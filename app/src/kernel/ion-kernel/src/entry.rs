@@ -6,7 +6,7 @@ use pc_keyboard::{DecodedKey, KeyCode, KeyState};
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE, SCANCODES_PUSHED}}, asyncio, event, graphics::{self, Color, Pos, font::{BitmapFont, draw_text, set_fallback_font}, with_renderer}, io::OpenOptions, log::{self, error}, privilege::UserID, process::{self, FdHandle, spawn_proc}, resources::{self, ResourceTable, channel, fd}, scheduler::{self, current_scheduler}, thread::Thread};
+use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE}}, asyncio, event, graphics::{self, Color, Pos, Rect, Surface, font::{BitmapFont, draw_glyph, draw_text, set_fallback_font}, with_renderer}, io::{File, OpenOptions, Read}, log::{self, error}, privilege::UserID, process::{self, FdHandle, spawn_proc}, resources::{self, ResourceTable, channel, fd}, scheduler::{self, current_scheduler}, thread::Thread};
 #[allow(unused)]
 use crate::{
     c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
@@ -19,17 +19,200 @@ use crate::{
     },
 };
 
+struct TtyCursor {
+    col: u32,
+    row: u32,
+    columns: u32,
+    rows: u32,
+    glyph_width: u32,
+    glyph_height: u32,
+    wrap_pending: bool,
+    escape_state: u8,
+    escape_param: u16,
+    dirty: Option<Rect>,
+}
+
+impl TtyCursor {
+    fn new(width: u32, height: u32, font: &BitmapFont) -> Self {
+        let glyph_width = (font.glyph_width as u32).max(1);
+        let glyph_height = (font.glyph_height as u32).max(1);
+
+        Self {
+            col: 0,
+            row: 0,
+            columns: (width / glyph_width).max(1),
+            rows: (height / glyph_height).max(1),
+            glyph_width,
+            glyph_height,
+            wrap_pending: false,
+            escape_state: 0,
+            escape_param: 0,
+            dirty: None,
+        }
+    }
+
+    fn mark_dirty(&mut self, rect: Rect) {
+        self.dirty = Some(match self.dirty {
+            Some(old) => {
+                let x = old.x().min(rect.x());
+                let y = old.y().min(rect.y());
+                let right = old.right().max(rect.right());
+                let bottom = old.bottom().max(rect.bottom());
+                Rect::new(x, y, right - x, bottom - y)
+            }
+            None => rect,
+        });
+    }
+
+    fn take_dirty(&mut self) -> Option<Rect> {
+        self.dirty.take()
+    }
+
+    fn scroll_if_needed(&mut self, surface: &mut Surface) {
+        if self.row < self.rows {
+            return;
+        }
+
+        let scroll_height = self.glyph_height.min(surface.height);
+        let pitch = surface.pitch_bytes as usize;
+        let copy_bytes = surface.height.saturating_sub(scroll_height) as usize * pitch;
+
+        unsafe {
+            core::ptr::copy(
+                surface.base.add(scroll_height as usize * pitch),
+                surface.base,
+                copy_bytes,
+            );
+        }
+
+        let clear_y = surface.height - scroll_height;
+        surface.fill_rect(
+            Rect::new(0, clear_y, surface.width, scroll_height),
+            Color::BLACK,
+        );
+        self.row = self.rows - 1;
+        self.mark_dirty(Rect::new(0, 0, surface.width, surface.height));
+    }
+
+    fn line_feed(&mut self, surface: &mut Surface) {
+        self.col = 0;
+        self.wrap_pending = false;
+        self.row += 1;
+        self.scroll_if_needed(surface);
+    }
+
+    fn put_printable(&mut self, surface: &mut Surface, font: &BitmapFont, byte: u8) {
+        if self.wrap_pending {
+            self.line_feed(surface);
+        }
+
+        let byte = if byte >= 0x80 { b'?' } else { byte };
+        if byte < b' ' || byte == 0x7f {
+            return;
+        }
+
+        let x = self.col * self.glyph_width;
+        let y = self.row * self.glyph_height;
+        let cell = Rect::new(x, y, self.glyph_width, self.glyph_height);
+        surface.fill_rect(cell, Color::BLACK);
+
+        if let Some(glyph) = font.glyph(byte) {
+            draw_glyph(surface, x, y, font, glyph, Color::WHITE);
+        }
+        self.mark_dirty(cell);
+
+        if self.col + 1 >= self.columns {
+            self.wrap_pending = true;
+        } else {
+            self.col += 1;
+        }
+    }
+
+    fn write_bytes(&mut self, surface: &mut Surface, font: &BitmapFont, bytes: &[u8]) {
+        for &byte in bytes {
+            match self.escape_state {
+                1 => {
+                    self.escape_state = if byte == b'[' { 2 } else { 0 };
+                    self.escape_param = 0;
+                    continue;
+                }
+                2 if byte.is_ascii_digit() => {
+                    self.escape_param = self
+                        .escape_param
+                        .saturating_mul(10)
+                        .saturating_add((byte - b'0') as u16);
+                    continue;
+                }
+                2 => {
+                    match byte {
+                        b'J' if self.escape_param == 2 => {
+                            surface.clear(Color::BLACK);
+                            self.col = 0;
+                            self.row = 0;
+                            self.wrap_pending = false;
+                            self.mark_dirty(Rect::new(0, 0, surface.width, surface.height));
+                        }
+                        b'H' => {
+                            self.col = 0;
+                            self.row = 0;
+                            self.wrap_pending = false;
+                        }
+                        _ => {}
+                    }
+                    self.escape_state = 0;
+                    self.escape_param = 0;
+                    continue;
+                }
+                _ => {}
+            }
+
+            match byte {
+                0x1b => self.escape_state = 1,
+                b'\n' => self.line_feed(surface),
+                b'\r' => {
+                    self.col = 0;
+                    self.wrap_pending = false;
+                }
+                b'\t' => {
+                    let spaces = 4 - (self.col % 4);
+                    for _ in 0..spaces {
+                        self.put_printable(surface, font, b' ');
+                    }
+                }
+                0x08 => {
+                    self.wrap_pending = false;
+                    if self.col > 0 {
+                        self.col -= 1;
+                    } else if self.row > 0 {
+                        self.row -= 1;
+                        self.col = self.columns - 1;
+                    }
+                    let cell = Rect::new(
+                        self.col * self.glyph_width,
+                        self.row * self.glyph_height,
+                        self.glyph_width,
+                        self.glyph_height,
+                    );
+                    surface.fill_rect(cell, Color::BLACK);
+                    self.mark_dirty(cell);
+                }
+                _ => self.put_printable(surface, font, byte),
+            }
+        }
+    }
+}
+
 fn handle_kbd() -> ! {
     {
         let sc_q = unsafe { SC_QUEUE.assume_init_ref() };
         loop {
             thread::block_until_true(|| {
-                SCANCODES_PUSHED.load(core::sync::atomic::Ordering::SeqCst) != 0
+                !sc_q.is_empty()
             });
 
-            SCANCODES_PUSHED.fetch_sub(1, core::sync::atomic::Ordering::SeqCst);
-            
-            let sc = sc_q.try_lock().map(|mut q| q.pop()).flatten().expect("scancode queue was empty after being woken");
+            let Some(sc) = sc_q.pop() else {
+                continue;
+            };
 
             let ev: pc_keyboard::KeyEvent = match KEYBOARD
                 .lock()
@@ -81,45 +264,34 @@ pub fn kernel_main() {
                     // WRITER.lock().delete_row();
                 }
                 KeyCode::Q => {
-                    use crate::{address_space, arch, boot_info, disk::{self, DiskId}, log::debug, process::current_process};
+                    thread::spawn(|| {
+                        use crate::{address_space, arch, boot_info, disk::{self, DiskId}, log::debug, process::current_process};
 
-                    debug!("DEBUG KEY PRESSED:");
-                    debug!("Thread: \n{:#?}", thread::current());
-                    debug!("Process ID: {:?}", current_process());
-                    debug!("Context: \n{:#?}", arch::ctx::current());
-                    debug!("Boot Info: \n{:#?}", boot_info());
-                    debug!("Kernel Address Space: \n{:#?}", unsafe { address_space::kernel_address_space() });
+                        debug!("DEBUG KEY PRESSED:");
+                        debug!("Thread: \n{:#?}", thread::current());
+                        debug!("Process ID: {:?}", current_process());
+                        debug!("Context: \n{:#?}", arch::ctx::current());
+                        debug!("Boot Info: \n{:#?}", boot_info());
+                        debug!("Kernel Address Space: \n{:#?}", unsafe { address_space::kernel_address_space() });
 
-                    if let Some(id) = DiskId::new(0) {
-                        use crate::vfs::fs::parse::read_superblock;
+                        if let Some(id) = DiskId::new(0) {
+                            use crate::vfs::fs::parse::read_superblock;
 
-                        let dev = disk::get_disk(id);
+                            let dev = disk::get_disk(id);
 
-                        debug!("Disk0 Data:");
-                        asyncio::run_future(async {
-                            use crate::vfs::fs::parse::{read_alloc_block, read_inode};
+                            debug!("Disk0 Data:");
+                            asyncio::run_future(async {
+                                use crate::vfs::fs::parse::{read_alloc_block, read_inode};
 
-                            debug!("Super Block: \n{:#?}", read_superblock(dev).await);
-                            debug!("Alloc Block: \n{:#?}", read_alloc_block(dev).await);
-                            debug!("Root Inode: \n{:#?}", read_inode(dev, 0).await);
-                        });
-                        debug!("End of Dump")
-                    }
+                                debug!("Super Block: \n{:#?}", read_superblock(dev).await);
+                                debug!("Alloc Block: \n{:#?}", read_alloc_block(dev).await);
+                                debug!("Root Inode: \n{:#?}", read_inode(dev, 0).await);
+                            });
+                            debug!("End of Dump")
+                        }
+                    }, 64 * 1024);
                 }
                 _ => {
-                    use pc_keyboard::DecodedKey;
-
-                    match KEYBOARD.lock().process_keyevent(ev) {
-                        Some(DecodedKey::Unicode(c)) => {
-                            // use crate::text::print;
-
-                            log::debug!("key: {c}");
-                        }
-                        Some(DecodedKey::RawKey(k)) => {
-                            serial_println!("non decoded key: {k:?}");
-                        }
-                        None => () // nothing
-                    }
                 }
             }
         }
@@ -158,6 +330,8 @@ pub fn kernel_main() {
     set_fallback_font(font);
 
     let fb = graphics::framebuffer();
+    let screen_width = fb.width;
+    let screen_height = fb.height;
 
     graphics::renderer::init(fb);
 
@@ -166,6 +340,14 @@ pub fn kernel_main() {
 
         r.present();
     });
+
+    let f = File::open("@/testing.txt");
+    let mut f = asyncio::run_future(async {
+        f.await.expect("failed to open testing.txt")
+    });
+    let mut conts = String::new();
+    f.read_to_string(&mut conts).expect("failed to read testing.txt");
+    serial_println!("{conts}");
 
     // init (CPU0)
 
@@ -187,7 +369,7 @@ pub fn kernel_main() {
     let rstderr = table.alloc(FdHandle(rstderr)).unwrap();
     table.alloc(FdHandle(wstderr)).unwrap();
     table.alloc(FdHandle(rstdin)).unwrap();
-    table.alloc(FdHandle(wstdin)).unwrap();
+    let wstdin = table.alloc(FdHandle(wstdin)).unwrap();
 
     let mut pid = asyncio::run_future(process::exec(
         UserID::os(), 
@@ -232,57 +414,29 @@ pub fn kernel_main() {
             with_renderer(|r| {
                 r.clear(Color::BLACK);
             });
-            let total_col = 80;
-            let total_lines = 10;
-            let mut row = 0;
-            let mut col = 0;
+
+            let mut cursor = TtyCursor::new(screen_width, screen_height, &font);
             loop {
-                let mut buf_stdout = [0u8];
-                let mut buf_stderr = [0u8];
-    
-                process::read_proc_fd(pid, rstdout, &mut buf_stdout);
-                process::read_proc_fd(pid, rstderr, &mut buf_stderr);
+                let mut buf_stdout = [0u8; 256];
+                let mut buf_stderr = [0u8; 256];
+
+                let stdout_len = process::read_proc_fd(pid, rstdout, &mut buf_stdout)
+                    .unwrap_or(0)
+                    .min(buf_stdout.len() as u64) as usize;
+                let stderr_len = process::read_proc_fd(pid, rstderr, &mut buf_stderr)
+                    .unwrap_or(0)
+                    .min(buf_stderr.len() as u64) as usize;
+
+                if stdout_len == 0 && stderr_len == 0 {
+                    thread::yield_now();
+                    continue;
+                }
+
                 with_renderer(|r| {
-
-                    let mut changed = false;
-
-                    if buf_stdout != [0u8] {
-                        changed = true;
-
-                        if buf_stdout[0] == b'\n' {
-                            col = 0;
-                            row += 1;
-                        } else {
-                            draw_text(&mut r.back, Pos::new(col * 10, row * 10), &font, str::from_utf8(&buf_stdout).unwrap(), Color::WHITE);
-                            col += 1;
-                            if col >= total_col {
-                                col = 0;
-                                row += 1;
-                            }
-                        }
-                    }
-                    if buf_stderr != [0u8] {
-                        changed = true;
-
-                        if buf_stderr[0] == b'\n' {
-                            col = 0;
-                            row += 1;
-                        } else {
-                            draw_text(&mut r.back, Pos::new(col * 10, row * 10), &font, str::from_utf8(&buf_stderr).unwrap(), Color::WHITE);
-                            col += 1;
-                            if col >= total_col {
-                                col = 0;
-                                row += 1;
-                            }
-                        }
-                    }
-
-                    if row >= total_lines {
-                        todo!();
-                    }
-
-                    if changed {
-                        r.present();
+                    cursor.write_bytes(&mut r.back, &font, &buf_stdout[..stdout_len]);
+                    cursor.write_bytes(&mut r.back, &font, &buf_stderr[..stderr_len]);
+                    if let Some(dirty) = cursor.take_dirty() {
+                        r.present_region(dirty);
                     }
                 });
             }

@@ -57,11 +57,16 @@ static inline long syscall(
 
 #define SYS_GROUP_PROC 1
 #define SYS_GROUP_IO 2
+#define SYS_GROUP_THREAD 3
 
 #define SYS_PROC_EXIT 0
 
 #define SYS_IO_WRITE 0
 #define SYS_IO_READ 1
+
+#define SYS_THREAD_EXIT 0
+#define SYS_THREAD_GET_ERRNO 1
+#define SYS_THREAD_YIELD 2
 
 #define WSTDOUT_FD 1
 #define RSTDIN_FD 4

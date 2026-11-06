@@ -16,7 +16,7 @@ pub struct SyscallFrame {
     pub r9:  u64,
 }
 
-const UNKNOWN_MAGIC_VAL: u64 = 0xab07df;
+const UNKNOWN_MAGIC_VAL: u64 = u64::MAX - 1;
 
 fn set_metadata(val: u64) {
     unsafe {
@@ -169,6 +169,10 @@ pub unsafe extern "C" fn syscall_dispatch(
             }
             ThreadCommand::GetErrno => {
                 *libc::get_errno() as u64
+            }
+            ThreadCommand::Yield => {
+                crate::scheduler::yield_now();
+                0
             }
             ThreadCommand::Unknown => {
                 libc::set_os_error(OsError::InvalidInput);

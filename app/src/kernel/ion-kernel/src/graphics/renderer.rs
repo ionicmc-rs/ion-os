@@ -1,7 +1,7 @@
 use alloc::alloc::{Layout, alloc, alloc_zeroed};
 use core::mem::MaybeUninit;
 
-use crate::graphics::{Surface, Color};
+use crate::graphics::{Surface, Color, Rect};
 use crate::thread::sync::Mutex;
 
 pub struct Renderer {
@@ -46,5 +46,9 @@ impl Renderer {
 
     pub fn present(&mut self) {
         self.front.blit(&self.back, 0, 0);
+    }
+
+    pub fn present_region(&mut self, region: Rect) {
+        self.front.blit_region(&self.back, region);
     }
 }
