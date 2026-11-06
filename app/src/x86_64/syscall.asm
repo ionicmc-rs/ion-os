@@ -28,7 +28,8 @@ syscall_entry:
     call syscall_dispatch
 
     ; Preserve user-visible caller-saved argument registers across syscall return.
-    ; (rax: syscall result, rdi: metadata are intentionally left as outputs)
+    ; syscall_dispatch returns a two-word C struct: value in rax, metadata in rdx.
+    mov rdi, rdx
     mov rsi, [rsp + 2*8]
     mov rdx, [rsp + 3*8]
     mov r10, [rsp + 4*8]

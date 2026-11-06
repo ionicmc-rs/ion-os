@@ -101,7 +101,7 @@ pub extern "C" fn timer_handler(regs: &mut InterruptRegs, frame: &mut InterruptS
         serial_println!("reached notable tick: {t}");
     }
 
-    if !thread::current().is_some() {
+    if thread::current().is_none() {
         // The timer is enabled before the first scheduler thread starts.
         // Acknowledge that early interrupt too, or the LAPIC leaves it in
         // service and will not deliver subsequent timer ticks.

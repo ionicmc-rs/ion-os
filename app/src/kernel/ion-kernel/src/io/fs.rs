@@ -4,7 +4,7 @@
 //! and file descriptor system, mimicking the interface of `std::fs`.
 
 use alloc::{string::{String, ToString}, vec::Vec, format};
-use crate::{asyncio, io::{self, concurrent::{read::AsyncRead, seek::AsyncSeek, write::AsyncWrite}}, vfs::{fd}};
+use crate::{asyncio, io::{self, concurrent::{read::AsyncRead, seek::AsyncSeek, write::AsyncWrite}}, resources::FdDispatch, vfs::fd};
 use crate::{
     disk::{DiskId, get_disk}, 
     vfs::structures::InodeKind, 
@@ -558,6 +558,10 @@ impl File {
     /// Write data to the file
     pub async fn write_all(&mut self, data: &[u8]) -> io::Result<u64> {
         fd::write(self.fd, data).await
+    }
+
+    pub fn fd(&self) -> u32 {
+        self.fd
     }
 }
 

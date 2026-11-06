@@ -1,4 +1,6 @@
-use crate::arch::syscall::dispatch::SyscallFrame;
+use alloc::string::String;
+
+use crate::{arch::syscall::dispatch::SyscallFrame, process::ProcessID};
 
 #[derive(Debug, Clone)]
 pub enum ThreadCommand {
@@ -8,9 +10,21 @@ pub enum ThreadCommand {
     Unknown
 }
 
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct ProcessFlags: u32 {
+        const INHERIT_FDS = 1 >> 0;
+        const INHERIT_STDIO = 1 >> 1;
+        // rest is reserved for future use
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ProcessCommand {
     Exit(i32),
+    Spawn(*const i8 /* path */, *const *const i8 /* argv */, usize /* argc */, ProcessFlags),
+    Kill(ProcessID),
+    ChangeName(*const i8, usize),
     Unknown
 }
 
@@ -18,6 +32,9 @@ pub enum ProcessCommand {
 pub enum IoCommand {
     Write(usize, usize, usize), // fd, buf, len
     Read(usize, usize, usize), // fd, buf, len
+    Open(*const i8, usize, u32), // path, path length
+    Close(usize), // fd
+    Seek(usize, i64), // fd, offset
     Unknown
 }
 

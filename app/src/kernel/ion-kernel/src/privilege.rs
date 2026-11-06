@@ -50,7 +50,7 @@ impl UserID {
 /// It is used by the kernel to decide which operations are permitted.
 ///
 /// Privilege does not imply ownership, memory access, or scheduling priority.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PrivilegeLevel {
     /// Operating System privilege.
     ///

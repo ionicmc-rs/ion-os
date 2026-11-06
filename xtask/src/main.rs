@@ -1101,7 +1101,7 @@ const GPT_HEADER_SIGNATURE: &[u8; 8] = b"EFI PART";
 const GPT_ENTRY_COUNT: usize = 128;
 const GPT_ENTRY_SIZE: usize = 128;
 
-const BIOS_GRUB_PARTITION_SIZE_BYTES: u64 = 1 * 1024 * 1024;
+const BIOS_GRUB_PARTITION_SIZE_BYTES: u64 = 1024 * 1024;
 const ESP_PARTITION_SIZE_BYTES: u64 = 64 * 1024 * 1024;
 const DEFAULT_ROOTFS_SIZE_BYTES: u64 = 64 * 1024 * 1024;
 const IMAGE_ALIGNMENT_BYTES: u64 = 1024 * 1024;
@@ -1140,9 +1140,9 @@ impl GptPartition {
         self.first_lba * BLOCK_SIZE as u64
     }
 
-    fn byte_len(self) -> u64 {
-        (self.last_lba - self.first_lba + 1) * BLOCK_SIZE as u64
-    }
+    // fn byte_len(self) -> u64 {
+    //     (self.last_lba - self.first_lba + 1) * BLOCK_SIZE as u64
+    // }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1169,19 +1169,19 @@ impl OffsetFile {
         Ok(Self { inner, base_offset })
     }
 
-    fn create(path: &Path, truncate: bool) -> Result<Self> {
-        let inner = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(truncate)
-            .open(path)?;
+    // fn create(path: &Path, truncate: bool) -> Result<Self> {
+    //     let inner = fs::OpenOptions::new()
+    //         .read(true)
+    //         .write(true)
+    //         .create(true)
+    //         .truncate(truncate)
+    //         .open(path)?;
 
-        Ok(Self {
-            inner,
-            base_offset: 0,
-        })
-    }
+    //     Ok(Self {
+    //         inner,
+    //         base_offset: 0,
+    //     })
+    // }
 
     fn sync_all(&self) -> Result<()> {
         self.inner.sync_all()?;
@@ -1215,7 +1215,7 @@ impl Seek for OffsetFile {
 }
 
 fn align_up(value: u64, align: u64) -> u64 {
-    if value % align == 0 {
+    if value.is_multiple_of(align) {
         value
     } else {
         value + (align - (value % align))

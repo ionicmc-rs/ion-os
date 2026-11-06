@@ -195,6 +195,21 @@ impl Resources {
         Ok(cloned)
     }
 
+    /// Build a child resource table containing this process's inheritable FDs.
+    /// Each entry gets its own global descriptor reference while keeping the
+    /// same local descriptor number in the child.
+    pub fn inherit_fds(&self) -> io::Result<ResourceTable<FdHandle>> {
+        let inherited = self.clone_inheritable_globals()?;
+        let mut child = Resources::new();
+
+        if let Err(error) = child.inherit_globals(inherited) {
+            child.close_all();
+            return Err(error);
+        }
+
+        Ok(child.local_fd_mappings)
+    }
+
     fn clone_child_templates(&self) -> io::Result<Vec<(u32, u32)>> {
         let mut cloned = Vec::new();
 
@@ -507,6 +522,24 @@ pub fn exit_proc(pid: ProcessID, exit_code: i32) {
     }
 }
 
+pub fn with_proc<R>(pid: ProcessID, f: impl FnOnce(&Process) -> R) -> Option<R> {
+    PROCESSES.lock().with(pid, f)
+}
+
+pub fn with_proc_mut<R>(pid: ProcessID, f: impl FnOnce(&mut Process) -> R) -> Option<R> {
+    PROCESSES.lock().with_mut(pid, f)
+}
+
+pub fn with_current_proc<R>(f: impl FnOnce(&Process) -> R) -> Option<R> {
+    let pid = current_process()?;
+    with_proc(pid, f)
+}
+
+pub fn with_current_proc_mut<R>(f: impl FnOnce(&mut Process) -> R) -> Option<R> {
+    let pid = current_process()?;
+    with_proc_mut(pid, f)
+}
+
 pub fn dump() {
     serial_println!("{:#?}", PROCESSES);
 }
@@ -521,6 +554,14 @@ impl Process {
                 Err(e)
             }
         }
+    }
+    pub fn close_resource(&mut self, local_fd: u32) -> io::Result<()> {
+        let global_fd = self.resources.global_for_local(local_fd)?;
+        self.resources.close_local(local_fd)?;
+        fd::close(global_fd)
+    }
+    pub fn seek_resource(&mut self, local_fd: u32, pos: u64) -> io::Result<u64> {
+        self.resources.local_fd_mappings.seek(local_fd, pos)
     }
 }
 
