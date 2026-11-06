@@ -28,7 +28,10 @@ impl<A: Allocator> ThreadStack<A> {
         let layout = Layout::from_size_align(size, 16)
             .expect("Invalid thread stack size - must be usable with an alignment of 16");
 
-        let allocated = alloc.allocate_zeroed(layout).unwrap_or_else(|_| handle_alloc_error(layout)).as_ptr();
+        let allocated = alloc
+            .allocate_zeroed(layout)
+            .unwrap_or_else(|_| handle_alloc_error(layout))
+            .as_ptr();
 
         ThreadStack {
             base: allocated as *mut u8,
@@ -67,7 +70,8 @@ impl<A: Allocator> Drop for ThreadStack<A> {
             //     );
             // }
             // Safety: if this fails here, that means this `ThreadStack` was created with an allocation error, which should not happen
-            self.alloc.deallocate(NonNull::new(self.base).unwrap(), layout);
+            self.alloc
+                .deallocate(NonNull::new(self.base).unwrap(), layout);
         };
     }
 }

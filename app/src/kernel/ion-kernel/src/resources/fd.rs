@@ -4,8 +4,8 @@
 //! any type of resource, not just files. Types implementing the [`FdDispatch`]
 //! trait can be registered with the global resource table.
 
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use crate::io;
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 
 use bitflags::bitflags;
 
@@ -145,37 +145,37 @@ impl OpenFlags {
 /// ```
 pub trait FdDispatch: Send + Sync {
     /// Read data from the resource (synchronous)
-    /// 
+    ///
     /// # Arguments
     /// - `buf`: Buffer to read into
-    /// 
+    ///
     /// # Returns
     /// - Ok(bytes_read) on success
     fn read(&mut self, buf: &mut [u8]) -> io::Result<u64>;
 
     /// Write data to the resource (synchronous)
-    /// 
+    ///
     /// # Arguments
     /// - `data`: Data to write
-    /// 
+    ///
     /// # Returns
     /// - Ok(bytes_written) on success
     fn write(&mut self, data: &[u8]) -> io::Result<u64>;
 
     /// Seek to an absolute position
-    /// 
+    ///
     /// # Arguments
     /// - `pos`: Absolute position to seek to
-    /// 
+    ///
     /// # Returns
     /// - Ok(new_position) on success
     fn seek(&mut self, pos: u64) -> io::Result<u64>;
 
     /// Seek relative to current position
-    /// 
+    ///
     /// # Arguments
     /// - `delta`: Relative offset (can be negative)
-    /// 
+    ///
     /// # Returns
     /// - Ok(new_position) on success
     fn seek_relative(&mut self, delta: i64) -> io::Result<u64>;
@@ -218,18 +218,18 @@ pub trait FdDispatch: Send + Sync {
     }
 
     /// Truncate resource to specified size
-    /// 
+    ///
     /// # Arguments
     /// - `size`: New size
     fn truncate(&mut self, size: u64) -> io::Result<()>;
 
     /// Close the resource
-    /// 
+    ///
     /// This consumes the resource and performs cleanup.
     fn close(self: Box<Self>) -> io::Result<()>;
 
     /// Get metadata about the resource (inode, offset, flags)
-    /// 
+    ///
     /// Returns (inode, offset, flags) for file resources
     fn metadata(&self) -> io::Result<(u64, u64, OpenFlags)>;
 }
@@ -290,7 +290,7 @@ impl FdDispatch for Box<dyn FdDispatch> {
 // ============================================================================
 
 /// Generic resource table that manages any type implementing [`FdDispatch`]
-/// 
+///
 /// Manages a set of open file descriptors for a process.
 /// Provides O(1) allocation and access while maintaining invariants:
 /// - File descriptors are always valid integers (0..len)
@@ -349,7 +349,7 @@ impl<T: FdDispatch> FdEntry<T> {
 #[derive(Debug)]
 pub struct ResourceTable<T: FdDispatch> {
     entries: Vec<Option<FdEntry<T>>>,
-    next_reuse: usize,  // hint for next reuse candidate
+    next_reuse: usize, // hint for next reuse candidate
 }
 
 impl<T: FdDispatch> Default for ResourceTable<T> {
@@ -368,7 +368,7 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Allocate a new file descriptor for the given resource
-    /// 
+    ///
     /// # Invariants
     /// - Reuses closed slots when possible (first-fit)
     /// - Returns FD index on success
@@ -390,7 +390,7 @@ impl<T: FdDispatch> ResourceTable<T> {
 
         // No reusable slots, append to end
         let fd = self.entries.len();
-        
+
         // Prevent overflow - limit to reasonable max FD count
         if fd >= 4096 {
             return Err(io::Error::new(
@@ -405,7 +405,7 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Get a mutable reference to a resource
-    /// 
+    ///
     /// # Returns
     /// - Ok(entry) if FD is valid and allocated
     /// - Err if FD is invalid or was previously closed
@@ -414,7 +414,7 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Get an immutable reference to a resource
-    /// 
+    ///
     /// # Returns
     /// - Ok(entry) if FD is valid and allocated
     /// - Err if FD is invalid or was previously closed
@@ -423,9 +423,7 @@ impl<T: FdDispatch> ResourceTable<T> {
             .get(fd as usize)
             .and_then(|e| e.as_ref())
             .cloned()
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidInput, "invalid file descriptor")
-            })
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid file descriptor"))
     }
 
     /// Check if a file descriptor is valid and allocated
@@ -442,16 +440,14 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Close a file descriptor
-    /// 
+    ///
     /// # Invariants
     /// - Marks the FD slot as None (available for reuse)
     /// - Future accesses to this FD will fail with InvalidInput
     pub fn close(&mut self, fd: u32) -> io::Result<()> {
-        let slot = self.entries
-            .get_mut(fd as usize)
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidInput, "invalid file descriptor")
-            })?;
+        let slot = self.entries.get_mut(fd as usize).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "invalid file descriptor")
+        })?;
 
         if slot.is_none() {
             return Err(io::Error::new(
@@ -463,7 +459,7 @@ impl<T: FdDispatch> ResourceTable<T> {
         // Take ownership and close only if this was the last reference
         let entry = slot.take().unwrap();
         entry.try_close()?;
-        
+
         // Update reuse hint if this is earlier than our current position
         if (fd as usize) < self.next_reuse {
             self.next_reuse = fd as usize;
@@ -483,7 +479,7 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Iterator over all allocated file descriptors
-    /// 
+    ///
     /// Returns pairs of (fd, handle_entry)
     pub fn iter(&self) -> ResourceTableIter<'_, T> {
         ResourceTableIter {
@@ -493,11 +489,11 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Write data to a resource (synchronous)
-    /// 
+    ///
     /// # Arguments
     /// - `fd`: File descriptor to write to
     /// - `data`: Data to write
-    /// 
+    ///
     /// # Returns
     /// - Ok(bytes_written) on success
     /// - Err if FD is invalid or not writable
@@ -510,11 +506,11 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Read data from a resource (synchronous)
-    /// 
+    ///
     /// # Arguments
     /// - `fd`: File descriptor to read from
     /// - `buf`: Buffer to read into
-    /// 
+    ///
     /// # Returns
     /// - Ok(bytes_read) on success
     /// - Err if FD is invalid or not readable
@@ -527,11 +523,11 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Seek to an absolute position
-    /// 
+    ///
     /// # Arguments
     /// - `fd`: File descriptor to seek in
     /// - `pos`: Absolute position to seek to
-    /// 
+    ///
     /// # Returns
     /// - Ok(new_position) on success
     /// - Err if FD is invalid
@@ -541,11 +537,11 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Seek relative to current position
-    /// 
+    ///
     /// # Arguments
     /// - `fd`: File descriptor to seek in
     /// - `delta`: Relative offset (can be negative)
-    /// 
+    ///
     /// # Returns
     /// - Ok(new_position) on success
     /// - Err if FD is invalid
@@ -555,10 +551,10 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Rewind file to beginning
-    /// 
+    ///
     /// # Arguments
     /// - `fd`: File descriptor to rewind
-    /// 
+    ///
     /// # Returns
     /// - Ok(()) on success
     /// - Err if FD is invalid
@@ -569,10 +565,10 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Get current position in file
-    /// 
+    ///
     /// # Arguments
     /// - `fd`: File descriptor
-    /// 
+    ///
     /// # Returns
     /// - Ok(position) on success
     /// - Err if FD is invalid
@@ -582,11 +578,11 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Truncate file to specified size
-    /// 
+    ///
     /// # Arguments
     /// - `fd`: File descriptor
     /// - `size`: New size
-    /// 
+    ///
     /// # Returns
     /// - Ok(()) on success
     /// - Err if FD is invalid or not writable
@@ -599,12 +595,12 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Duplicate a file descriptor
-    /// 
+    ///
     /// Creates a new FD pointing to the same resource with shared state.
-    /// 
+    ///
     /// # Arguments
     /// - `fd`: File descriptor to duplicate
-    /// 
+    ///
     /// # Returns
     /// - Ok(new_fd) on success
     /// - Err if original FD is invalid or too many files open
@@ -614,13 +610,13 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Duplicate file descriptor to a specific number
-    /// 
+    ///
     /// If target FD is already open, it will be closed first.
-    /// 
+    ///
     /// # Arguments
     /// - `old_fd`: Source file descriptor
     /// - `new_fd`: Target file descriptor number
-    /// 
+    ///
     /// # Returns
     /// - Ok(new_fd) on success
     /// - Err if old_fd is invalid
@@ -661,10 +657,10 @@ impl<T: FdDispatch> ResourceTable<T> {
     }
 
     /// Get metadata about an open file descriptor
-    /// 
+    ///
     /// # Arguments
     /// - `fd`: File descriptor
-    /// 
+    ///
     /// # Returns
     /// - Ok((inode, offset, flags)) on success
     /// - Err if FD is invalid
@@ -699,7 +695,7 @@ impl<'a, T: FdDispatch> Iterator for ResourceTableIter<'a, T> {
         while self.index < self.table.entries.len() {
             let current = self.index;
             self.index += 1;
-            
+
             if let Some(ref handle) = self.table.entries[current] {
                 return Some((current as u32, handle.clone()));
             }
@@ -715,17 +711,18 @@ impl<'a, T: FdDispatch> Iterator for ResourceTableIter<'a, T> {
 /// Type alias for the global resource table that can hold any FdDispatch type
 pub type GlobalResourceTable = ResourceTable<Box<dyn FdDispatch>>;
 
-static GLOBAL_RESOURCE_TABLE: spin::Mutex<GlobalResourceTable> = spin::Mutex::new(ResourceTable::new());
+static GLOBAL_RESOURCE_TABLE: spin::Mutex<GlobalResourceTable> =
+    spin::Mutex::new(ResourceTable::new());
 
 // ============================================================================
 // Global Resource API
 // ============================================================================
 
 /// Register a resource and get a file descriptor
-/// 
+///
 /// # Arguments
 /// - `resource`: The resource to register
-/// 
+///
 /// # Returns
 /// - Ok(fd) on success
 /// - Err if too many resources are open
@@ -735,10 +732,10 @@ pub fn alloc(resource: Box<dyn FdDispatch>) -> io::Result<u32> {
 }
 
 /// Close a file descriptor
-/// 
+///
 /// # Arguments
 /// - `fd`: File descriptor to close
-/// 
+///
 /// # Returns
 /// - Ok(()) on success
 /// - Err if FD is invalid or already closed
@@ -762,13 +759,13 @@ pub fn dup2(old_fd: u32, new_fd: u32) -> io::Result<u32> {
 }
 
 /// Read from a file descriptor (synchronous)
-/// 
+///
 /// Reads data from the resource at the current offset and advances the offset.
-/// 
+///
 /// # Arguments
 /// - `fd`: File descriptor to read from
 /// - `buf`: Buffer to read into
-/// 
+///
 /// # Returns
 /// - Ok(bytes_read) on success
 /// - Err if FD is invalid or not readable
@@ -778,13 +775,13 @@ pub fn read(fd: u32, buf: &mut [u8]) -> io::Result<u64> {
 }
 
 /// Write to a file descriptor (synchronous)
-/// 
+///
 /// Writes data to the resource at the current offset and advances the offset.
-/// 
+///
 /// # Arguments
 /// - `fd`: File descriptor to write to
 /// - `data`: Data to write
-/// 
+///
 /// # Returns
 /// - Ok(bytes_written) on success
 /// - Err if FD is invalid or not writable
@@ -794,11 +791,11 @@ pub fn write(fd: u32, data: &[u8]) -> io::Result<u64> {
 }
 
 /// Seek to an absolute position
-/// 
+///
 /// # Arguments
 /// - `fd`: File descriptor to seek in
 /// - `pos`: Absolute position to seek to
-/// 
+///
 /// # Returns
 /// - Ok(new_position) on success
 /// - Err if FD is invalid
@@ -808,11 +805,11 @@ pub fn seek(fd: u32, pos: u64) -> io::Result<u64> {
 }
 
 /// Seek relative to current position
-/// 
+///
 /// # Arguments
 /// - `fd`: File descriptor to seek in
 /// - `delta`: Relative offset (can be negative)
-/// 
+///
 /// # Returns
 /// - Ok(new_position) on success
 /// - Err if FD is invalid
@@ -822,10 +819,10 @@ pub fn seek_relative(fd: u32, delta: i64) -> io::Result<u64> {
 }
 
 /// Rewind resource to beginning
-/// 
+///
 /// # Arguments
 /// - `fd`: File descriptor to rewind
-/// 
+///
 /// # Returns
 /// - Ok(()) on success
 /// - Err if FD is invalid
@@ -835,10 +832,10 @@ pub fn rewind(fd: u32) -> io::Result<()> {
 }
 
 /// Get current position in resource
-/// 
+///
 /// # Arguments
 /// - `fd`: File descriptor
-/// 
+///
 /// # Returns
 /// - Ok(position) on success
 /// - Err if FD is invalid
@@ -848,11 +845,11 @@ pub fn tell(fd: u32) -> io::Result<u64> {
 }
 
 /// Truncate resource to specified size
-/// 
+///
 /// # Arguments
 /// - `fd`: File descriptor
 /// - `size`: New size
-/// 
+///
 /// # Returns
 /// - Ok(()) on success
 /// - Err if FD is invalid or not writable
@@ -862,10 +859,10 @@ pub fn truncate(fd: u32, size: u64) -> io::Result<()> {
 }
 
 /// Check if a file descriptor is valid and allocated
-/// 
+///
 /// # Arguments
 /// - `fd`: File descriptor to check
-/// 
+///
 /// # Returns
 /// - true if FD is valid and allocated
 pub fn is_valid(fd: u32) -> bool {
@@ -874,7 +871,7 @@ pub fn is_valid(fd: u32) -> bool {
 }
 
 /// Get the number of allocated file descriptors
-/// 
+///
 /// # Returns
 /// Number of currently open file descriptors
 pub fn count() -> u32 {
@@ -889,10 +886,10 @@ pub fn ref_count(fd: u32) -> io::Result<usize> {
 }
 
 /// Get information about an open file descriptor
-/// 
+///
 /// # Arguments
 /// - `fd`: File descriptor
-/// 
+///
 /// # Returns
 /// - Ok((inode, offset, flags)) on success
 /// - Err if FD is invalid

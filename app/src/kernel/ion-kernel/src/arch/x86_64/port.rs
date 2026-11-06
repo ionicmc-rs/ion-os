@@ -1,8 +1,13 @@
 //! x86_64 port I/O
-#![allow(missing_docs, missing_debug_implementations, unsafe_op_in_unsafe_fn, clippy::missing_safety_doc, private_bounds)]
+#![allow(
+    missing_docs,
+    missing_debug_implementations,
+    unsafe_op_in_unsafe_fn,
+    clippy::missing_safety_doc,
+    private_bounds
+)]
 
 use core::{arch::asm, marker::PhantomData};
-
 
 #[inline]
 pub unsafe fn inb(port: u16) -> u8 {
@@ -85,8 +90,8 @@ pub unsafe fn io_wait() {
 trait Access {}
 
 /// Trait for types that can be read/written to ports
-/// 
-/// Such types 
+///
+/// Such types
 pub trait PortData {
     unsafe fn write(&self, port: u16);
     unsafe fn read(port: u16) -> Self;
@@ -98,7 +103,9 @@ impl PortData for u8 {
     }
 
     unsafe fn write(&self, port: u16) {
-        unsafe { outb(port, *self); }
+        unsafe {
+            outb(port, *self);
+        }
     }
 }
 
@@ -108,7 +115,9 @@ impl PortData for u16 {
     }
 
     unsafe fn write(&self, port: u16) {
-        unsafe { outw(port, *self); }
+        unsafe {
+            outw(port, *self);
+        }
     }
 }
 
@@ -118,12 +127,14 @@ impl PortData for u32 {
     }
 
     unsafe fn write(&self, port: u16) {
-        unsafe { outl(port, *self); }
+        unsafe {
+            outl(port, *self);
+        }
     }
 }
 
-pub enum Read      {}
-pub enum Write     {}
+pub enum Read {}
+pub enum Write {}
 pub enum ReadWrite {}
 
 impl Access for Read {}
@@ -135,12 +146,16 @@ impl Access for ReadWrite {}
 pub struct Port<T: PortData, A: Access> {
     port: u16,
     _pd: PhantomData<T>,
-    _pa: PhantomData<A>
+    _pa: PhantomData<A>,
 }
 
 impl<T: PortData, A: Access> Port<T, A> {
     pub const fn new(port: u16) -> Self {
-        Self { port, _pa: PhantomData, _pd: PhantomData }
+        Self {
+            port,
+            _pa: PhantomData,
+            _pd: PhantomData,
+        }
     }
 }
 
@@ -182,7 +197,9 @@ impl<T: PortData, A: WriteAccess> Port<T, A> {
     /// writing to ports may have side effects which violate memory safety. view the documentation for your port
     /// and determine wether it is truly safe to write.
     pub unsafe fn write(&self, val: T) {
-        unsafe { val.write(self.port); }
+        unsafe {
+            val.write(self.port);
+        }
     }
 }
 
@@ -203,7 +220,11 @@ impl<T: PortData, A: WriteAccess + ReadAccess> Port<T, A> {
     /// the value, and wether or not the port was written to.
     /// # Safety
     /// same as [`read`](Self::read) and [`write`](Self::write)
-    pub unsafe fn read_and_write_if(&self, val: T, predicate: impl FnOnce(&T) -> bool) -> (T, bool) {
+    pub unsafe fn read_and_write_if(
+        &self,
+        val: T,
+        predicate: impl FnOnce(&T) -> bool,
+    ) -> (T, bool) {
         let read = self.read();
         let pred = predicate(&read);
 
@@ -216,7 +237,7 @@ impl<T: PortData, A: WriteAccess + ReadAccess> Port<T, A> {
 
     /// Writes, then reads the underlying port.
     /// # Safety
-    /// same as [`read`](Self::read) and [`write`](Self::write) 
+    /// same as [`read`](Self::read) and [`write`](Self::write)
     pub unsafe fn write_and_read(&self, val: T) -> T {
         self.write(val);
         self.read()

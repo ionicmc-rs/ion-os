@@ -1,7 +1,6 @@
 //! Deprecated module for VGA printing
 #![deprecated(since = "0.1.1")]
 
-
 // //! Tools for handling On Screen Text
 // //!
 // //! # Safety
@@ -47,7 +46,7 @@
 // //! interrupts::without_interrupts(|| {
 // //!     let lock = WRITER.lock();
 // //!     write!(lock, "The colors are: {} on {}", color.0, color.1);
-// //!     
+// //!
 // //!     // explicit drop.
 // //!     drop(lock)
 // //! })

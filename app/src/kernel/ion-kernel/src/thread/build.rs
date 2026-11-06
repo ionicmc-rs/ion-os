@@ -1,11 +1,17 @@
 use core::fmt::Debug;
 
 use alloc::{
-    alloc::{Allocator, Global}, boxed::Box, string::{String, ToString as _}, sync::Arc, vec::Vec
+    alloc::{Allocator, Global},
+    boxed::Box,
+    string::{String, ToString as _},
+    sync::Arc,
+    vec::Vec,
 };
 
 use crate::{
-    address_space::{AddressSpace, kernel_address_space}, arch, serial_println, thread::{self, JoinHandle, Thread, ThreadID, tls::tcb}
+    address_space::{AddressSpace, kernel_address_space},
+    arch, serial_println,
+    thread::{self, JoinHandle, Thread, ThreadID, tls::tcb},
 };
 
 struct ThreadMetadata {
@@ -28,7 +34,7 @@ pub struct ThreadBuilder<T: Send + 'static> {
     safe: bool,
     stack: usize,
     priority: TPriority,
-    addr_space: AddressSpace
+    addr_space: AddressSpace,
 }
 
 impl<T: Send + 'static> Debug for ThreadBuilder<T> {
@@ -46,7 +52,6 @@ struct Meta<T: Send + 'static> {
     safe: bool,
     alloc: Arc<dyn Allocator>,
 }
-
 
 extern "C" fn thread_entry<T: Send + 'static>(arg: usize) -> ! {
     // Reconstruct the box WITH the correct allocator
@@ -80,7 +85,6 @@ extern "C" fn thread_entry<T: Send + 'static>(arg: usize) -> ! {
     thread::exit_current();
 }
 
-
 impl<T: Send + 'static> Default for ThreadBuilder<T> {
     fn default() -> Self {
         Self::new()
@@ -95,7 +99,7 @@ impl<T: Send + 'static> ThreadBuilder<T> {
             safe: true,
             stack: 16 * 1024,
             priority: TPriority::Med,
-            addr_space: unsafe { kernel_address_space() }
+            addr_space: unsafe { kernel_address_space() },
         }
     }
 
@@ -155,9 +159,9 @@ impl<T: Send + 'static> ThreadBuilder<T> {
     }
 
     /// Builds the thread, queueing it into the scheduler.
-    /// 
+    ///
     /// this an alias for `spawn` that simply does not return the value.
-    /// 
+    ///
     /// this *does* return the id, however, as that is often needed
     pub fn build(self) -> ThreadID {
         self.spawn().id()
@@ -165,13 +169,12 @@ impl<T: Send + 'static> ThreadBuilder<T> {
 
     #[must_use = "This method does not queue the thread - not using causes drops"]
     pub fn raw(mut self) -> Thread {
-        let alloc: Arc<dyn Allocator> =
-            if let Some(v) = self.addr_space.allocator() {
-                serial_println!("user space detected");
-                v
-            } else {
-                Arc::new(Global)
-            };
+        let alloc: Arc<dyn Allocator> = if let Some(v) = self.addr_space.allocator() {
+            serial_println!("user space detected");
+            v
+        } else {
+            Arc::new(Global)
+        };
 
         let name = self.name.unwrap_or("<unnamed>".to_string());
 
@@ -179,8 +182,6 @@ impl<T: Send + 'static> ThreadBuilder<T> {
         let func = self.func.take().expect("function should be provided");
         let raw = Box::into_raw(func);
         let func = unsafe { Box::from_raw_in(raw, alloc.clone()) };
-
-
 
         let meta = Meta {
             func,
@@ -198,10 +199,8 @@ impl<T: Send + 'static> ThreadBuilder<T> {
         )
     }
 
-
-
     /// spawns the thread.
-    /// 
+    ///
     /// note: this discards address space, but this will be changed!
     #[must_use = "if you do not need the return value, use `build` instead."]
     pub fn spawn(self) -> JoinHandle<T> {
@@ -209,10 +208,9 @@ impl<T: Send + 'static> ThreadBuilder<T> {
             move || {
                 unsafe {
                     let name = self.name.unwrap_or("<unnamed>".to_string());
-                    
+
                     tcb().name = name;
                     tcb().is_kill_safe = self.safe;
-
                 }
 
                 if let Some(func) = self.func {
@@ -263,7 +261,7 @@ pub fn set_name(s: impl Into<String>) {
     if arch::tls::read_ptr().is_null() {
         return;
     }
-    
+
     tcb().name = s.into();
 }
 

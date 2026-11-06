@@ -5,16 +5,11 @@ use crate::arch::mmu::PageTableFlags;
 use crate::arch::{PhysAddr, VirtAddr};
 use crate::graphics::pixel::PixelFormat;
 use crate::log;
-use crate::{
-    boot_info,
-    thread::sync::Mutex,
-    graphics::Surface,
-};
+use crate::{boot_info, graphics::Surface, thread::sync::Mutex};
 
 use crate::mmio::{alloc_2m_contiguous, map_mmio_frame, mmio_base};
 
-static FRAMEBUFFER: Mutex<MaybeUninit<Surface>> =
-    Mutex::new(MaybeUninit::uninit());
+static FRAMEBUFFER: Mutex<MaybeUninit<Surface>> = Mutex::new(MaybeUninit::uninit());
 
 pub fn init() {
     let fb = unsafe { boot_info().frame_buffer.read() };
@@ -26,15 +21,7 @@ pub fn init() {
     let height = fb.height;
     let phys_addr = fb.addr.addr().get();
 
-    let surface = unsafe {
-        map_framebuffer(
-            phys_addr,
-            width,
-            height,
-            pitch_bytes,
-            fb.bpp
-        )
-    };
+    let surface = unsafe { map_framebuffer(phys_addr, width, height, pitch_bytes, fb.bpp) };
 
     FRAMEBUFFER.lock().write(surface);
 }
@@ -64,68 +51,60 @@ unsafe fn map_framebuffer(
     let format = match bpp {
         32 => PixelFormat::Xrgb8888,
         24 => PixelFormat::Rgb888,
-        _  => panic!("Unsupported framebuffer bpp: {}", bpp),
+        _ => panic!("Unsupported framebuffer bpp: {}", bpp),
     };
 
     // ------------------------------------------------------------
     // 2. Compute physical base and offset
     // ------------------------------------------------------------
 
-    let phys_base =
-        phys_addr & !(FRAME_2M - 1);
+    let phys_base = phys_addr & !(FRAME_2M - 1);
 
-    let offset =
-        (phys_addr - phys_base) as usize;
+    let offset = (phys_addr - phys_base) as usize;
 
     // ------------------------------------------------------------
     // 3. Compute total framebuffer size
     // ------------------------------------------------------------
 
-    let total_bytes =
-        pitch_bytes as usize * height as usize;
+    let total_bytes = pitch_bytes as usize * height as usize;
 
     // IMPORTANT: include offset
-    let required_bytes =
-        offset + total_bytes;
+    let required_bytes = offset + total_bytes;
 
     // Round up to 2MiB pages
-    let pages =
-        (required_bytes + FRAME_2M - 1) / FRAME_2M;
+    let pages = (required_bytes + FRAME_2M - 1) / FRAME_2M;
 
     // ------------------------------------------------------------
     // 4. Allocate contiguous virtual MMIO region
     // ------------------------------------------------------------
 
-    let slot = alloc_2m_contiguous(pages)
-        .expect("MMIO 2MiB region exhausted");
+    let slot = alloc_2m_contiguous(pages).expect("MMIO 2MiB region exhausted");
 
-    let virt_base =
-        mmio_base() + slot as usize * FRAME_2M;
+    let virt_base = mmio_base() + slot as usize * FRAME_2M;
 
     // ------------------------------------------------------------
     // 5. Map physical pages to contiguous virtual pages
     // ------------------------------------------------------------
 
     for n in 0..pages {
-        unsafe { map_2mib_into_space(
-            &mut kernel_address_space(),
-            VirtAddr::new(virt_base + n * FRAME_2M),
-            PhysAddr::new(
-                phys_base + (n * FRAME_2M)
-            ),
-            PageTableFlags::PRESENT
-                | PageTableFlags::WRITABLE
-                | PageTableFlags::NO_EXECUTE
-                | PageTableFlags::NO_CACHE,
-        ) };
+        unsafe {
+            map_2mib_into_space(
+                &mut kernel_address_space(),
+                VirtAddr::new(virt_base + n * FRAME_2M),
+                PhysAddr::new(phys_base + (n * FRAME_2M)),
+                PageTableFlags::PRESENT
+                    | PageTableFlags::WRITABLE
+                    | PageTableFlags::NO_EXECUTE
+                    | PageTableFlags::NO_CACHE,
+            )
+        };
     }
 
     // ------------------------------------------------------------
     // 6. Final pointer includes original offset
     // ------------------------------------------------------------
 
-    let final_ptr =
-        (virt_base as *mut u8).add(offset);
+    let final_ptr = (virt_base as *mut u8).add(offset);
 
     // ------------------------------------------------------------
     // 7. Return surface
@@ -141,6 +120,6 @@ unsafe fn map_framebuffer(
         height,
         pitch_bytes,
         base: final_ptr,
-        format
+        format,
     }
 }

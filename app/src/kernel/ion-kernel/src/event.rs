@@ -8,16 +8,13 @@ type KeyHook = Box<dyn Fn(KeyEvent) + Send + Sync>;
 type KeyHookOnce = Box<dyn FnOnce(KeyEvent) + Send + Sync>;
 
 /// Keyboard hooks (run every key event)
-static KEYBOARD_HOOKS: Mutex<Vec<KeyHook>> =
-    Mutex::new(Vec::new());
+static KEYBOARD_HOOKS: Mutex<Vec<KeyHook>> = Mutex::new(Vec::new());
 
 /// Keyboard hooks that run once
-static KEYBOARD_ONCE_HOOKS: Mutex<Vec<KeyHookOnce>> =
-    Mutex::new(Vec::new());
+static KEYBOARD_ONCE_HOOKS: Mutex<Vec<KeyHookOnce>> = Mutex::new(Vec::new());
 
 /// Keyboard wakers
-static KEYBOARD_WAKERS: Mutex<Vec<Waker>> =
-    Mutex::new(Vec::new());
+static KEYBOARD_WAKERS: Mutex<Vec<Waker>> = Mutex::new(Vec::new());
 
 /// Register a keyboard hook (persistent)
 pub fn add_key_listener(f: impl Fn(KeyEvent) + Send + Sync + 'static) -> usize {

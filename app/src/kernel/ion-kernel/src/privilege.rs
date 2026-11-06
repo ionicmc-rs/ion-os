@@ -20,8 +20,8 @@
 //!
 //! The kernel remains the sole authority.
 
-use alloc::vec::Vec;
 use crate::thread::sync::Mutex;
+use alloc::vec::Vec;
 
 /// Unique identifier for a user.
 ///
@@ -116,9 +116,7 @@ struct UserRegistry {
 /// - Owned entirely by the kernel
 /// - Protected by a lock
 /// - Lives for the entire kernel lifetime
-static USER_REGISTRY: Mutex<UserRegistry> = Mutex::new(UserRegistry {
-    users: Vec::new(),
-});
+static USER_REGISTRY: Mutex<UserRegistry> = Mutex::new(UserRegistry { users: Vec::new() });
 
 /// Initialize the user system.
 ///
@@ -144,11 +142,7 @@ pub fn init_users() {
 /// This is a **kernel-only** operation.
 ///
 /// Returns the assigned `UserId`.
-pub fn create_user(
-    name: &str,
-    privilege: PrivilegeLevel,
-) -> Option<UserID> {
-
+pub fn create_user(name: &str, privilege: PrivilegeLevel) -> Option<UserID> {
     if privilege == PrivilegeLevel::Os {
         return None;
     }
@@ -166,10 +160,7 @@ pub fn create_user(
     buf[..name.len()].copy_from_slice(name.as_bytes());
 
     reg.users.push(User {
-        meta: UserMetaData {
-            name: buf,
-            id,
-        },
+        meta: UserMetaData { name: buf, id },
         privilege,
     });
 

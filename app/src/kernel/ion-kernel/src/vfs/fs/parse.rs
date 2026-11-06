@@ -2,9 +2,17 @@
 
 use core::fmt::Display;
 
-use alloc::{vec::Vec};
+use alloc::vec::Vec;
 
-use crate::{disk::{self, read_at, write_at}, io::{self, Error, ErrorKind}, log, vfs::{fs::IonFSVersion, structures::{INODE_SIZE, Inode}}};
+use crate::{
+    disk::{self, read_at, write_at},
+    io::{self, Error, ErrorKind},
+    log,
+    vfs::{
+        fs::IonFSVersion,
+        structures::{INODE_SIZE, Inode},
+    },
+};
 
 // Super Blocks
 
@@ -17,7 +25,7 @@ pub enum MetadataParseErr {
     SizeMismatch,
     /// The rest of the block is not zeros
     ExtraDataStored,
-    TooManyInodeBlocks(u64)
+    TooManyInodeBlocks(u64),
 }
 
 impl Display for MetadataParseErr {
@@ -25,10 +33,17 @@ impl Display for MetadataParseErr {
         match self {
             MetadataParseErr::IoFail(v) => v.fmt(f),
             MetadataParseErr::ExtraDataStored => write!(f, "extra data stored to block"),
-            MetadataParseErr::MagicNotFound => write!(f, "could not find the required verification number"),
-            MetadataParseErr::SizeMismatch => write!(f, "disk block size reported by driver does not match stored number"),
-            MetadataParseErr::TooManyInodeBlocks(v) => write!(f, "invalid number of inode blocks stored {v}"),
-            MetadataParseErr::UnknownVersion => write!(f, "unknown version")
+            MetadataParseErr::MagicNotFound => {
+                write!(f, "could not find the required verification number")
+            }
+            MetadataParseErr::SizeMismatch => write!(
+                f,
+                "disk block size reported by driver does not match stored number"
+            ),
+            MetadataParseErr::TooManyInodeBlocks(v) => {
+                write!(f, "invalid number of inode blocks stored {v}")
+            }
+            MetadataParseErr::UnknownVersion => write!(f, "unknown version"),
         }
     }
 }
@@ -37,7 +52,7 @@ impl core::error::Error for MetadataParseErr {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
             Self::IoFail(v) => Some(v),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -47,18 +62,19 @@ pub struct SuperBlock {
     version: IonFSVersion,
     reserved: u64,
     // offset for where user data starts
-    user_data_start: u64
+    user_data_start: u64,
 }
-
 
 pub const ION_FS_MAGIC_NUMBER: u32 = 0xab87beef;
 
-pub async fn read_superblock(disk: &mut dyn disk::AsyncBlockDevice) -> Result<SuperBlock, MetadataParseErr> {
+pub async fn read_superblock(
+    disk: &mut dyn disk::AsyncBlockDevice,
+) -> Result<SuperBlock, MetadataParseErr> {
     // directly read the first sector
     let mut buf = alloc::vec![0; disk.block_size()];
-    disk.read_block_async(0, &mut buf).await
+    disk.read_block_async(0, &mut buf)
+        .await
         .map_err(MetadataParseErr::IoFail)?;
-
 
     // first 4 bytes are the magic number
 
@@ -68,7 +84,7 @@ pub async fn read_superblock(disk: &mut dyn disk::AsyncBlockDevice) -> Result<Su
 
     // next 4 bytes are the version number (validated later)
 
-    let version = *buf[4..8].as_array::<4>().unwrap();    
+    let version = *buf[4..8].as_array::<4>().unwrap();
 
     // next 8 bytes are the block size, just for checking
 
@@ -80,7 +96,7 @@ pub async fn read_superblock(disk: &mut dyn disk::AsyncBlockDevice) -> Result<Su
     // next 8 bytes are reserved
 
     // next 8 bytes are where the user data region starts
-    
+
     let user_data_start = u64::from_le_bytes(*buf[24..32].as_array().unwrap());
 
     if !buf[32..].iter().all(|v| *v == 0) {
@@ -89,12 +105,16 @@ pub async fn read_superblock(disk: &mut dyn disk::AsyncBlockDevice) -> Result<Su
     Ok(SuperBlock {
         version: IonFSVersion::from_array(version).ok_or(MetadataParseErr::UnknownVersion)?,
         reserved: 0,
-        user_data_start
+        user_data_start,
     })
 }
 
-
-pub async fn write_superblock(disk: &mut dyn disk::AsyncBlockDevice, version: IonFSVersion, inode_count: u64, user_data_start: u64) -> io::Result {
+pub async fn write_superblock(
+    disk: &mut dyn disk::AsyncBlockDevice,
+    version: IonFSVersion,
+    inode_count: u64,
+    user_data_start: u64,
+) -> io::Result {
     let mut buf = Vec::with_capacity(disk.block_size());
 
     // write magic number
@@ -132,13 +152,16 @@ pub const ION_FS_ALLOC_MAGIC_NUMBER: u32 = 0xab87befd;
 pub struct AllocBlock {
     version: IonFSVersion,
     pub(in crate::vfs) next_free: u64,
-    pub(in crate::vfs) inode_blocks: Vec<u64>
+    pub(in crate::vfs) inode_blocks: Vec<u64>,
 }
 
-pub async fn read_alloc_block(disk: &mut dyn disk::AsyncBlockDevice) -> Result<AllocBlock, MetadataParseErr> {
+pub async fn read_alloc_block(
+    disk: &mut dyn disk::AsyncBlockDevice,
+) -> Result<AllocBlock, MetadataParseErr> {
     // read entire block directly
     let mut buf = alloc::vec![0; disk.block_size()];
-    disk.read_block_async(1, &mut buf).await
+    disk.read_block_async(1, &mut buf)
+        .await
         .map_err(MetadataParseErr::IoFail)?;
 
     // first 4 bytes are the magic number
@@ -161,7 +184,7 @@ pub async fn read_alloc_block(disk: &mut dyn disk::AsyncBlockDevice) -> Result<A
 
     let max_entries = (disk.block_size() as u64 - 24) / 8;
     if inode_block_count > max_entries {
-        return Err(MetadataParseErr::TooManyInodeBlocks(inode_block_count))
+        return Err(MetadataParseErr::TooManyInodeBlocks(inode_block_count));
     }
 
     let mut inode_blocks = Vec::with_capacity(inode_block_count as usize);
@@ -177,11 +200,14 @@ pub async fn read_alloc_block(disk: &mut dyn disk::AsyncBlockDevice) -> Result<A
     Ok(AllocBlock {
         next_free,
         version: IonFSVersion::from_array(version).ok_or(MetadataParseErr::UnknownVersion)?,
-        inode_blocks
+        inode_blocks,
     })
 }
 
-pub async fn write_alloc_block(disk: &mut dyn disk::AsyncBlockDevice, block: &AllocBlock) -> io::Result {
+pub async fn write_alloc_block(
+    disk: &mut dyn disk::AsyncBlockDevice,
+    block: &AllocBlock,
+) -> io::Result {
     let mut buf = Vec::with_capacity(disk.block_size());
     buf.extend(ION_FS_ALLOC_MAGIC_NUMBER.to_le_bytes());
 
@@ -196,7 +222,7 @@ pub async fn write_alloc_block(disk: &mut dyn disk::AsyncBlockDevice, block: &Al
     buf.resize(buf.capacity(), 0);
 
     disk.write_block_async(1, &buf).await?;
-    
+
     Ok(())
 }
 
@@ -205,13 +231,16 @@ pub async fn write_alloc_block(disk: &mut dyn disk::AsyncBlockDevice, block: &Al
 #[allow(unused)]
 pub struct InodeBlock {
     free_hint: u16,
-    nodes: Vec<Inode>
+    nodes: Vec<Inode>,
 }
 
-pub async fn read_inode_block(disk: &mut dyn disk::AsyncBlockDevice, block: u64) -> io::Result<InodeBlock> {
+pub async fn read_inode_block(
+    disk: &mut dyn disk::AsyncBlockDevice,
+    block: u64,
+) -> io::Result<InodeBlock> {
     let mut buf = alloc::vec![0; disk.block_size()];
     disk.read_block_async(block, &mut buf).await?;
-    
+
     // first 2 bytes are free hint
 
     let free_hint = u16::from_le_bytes(*buf[0..2].as_array().unwrap());
@@ -226,12 +255,16 @@ pub async fn read_inode_block(disk: &mut dyn disk::AsyncBlockDevice, block: u64)
         if n + INODE_SIZE > buf.len() {
             break;
         }
-        vector.push(Inode::from_bytes(*buf[n..(n+INODE_SIZE)].as_array().unwrap())
-                .map_err(|e| Error::new(ErrorKind::InvalidData, e))?
-            );
+        vector.push(
+            Inode::from_bytes(*buf[n..(n + INODE_SIZE)].as_array().unwrap())
+                .map_err(|e| Error::new(ErrorKind::InvalidData, e))?,
+        );
     }
 
-    Ok(InodeBlock { free_hint, nodes: vector })
+    Ok(InodeBlock {
+        free_hint,
+        nodes: vector,
+    })
 }
 
 // Inode
@@ -240,11 +273,7 @@ fn inodes_per_block(block_size: usize) -> usize {
     (block_size - INODE_BLOCK_HEADER_SIZE) / INODE_SIZE
 }
 
-fn inode_location(
-    alloc: &AllocBlock,
-    block_size: usize,
-    inode_id: u64,
-) -> (u64, usize) {
+fn inode_location(alloc: &AllocBlock, block_size: usize, inode_id: u64) -> (u64, usize) {
     let per_block = inodes_per_block(block_size);
     let block_idx = inode_id as usize / per_block;
     let slot = inode_id as usize % per_block;
@@ -253,16 +282,11 @@ fn inode_location(
 
 #[track_caller]
 pub async fn read_inode(disk: &mut dyn disk::AsyncBlockDevice, index: u64) -> io::Result<Inode> {
-    let alloc = read_alloc_block(disk).await
-        .map_err(Error::other)?;
+    let alloc = read_alloc_block(disk).await.map_err(Error::other)?;
 
-    let inodes_per_block =
-        (disk.block_size() - INODE_BLOCK_HEADER_SIZE)
-        / INODE_SIZE;
+    let inodes_per_block = (disk.block_size() - INODE_BLOCK_HEADER_SIZE) / INODE_SIZE;
 
-    let max_inodes =
-        alloc.inode_blocks.len() as u64 *
-        inodes_per_block as u64;
+    let max_inodes = alloc.inode_blocks.len() as u64 * inodes_per_block as u64;
 
     if index >= max_inodes {
         return Err(Error::new(
@@ -287,10 +311,9 @@ pub async unsafe fn read_inode_unchecked(
     index: u64,
 ) -> io::Result<Inode> {
     let block_size = disk.block_size();
-    
+
     // how many inodes fit in ONE inode table block
-    let inodes_per_block =
-        (block_size - INODE_BLOCK_HEADER_SIZE) / INODE_SIZE;
+    let inodes_per_block = (block_size - INODE_BLOCK_HEADER_SIZE) / INODE_SIZE;
 
     if inodes_per_block == 0 {
         return Err(Error::new(
@@ -301,27 +324,23 @@ pub async unsafe fn read_inode_unchecked(
 
     // map global inode index → inode table block + slot
     let block_index = (index / inodes_per_block as u64) as usize;
-    let slot_index  = (index % inodes_per_block as u64) as usize;
+    let slot_index = (index % inodes_per_block as u64) as usize;
 
     // SAFETY: caller guarantees index is valid
     let inode_block_number = *alloc_block
         .inode_blocks
         .get(block_index)
-        .ok_or_else(|| {
-            Error::new(ErrorKind::InvalidInput, "inode index out of range")
-        })?;
+        .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "inode index out of range"))?;
 
     // byte offset of the inode inside the disk
-    let offset =
-        inode_block_number * block_size as u64 +
-        INODE_BLOCK_HEADER_SIZE as u64 +
-        (slot_index * INODE_SIZE) as u64;
+    let offset = inode_block_number * block_size as u64
+        + INODE_BLOCK_HEADER_SIZE as u64
+        + (slot_index * INODE_SIZE) as u64;
 
     let mut buf = [0u8; INODE_SIZE];
     read_at(disk, offset, &mut buf).await?;
 
-    Inode::from_bytes(buf)
-        .map_err(|e| Error::new(ErrorKind::InvalidData, e))
+    Inode::from_bytes(buf).map_err(|e| Error::new(ErrorKind::InvalidData, e))
 }
 
 pub async unsafe fn write_inode_unchecked(
@@ -330,20 +349,16 @@ pub async unsafe fn write_inode_unchecked(
     inode_id: u64,
     inode: &Inode,
 ) -> io::Result {
-    let (block, slot) =
-        inode_location(alloc, disk.block_size(), inode_id);
+    let (block, slot) = inode_location(alloc, disk.block_size(), inode_id);
 
-    let offset =
-        block * disk.block_size() as u64 +
-        INODE_BLOCK_HEADER_SIZE as u64 +
-        (slot * INODE_SIZE) as u64;
+    let offset = block * disk.block_size() as u64
+        + INODE_BLOCK_HEADER_SIZE as u64
+        + (slot * INODE_SIZE) as u64;
 
     write_at(disk, offset, &inode.as_bytes()).await
 }
 
-pub async fn alloc_inode(
-    disk: &mut dyn disk::AsyncBlockDevice,
-) -> io::Result<u64> {
+pub async fn alloc_inode(disk: &mut dyn disk::AsyncBlockDevice) -> io::Result<u64> {
     let mut alloc = read_alloc_block(disk).await.map_err(Error::other)?;
     let per_block = inodes_per_block(disk.block_size());
 
@@ -354,8 +369,7 @@ pub async fn alloc_inode(
             continue;
         }
 
-        let inode_id =
-            block_idx as u64 * per_block as u64 + free_hint as u64;
+        let inode_id = block_idx as u64 * per_block as u64 + free_hint as u64;
 
         let inode = Inode::used(inode_id);
 
@@ -376,7 +390,6 @@ pub async fn alloc_inode(
         return Ok(inode_id);
     }
 
-
     // no space → allocate new inode table block
     let new_block = alloc.next_free;
     alloc.next_free += 1;
@@ -384,18 +397,13 @@ pub async fn alloc_inode(
     write_alloc_block(disk, &alloc).await?;
 
     // zero block
-    disk.write_block_async(
-        new_block,
-        &alloc::vec![0u8; disk.block_size()],
-    ).await?;
+    disk.write_block_async(new_block, &alloc::vec![0u8; disk.block_size()])
+        .await?;
 
     Ok((alloc.inode_blocks.len() as u64 - 1) * per_block as u64)
 }
 
-pub async fn free_inode(
-    disk: &mut dyn disk::AsyncBlockDevice,
-    inode_id: u64,
-) -> io::Result {
+pub async fn free_inode(disk: &mut dyn disk::AsyncBlockDevice, inode_id: u64) -> io::Result {
     if inode_id == 0 {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
@@ -406,9 +414,7 @@ pub async fn free_inode(
     let alloc = read_alloc_block(disk).await.map_err(Error::other)?;
     let inode = Inode::unused();
 
-    unsafe {
-        write_inode_unchecked(disk, &alloc, inode_id, &inode).await?
-    }
+    unsafe { write_inode_unchecked(disk, &alloc, inode_id, &inode).await? }
 
     let per_block = inodes_per_block(disk.block_size());
 
@@ -439,12 +445,9 @@ pub async fn write_inode(
     }
 
     // load allocation metadata
-    let alloc = read_alloc_block(disk).await
-        .map_err(Error::other)?;
+    let alloc = read_alloc_block(disk).await.map_err(Error::other)?;
 
-    let inodes_per_block =
-        (disk.block_size() - INODE_BLOCK_HEADER_SIZE)
-        / INODE_SIZE;
+    let inodes_per_block = (disk.block_size() - INODE_BLOCK_HEADER_SIZE) / INODE_SIZE;
 
     if inodes_per_block == 0 {
         return Err(io::Error::new(
@@ -453,9 +456,7 @@ pub async fn write_inode(
         ));
     }
 
-    let max_inodes =
-        alloc.inode_blocks.len() as u64 *
-        inodes_per_block as u64;
+    let max_inodes = alloc.inode_blocks.len() as u64 * inodes_per_block as u64;
 
     // bounds check
     if inode_id >= max_inodes {
@@ -466,9 +467,7 @@ pub async fn write_inode(
     }
 
     // perform the actual write
-    unsafe {
-        write_inode_unchecked(disk, &alloc, inode_id, inode).await
-    }
+    unsafe { write_inode_unchecked(disk, &alloc, inode_id, inode).await }
 }
 
 async fn read_inode_block_header(
@@ -487,10 +486,5 @@ async fn write_inode_block_header(
     free_hint: u16,
 ) -> io::Result<()> {
     let blk_size = disk.block_size();
-    write_at(
-        disk,
-        block * blk_size as u64,
-        &free_hint.to_le_bytes(),
-    )
-    .await
+    write_at(disk, block * blk_size as u64, &free_hint.to_le_bytes()).await
 }

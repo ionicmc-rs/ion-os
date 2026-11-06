@@ -1,10 +1,20 @@
-use core::{arch::naked_asm, sync::atomic::{AtomicU8, AtomicU64, Ordering, compiler_fence, fence}};
+use core::{
+    arch::naked_asm,
+    sync::atomic::{AtomicU8, AtomicU64, Ordering, compiler_fence, fence},
+};
 
 use spin::Mutex;
 use x86_64::structures::idt::InterruptStackFrame;
 
 use crate::{
-    arch::{cpu, interrupts::{self, InterruptGuard, apic::handlers::notify, without_interrupts}}, event_logger::{self, Event, push_event}, log, scheduler::{self, ScheduleReason, current_scheduler}, serial_println, thread
+    arch::{
+        cpu,
+        interrupts::{self, InterruptGuard, apic::handlers::notify, without_interrupts},
+    },
+    event_logger::{self, Event, push_event},
+    log,
+    scheduler::{self, ScheduleReason, current_scheduler},
+    serial_println, thread,
 };
 
 // pub extern "x86-interrupt" fn timer_isr_entry(_: InterruptStackFrame) {
@@ -34,8 +44,8 @@ pub struct InterruptRegs {
     pub r12: u64,
     pub r11: u64,
     pub r10: u64,
-    pub r9:  u64,
-    pub r8:  u64,
+    pub r9: u64,
+    pub r8: u64,
     pub rdi: u64,
     pub rsi: u64,
     pub rbp: u64,
@@ -46,51 +56,53 @@ pub struct InterruptRegs {
 }
 
 #[unsafe(naked)]
-pub extern "x86-interrupt" fn timer_trampoline(_: InterruptStackFrame /* unused param here for Rust to not complain */) {
-        naked_asm!(
-            "push rax",
-            "push rbx",
-            "push rcx",
-            "push rdx",
-            "push rbp",
-            "push rsi",
-            "push rdi",
-            "push r8",
-            "push r9",
-            "push r10",
-            "push r11",
-            "push r12",
-            "push r13",
-            "push r14",
-            "push r15",
+pub extern "x86-interrupt" fn timer_trampoline(
+    _: InterruptStackFrame, /* unused param here for Rust to not complain */
+) {
+    naked_asm!(
+        "push rax",
+        "push rbx",
+        "push rcx",
+        "push rdx",
+        "push rbp",
+        "push rsi",
+        "push rdi",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
+        "push r12",
+        "push r13",
+        "push r14",
+        "push r15",
 
 
-            "mov rdi, rsp",   // &mut InterruptRegs
-            "lea rsi, [rsp + 120]", // above pushed registers
-            "sub rsp, 8",     // align the stack for the call
-            "call {handler}",
-            "add rsp, 8",     // restore the stack pointer
+        "mov rdi, rsp",   // &mut InterruptRegs
+        "lea rsi, [rsp + 120]", // above pushed registers
+        "sub rsp, 8",     // align the stack for the call
+        "call {handler}",
+        "add rsp, 8",     // restore the stack pointer
 
 
-            "pop r15",
-            "pop r14",
-            "pop r13",
-            "pop r12",
-            "pop r11",
-            "pop r10",
-            "pop r9",
-            "pop r8",
-            "pop rdi",
-            "pop rsi",
-            "pop rbp",
-            "pop rdx",
-            "pop rcx",
-            "pop rbx",
-            "pop rax",
+        "pop r15",
+        "pop r14",
+        "pop r13",
+        "pop r12",
+        "pop r11",
+        "pop r10",
+        "pop r9",
+        "pop r8",
+        "pop rdi",
+        "pop rsi",
+        "pop rbp",
+        "pop rdx",
+        "pop rcx",
+        "pop rbx",
+        "pop rax",
 
-            "iretq",
-            handler = sym timer_handler,
-        );
+        "iretq",
+        handler = sym timer_handler,
+    );
 }
 
 #[allow(unused)]
@@ -110,15 +122,14 @@ pub extern "C" fn timer_handler(regs: &mut InterruptRegs, frame: &mut InterruptS
     }
 
     let next = current_scheduler().pick_preempt();
-    
+
     if let Some(v) = next {
         if let Some(old) = v.0 {
             old.save_from_interrupt(regs, unsafe { frame.as_mut().read_only() }); // does not need the actual memory
         }
         v.1.load_with_interrupt_frame(regs, unsafe { frame.as_mut() });
     }
-    
-    
+
     scheduler::request_reschedule();
     scheduler::wake_done();
 
@@ -129,49 +140,51 @@ pub(super) const TIMER_IST: u16 = 4;
 pub(super) const YIELD_IST: u16 = 4;
 
 #[unsafe(naked)]
-pub extern "x86-interrupt" fn yield_trampoline(_: InterruptStackFrame /* unused param here for Rust to not complain */) {
-        naked_asm!(
-            "push rax",
-            "push rbx",
-            "push rcx",
-            "push rdx",
-            "push rbp",
-            "push rsi",
-            "push rdi",
-            "push r8",
-            "push r9",
-            "push r10",
-            "push r11",
-            "push r12",
-            "push r13",
-            "push r14",
-            "push r15",
+pub extern "x86-interrupt" fn yield_trampoline(
+    _: InterruptStackFrame, /* unused param here for Rust to not complain */
+) {
+    naked_asm!(
+        "push rax",
+        "push rbx",
+        "push rcx",
+        "push rdx",
+        "push rbp",
+        "push rsi",
+        "push rdi",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
+        "push r12",
+        "push r13",
+        "push r14",
+        "push r15",
 
-            "mov rdi, rsp",   // &mut InterruptRegs
-            "lea rsi, [rsp + 120]", // above pushed registers
-            "sub rsp, 8",     // align the stack for the call
-            "call {handler}",
-            "add rsp, 8",     // restore the stack pointer
+        "mov rdi, rsp",   // &mut InterruptRegs
+        "lea rsi, [rsp + 120]", // above pushed registers
+        "sub rsp, 8",     // align the stack for the call
+        "call {handler}",
+        "add rsp, 8",     // restore the stack pointer
 
-            "pop r15",
-            "pop r14",
-            "pop r13",
-            "pop r12",
-            "pop r11",
-            "pop r10",
-            "pop r9",
-            "pop r8",
-            "pop rdi",
-            "pop rsi",
-            "pop rbp",
-            "pop rdx",
-            "pop rcx",
-            "pop rbx",
-            "pop rax",
+        "pop r15",
+        "pop r14",
+        "pop r13",
+        "pop r12",
+        "pop r11",
+        "pop r10",
+        "pop r9",
+        "pop r8",
+        "pop rdi",
+        "pop rsi",
+        "pop rbp",
+        "pop rdx",
+        "pop rcx",
+        "pop rbx",
+        "pop rax",
 
-            "iretq",
-            handler = sym yield_handler,
-        );
+        "iretq",
+        handler = sym yield_handler,
+    );
 }
 
 extern "C" fn yield_handler(regs: &mut InterruptRegs, frame: &mut InterruptStackFrame) {

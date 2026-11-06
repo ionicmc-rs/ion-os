@@ -2,7 +2,26 @@ use core::{ffi::CStr, panic};
 
 use alloc::{borrow::ToOwned, boxed::Box, string::ToString, vec};
 
-use crate::{arch::{VirtAddr, syscall::parse::{IoCommand, ProcessCommand, ProcessFlags, Syscall::{self, Io}, ThreadCommand}}, asyncio, c_lib::libc::{self, OsError}, event_logger::{Event, EventData, EventLevel, SyscallEvent, push_event}, io::{ErrorKind, File, OpenOptions}, lib_alloc::user::{USER_DATA_BASE, USER_DATA_SIZE}, log::{self, info}, privilege, process::{self, current_process, exit_proc, read_current_fd, write_current_fd}, resources::OpenFlags, thread};
+use crate::{
+    arch::{
+        VirtAddr,
+        syscall::parse::{
+            IoCommand, ProcessCommand, ProcessFlags,
+            Syscall::{self, Io},
+            ThreadCommand,
+        },
+    },
+    asyncio,
+    c_lib::libc::{self, OsError},
+    event_logger::{Event, EventData, EventLevel, SyscallEvent, push_event},
+    io::{ErrorKind, File, OpenOptions},
+    lib_alloc::user::{USER_DATA_BASE, USER_DATA_SIZE},
+    log::{self, info},
+    privilege,
+    process::{self, current_process, exit_proc, read_current_fd, write_current_fd},
+    resources::OpenFlags,
+    thread,
+};
 
 /// Represents inputs to a syscall
 #[repr(C)]
@@ -14,8 +33,8 @@ pub struct SyscallFrame {
     pub rsi: u64,
     pub rdx: u64,
     pub r10: u64,
-    pub r8:  u64,
-    pub r9:  u64,
+    pub r8: u64,
+    pub r9: u64,
 }
 
 const UNKNOWN_MAGIC_VAL: u64 = u64::MAX - 1;
@@ -61,12 +80,10 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
         cpu: super::super::cpu::core_id() as u16,
         ticks: super::super::interrupts::ticks(),
         level: EventLevel::Trace,
-        data: EventData::Syscall(
-            SyscallEvent::Enter { 
-                group: frame.rax as u32,
-                command: frame.rdi as u32,
-            }
-        )
+        data: EventData::Syscall(SyscallEvent::Enter {
+            group: frame.rax as u32,
+            command: frame.rdi as u32,
+        }),
     });
 
     match syscall {
@@ -77,7 +94,7 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                     info!("process <TID {}> exited with code {code}", thread::id().0);
 
                     let pid = current_process().unwrap();
-                    
+
                     exit_proc(pid, code);
 
                     // if we are still here somehow, then we return an error
@@ -85,7 +102,7 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                     libc::set_os_error(OsError::ProcessFail);
 
                     (FAIL_MAGIC_VAL, FAIL_MAGIC_VAL)
-                },
+                }
                 ProcessCommand::Spawn(path, args, argc, flags) => {
                     let path = unsafe { CStr::from_ptr(path) };
                     let path_str = match path.to_str() {
@@ -116,13 +133,17 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                     let owner = process::with_proc(current_proc, |proc| proc.owner).unwrap();
 
                     let local_fds = if flags.contains(ProcessFlags::INHERIT_FDS) {
-                        Some(process::with_proc(current_proc, |proc| proc.resources.inherit_fds()).unwrap())
+                        Some(
+                            process::with_proc(current_proc, |proc| proc.resources.inherit_fds())
+                                .unwrap(),
+                        )
                     } else if flags.contains(ProcessFlags::INHERIT_STDIO) {
                         log::warn!("inheriting stdio is not yet implemented, returning error code");
                         return (frame.rax, UNKNOWN_MAGIC_VAL);
                     } else {
                         None
-                    }.transpose();
+                    }
+                    .transpose();
 
                     let local_fds = match local_fds {
                         Ok(fds) => fds.unwrap_or_default(),
@@ -132,7 +153,8 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                         }
                     };
 
-                    let proc_f = process::exec(owner, &path_str, &arg_vec, Some(current_proc), local_fds);
+                    let proc_f =
+                        process::exec(owner, &path_str, &arg_vec, Some(current_proc), local_fds);
                     match asyncio::run_future(proc_f) {
                         Ok(pid) => (0, pid.0 as u64),
                         Err(e) => {
@@ -148,7 +170,9 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                     } else {
                         let mut kernel_buf = vec![0u8; len];
 
-                        if let Err(e) = copy_from_user(kernel_buf.as_mut_ptr(), str as *const u8, len) {
+                        if let Err(e) =
+                            copy_from_user(kernel_buf.as_mut_ptr(), str as *const u8, len)
+                        {
                             libc::set_os_error(e.to_os_error());
                             return (frame.rax, UNKNOWN_MAGIC_VAL);
                         }
@@ -163,7 +187,7 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                             libc::set_os_error(OsError::InvalidInput);
                             (frame.rax, UNKNOWN_MAGIC_VAL)
                         }
-                    } 
+                    }
                 }
                 ProcessCommand::Kill(p) => {
                     if let Some(curr_proc) = process::current_process() {
@@ -175,7 +199,8 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                             let uid = process::with_proc(p, |proc| proc.owner).unwrap();
                             let privilege = privilege::get_user(uid).unwrap().privilege;
 
-                            let curr_uid = process::with_proc(curr_proc, |proc| proc.owner).unwrap();
+                            let curr_uid =
+                                process::with_proc(curr_proc, |proc| proc.owner).unwrap();
                             let curr_privilege = privilege::get_user(uid).unwrap().privilege;
 
                             if privilege > curr_privilege {
@@ -240,7 +265,8 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
 
                 match read_current_fd(fd as u32, &mut kernel_buf) {
                     Ok(read) => {
-                        let x = copy_to_user(buf as *mut u8, kernel_buf.as_ptr(), read as usize).map_err(|e| e.to_os_error());
+                        let x = copy_to_user(buf as *mut u8, kernel_buf.as_ptr(), read as usize)
+                            .map_err(|e| e.to_os_error());
 
                         if read != 0 {
                             log::debug!("read {read} bytes from fd {fd}: {kernel_buf:?}");
@@ -253,7 +279,6 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                                 (u64::MAX, 0)
                             }
                         }
-
                     }
                     Err(e) => {
                         libc::set_os_error(io_error_to_os_error(e.kind()));
@@ -262,15 +287,14 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                 }
             }
             IoCommand::Close(fd) => {
-                process::with_current_proc_mut(|p| {
-                    match p.close_resource(fd as u32) {
-                        Ok(()) => (0, 0),
-                        Err(e) => {
-                            libc::set_os_error(io_error_to_os_error(e.kind()));
-                            (FAIL_MAGIC_VAL, fd as u64)
-                        }
+                process::with_current_proc_mut(|p| match p.close_resource(fd as u32) {
+                    Ok(()) => (0, 0),
+                    Err(e) => {
+                        libc::set_os_error(io_error_to_os_error(e.kind()));
+                        (FAIL_MAGIC_VAL, fd as u64)
                     }
-                }).unwrap()
+                })
+                .unwrap()
             }
             IoCommand::Open(path, path_len, flags) => {
                 if path_len > 512 {
@@ -280,7 +304,8 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
 
                 let mut kernel_buf = vec![0u8; path_len];
 
-                if let Err(e) = copy_from_user(kernel_buf.as_mut_ptr(), path as *const u8, path_len) {
+                if let Err(e) = copy_from_user(kernel_buf.as_mut_ptr(), path as *const u8, path_len)
+                {
                     libc::set_os_error(e.to_os_error());
                     return (FAIL_MAGIC_VAL, 0);
                 }
@@ -310,9 +335,7 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                     .open(path_str);
 
                 let fd = match asyncio::run_future(fut) {
-                    Ok(file) => {
-                        file.fd()
-                    },
+                    Ok(file) => file.fd(),
                     Err(e) => {
                         libc::set_os_error(io_error_to_os_error(e.kind()));
                         return (FAIL_MAGIC_VAL, 0);
@@ -328,29 +351,26 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                         return (FAIL_MAGIC_VAL, fd as u64);
                     }
                 };
-                process::with_current_proc_mut(|p| {
-                    match p.seek_resource(fd as u32, offset) {
-                        Ok(new_offset) => (new_offset as u64, 0),
-                        Err(e) => {
-                            libc::set_os_error(io_error_to_os_error(e.kind()));
-                            (FAIL_MAGIC_VAL, fd as u64)
-                        }
+                process::with_current_proc_mut(|p| match p.seek_resource(fd as u32, offset) {
+                    Ok(new_offset) => (new_offset as u64, 0),
+                    Err(e) => {
+                        libc::set_os_error(io_error_to_os_error(e.kind()));
+                        (FAIL_MAGIC_VAL, fd as u64)
                     }
-                }).unwrap()
+                })
+                .unwrap()
             }
             IoCommand::Unknown => {
                 libc::set_os_error(OsError::InvalidInput);
                 (frame.rax, UNKNOWN_MAGIC_VAL)
             }
-        }
+        },
 
         Syscall::Thread(v) => match v {
             ThreadCommand::ExitCurrent => {
                 thread::exit_current();
             }
-            ThreadCommand::GetErrno => {
-                (*libc::get_errno() as u64, 0)
-            }
+            ThreadCommand::GetErrno => (*libc::get_errno() as u64, 0),
             ThreadCommand::Yield => {
                 crate::scheduler::yield_now();
                 (0, 0)
@@ -359,12 +379,11 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                 libc::set_os_error(OsError::InvalidInput);
                 (frame.rax, UNKNOWN_MAGIC_VAL)
             }
-        }
+        },
 
         // Unknown syscall policy:
         // 0 in rax - main command unknown (rdi irrelevant)
         // 0 in rdi - sub command unknown
-
         Syscall::Unknown => {
             libc::set_os_error(OsError::InvalidInput);
             (UNKNOWN_MAGIC_VAL, 0)
@@ -386,7 +405,7 @@ fn validate_user_range(ptr: usize, len: usize) -> bool {
     };
 
     let base = USER_DATA_BASE;
-    let top  = USER_DATA_BASE + USER_DATA_SIZE;
+    let top = USER_DATA_BASE + USER_DATA_SIZE;
 
     ptr >= base && end < top
 }
@@ -418,7 +437,7 @@ fn validate_user_pages(ptr: usize, len: usize) -> bool {
     }
 
     let start = ptr & !(PAGE_SIZE - 1);
-    let end   = (ptr + len - 1) & !(PAGE_SIZE - 1);
+    let end = (ptr + len - 1) & !(PAGE_SIZE - 1);
 
     let mut page = start;
 
@@ -433,12 +452,7 @@ fn validate_user_pages(ptr: usize, len: usize) -> bool {
     true
 }
 
-pub fn copy_from_user(
-    dst: *mut u8,
-    src_user: *const u8,
-    len: usize,
-) -> Result<(), UserCopyError> {
-
+pub fn copy_from_user(dst: *mut u8, src_user: *const u8, len: usize) -> Result<(), UserCopyError> {
     let src = src_user as usize;
 
     if !validate_user_range(src, len) {
@@ -450,22 +464,13 @@ pub fn copy_from_user(
     }
 
     unsafe {
-        core::ptr::copy_nonoverlapping(
-            src_user,
-            dst,
-            len,
-        );
+        core::ptr::copy_nonoverlapping(src_user, dst, len);
     }
 
     Ok(())
 }
 
-pub fn copy_to_user(
-    dst_user: *mut u8,
-    src: *const u8,
-    len: usize,
-) -> Result<(), UserCopyError> {
-
+pub fn copy_to_user(dst_user: *mut u8, src: *const u8, len: usize) -> Result<(), UserCopyError> {
     let dst = dst_user as usize;
 
     if !validate_user_range(dst, len) {
@@ -477,11 +482,7 @@ pub fn copy_to_user(
     }
 
     unsafe {
-        core::ptr::copy_nonoverlapping(
-            src,
-            dst_user,
-            len,
-        );
+        core::ptr::copy_nonoverlapping(src, dst_user, len);
     }
 
     Ok(())

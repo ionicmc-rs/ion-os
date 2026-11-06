@@ -13,11 +13,16 @@ use alloc::{boxed::Box, collections::vec_deque::VecDeque, vec::Vec};
 use x86_64::structures::idt::InterruptStackFrameValue;
 
 use crate::{
-    address_space::kernel_address_space, arch::{self, ctx, interrupts::InterruptGuard}, cls, hlt_loop, log, process::{self, PROCESSES}, serial_println, thread::{
+    address_space::kernel_address_space,
+    arch::{self, ctx, interrupts::InterruptGuard},
+    cls, hlt_loop, log,
+    process::{self, PROCESSES},
+    serial_println,
+    thread::{
         self, State, Thread, ThreadID,
         build::TPriority,
         tls::{ThreadSelf, install_tls},
-    }
+    },
 };
 
 // /// The global Scheduler
@@ -154,7 +159,9 @@ pub extern "C" fn idle_entry(_: usize) -> ! {
     thread::set_name("idle");
     serial_println!("in the idle thread");
     loop {
-        let scheduler = &cls::current().expect("CPU running a scheduler should always have CLS").scheduler;
+        let scheduler = &cls::current()
+            .expect("CPU running a scheduler should always have CLS")
+            .scheduler;
 
         if unsafe_cell_ref!(scheduler.queues).has_targets() {
             yield_now();
@@ -366,13 +373,9 @@ impl Queues {
     }
 
     pub fn has_targets(&self) -> bool {
-        !(self.high.0.is_empty()
-            && self.med.0.is_empty()
-            && self.low.0.is_empty())
+        !(self.high.0.is_empty() && self.med.0.is_empty() && self.low.0.is_empty())
     }
-
 }
-
 
 #[derive(Debug, Default)]
 pub struct Scheduler {
@@ -442,7 +445,7 @@ impl Scheduler {
         // currently just the same
 
         let res = self.critical_moment_raw(f);
-        
+
         res
     }
 
@@ -483,7 +486,10 @@ impl Scheduler {
     }
 
     #[track_caller]
-    pub fn pick(&self, reason: ScheduleReason) -> Option<(Option<&mut ctx::Context>, &ctx::Context)> {
+    pub fn pick(
+        &self,
+        reason: ScheduleReason,
+    ) -> Option<(Option<&mut ctx::Context>, &ctx::Context)> {
         if !self.can_reschedule.load(Ordering::Acquire) {
             return None;
         }
@@ -566,7 +572,6 @@ impl Scheduler {
         let new_tls = current.as_ref().unwrap().0.tls_block();
         // after switching contexts we will update TLS registers
 
-
         self.needs_resched.store(false, Ordering::Release);
 
         // install kernel TLS (GS)
@@ -645,7 +650,9 @@ fn try_current_scheduler() -> Option<&'static Scheduler> {
 }
 
 pub fn current() -> Option<&'static Thread> {
-    try_current_scheduler().map(|sched| sched.current()).flatten()
+    try_current_scheduler()
+        .map(|sched| sched.current())
+        .flatten()
 }
 
 fn schedule(reason: ScheduleReason) {
@@ -667,7 +674,7 @@ pub fn exit_current() -> ! {
                 }
 
                 if p.threads.is_empty() {
-                    // Safety: this wont exit the current threads if 
+                    // Safety: this wont exit the current threads if
                     // threads is empty
                     process::exit_proc(p.pid, 0);
                 }
@@ -752,7 +759,7 @@ pub fn critical_moment_raw<R>(f: impl FnOnce() -> R) -> R {
         sched.critical_moment_raw(f)
     } else {
         f()
-    }   
+    }
 }
 
 pub fn has_panicked(id: ThreadID) -> bool {
@@ -783,7 +790,11 @@ fn wake_waiters_of(id: ThreadID) {
 }
 
 pub unsafe fn kill(id: ThreadID) {
-    debug_assert_ne!(id, thread::id(), "killing the current thread causes a page fault");
+    debug_assert_ne!(
+        id,
+        thread::id(),
+        "killing the current thread causes a page fault"
+    );
     wake_waiters_of(id);
     current_scheduler().kill(id);
 }

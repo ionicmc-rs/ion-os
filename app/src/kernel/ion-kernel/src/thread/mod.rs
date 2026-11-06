@@ -5,33 +5,49 @@
 )]
 #[cfg(debug_assertions)]
 use core::ptr::fn_addr_eq;
-use core::{fmt::Debug, sync::atomic::{AtomicU64, Ordering}};
+use core::{
+    fmt::Debug,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
+use crate::arch;
 #[cfg(debug_assertions)]
 use crate::scheduler::idle_entry;
 use crate::{
-    address_space::{AddressSpace, kernel_address_space}, arch::ctx::Context, lib_alloc::THREAD_STACK_ALLOC, log, process::{ProcessID, elf::{ElfLoadError, load_elf}}, scheduler::{self, current_scheduler, WakeEvent}, serial_println, thread::{
+    address_space::{AddressSpace, kernel_address_space},
+    arch::ctx::Context,
+    lib_alloc::THREAD_STACK_ALLOC,
+    log,
+    process::{
+        ProcessID,
+        elf::{ElfLoadError, load_elf},
+    },
+    scheduler::{self, WakeEvent, current_scheduler},
+    serial_println,
+    thread::{
         stack::ThreadStack,
         tls::{ThreadSelf, TlsAllocation, alloc_thread_self},
-    }
+    },
 };
-use crate::arch;
 
 mod join;
 pub mod pool;
 pub mod stack;
 pub mod sync;
 
-use alloc::{alloc::{Allocator, Global}, string::ToString as _, sync::Arc};
+use alloc::{
+    alloc::{Allocator, Global},
+    string::ToString as _,
+    sync::Arc,
+};
 use elf::endian::AnyEndian;
 pub use join::{JoinError, JoinErrorKind, JoinHandle, spawn, spawn_at};
 
 #[allow(unused)]
 pub(crate) use crate::scheduler::{
     atomic_block_until, block_until, block_until_end_of, block_until_key_input, block_until_true,
-    critical_moment, critical_moment_raw, current, exit_current, has_panicked, remove_panic_id,
-    request_reschedule, reschedule_if_needed, start, yield_now,
-    kill
+    critical_moment, critical_moment_raw, current, exit_current, has_panicked, kill,
+    remove_panic_id, request_reschedule, reschedule_if_needed, start, yield_now,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +73,11 @@ impl Debug for Thread {
             .field("state", &self.state)
             .field("tls", &self.tls)
             .field_with("stack", |f| {
-                f.pad(&alloc::format!("{:?} (size: {:?})", self._stack.as_ref().map(|s| s.ptr()), self._stack.as_ref().map(|s| s.size())))
+                f.pad(&alloc::format!(
+                    "{:?} (size: {:?})",
+                    self._stack.as_ref().map(|s| s.ptr()),
+                    self._stack.as_ref().map(|s| s.size())
+                ))
             })
             .finish()
     }
@@ -70,27 +90,14 @@ impl Debug for State {
                 WakeEvent::Atomic(_) | WakeEvent::FnYieldTrue(_) => {
                     f.debug_struct("Blocked").finish()
                 }
-                WakeEvent::EndOf(id) => {
-                    f.debug_tuple("BlockedOnThread")
-                        .field(id)
-                        .finish()
-                }
-                WakeEvent::KeyInput => {
-                    f.debug_struct("BlockedOnKeyInput")
-                        .finish()
-                }
-                WakeEvent::Raw(ptr) => {
-                    f.debug_tuple("BlockedOnPtr")
-                        .field(ptr)
-                        .finish()
-                }
-            }
+                WakeEvent::EndOf(id) => f.debug_tuple("BlockedOnThread").field(id).finish(),
+                WakeEvent::KeyInput => f.debug_struct("BlockedOnKeyInput").finish(),
+                WakeEvent::Raw(ptr) => f.debug_tuple("BlockedOnPtr").field(ptr).finish(),
+            },
             Self::Ready => f.debug_struct("Ready").finish(),
             Self::Running => f.debug_struct("Running").finish(),
-            Self::Sleeping(tick) => f.debug_struct("Sleeping")
-                .field("until", &tick)
-                .finish(),
-            Self::Terminated => f.debug_struct("Terminated").finish()
+            Self::Sleeping(tick) => f.debug_struct("Sleeping").field("until", &tick).finish(),
+            Self::Terminated => f.debug_struct("Terminated").finish(),
         }
     }
 }
@@ -99,7 +106,8 @@ impl Thread {
     pub fn new(entry: extern "C" fn(usize) -> !, arg: usize, stack: usize) -> Self {
         // use critical moment to prevent alloc from rescheduling.
         self::critical_moment_raw(|| {
-            let mut stack: ThreadStack<Arc<dyn Allocator>> = ThreadStack::of_size(stack, Arc::new(Global));
+            let mut stack: ThreadStack<Arc<dyn Allocator>> =
+                ThreadStack::of_size(stack, Arc::new(Global));
             let id = ThreadID(NEXT_ID.fetch_add(1, Ordering::Relaxed));
 
             #[cfg(debug_assertions)]
@@ -109,7 +117,11 @@ impl Thread {
 
             let (raw_ptr, guard) = unsafe { alloc_thread_self(stack.ptr(), stack.size()) };
 
-            let mut context = Context::initial(entry as usize, arg, stack.ptr() as usize + stack.size() as usize);
+            let mut context = Context::initial(
+                entry as usize,
+                arg,
+                stack.ptr() as usize + stack.size() as usize,
+            );
 
             context.set_addr_space(unsafe { kernel_address_space() });
 
@@ -124,13 +136,22 @@ impl Thread {
         })
     }
 
-    pub fn for_user(elf: elf::ElfBytes<AnyEndian>, elf_data: &[u8], args: &[&str]) -> Result<Self, ElfLoadError> {
+    pub fn for_user(
+        elf: elf::ElfBytes<AnyEndian>,
+        elf_data: &[u8],
+        args: &[&str],
+    ) -> Result<Self, ElfLoadError> {
         log::debug!("loading ELF file");
         let loaded = load_elf(elf, elf_data, args)?;
 
-        log::debug!("loaded ELF file, entry point: {:#x}", loaded.context.instruction_pointer());
+        log::debug!(
+            "loaded ELF file, entry point: {:#x}",
+            loaded.context.instruction_pointer()
+        );
 
-        let (tls, _tls_guard) = unsafe { alloc_thread_self(loaded.context.stack_pointer() as *mut u8, loaded.stack_size) };
+        let (tls, _tls_guard) = unsafe {
+            alloc_thread_self(loaded.context.stack_pointer() as *mut u8, loaded.stack_size)
+        };
 
         let _tls_guard = Some(_tls_guard);
         let tls = tls.addr();
@@ -244,4 +265,4 @@ pub fn init() {
 pub mod build;
 pub mod tls;
 
-pub use build::{ThreadBuilder, name, panicking, kill_safe, set_name, TPriority, set_kill_safe};
+pub use build::{TPriority, ThreadBuilder, kill_safe, name, panicking, set_kill_safe, set_name};

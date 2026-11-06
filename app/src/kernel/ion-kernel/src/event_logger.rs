@@ -43,20 +43,13 @@ pub enum ThreadEvent {
 
 #[derive(Clone, Copy)]
 pub enum SyscallEvent {
-    Enter {
-        group: u32,
-        command: u32,
-    },
-    Exit {
-        result: u64,
-    },
+    Enter { group: u32, command: u32 },
+    Exit { result: u64 },
 }
 
 #[derive(Clone, Copy)]
 pub enum MemoryEvent {
-    PageFault {
-        addr: u64,
-    },
+    PageFault { addr: u64 },
 }
 
 #[derive(Clone, Copy)]

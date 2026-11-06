@@ -1,6 +1,6 @@
 use x86_64::{
     VirtAddr,
-    registers::model_specific::{GsBase, FsBase},
+    registers::model_specific::{FsBase, GsBase},
 };
 
 /// Writes the kernel TLS pointer (ThreadSelf) to `GS.base`.

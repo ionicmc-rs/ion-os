@@ -1,7 +1,7 @@
 //! Tools for executing futures using thread blocking for efficiency
 
 use core::marker::PhantomPinned;
-use core::pin::{Pin};
+use core::pin::Pin;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{RawWaker, RawWakerVTable, Waker};
 use core::{
@@ -36,7 +36,7 @@ where
         match future.as_mut().poll(&mut cx) {
             Poll::Ready(v) => {
                 thread::set_kill_safe(prev);
-                break v
+                break v;
             }
             // if this thread is killed the pointer becomes invalid - so there should be some warning
             Poll::Pending => {
@@ -103,25 +103,24 @@ fn drop_waker(data: *const ()) {
 // helper types
 
 /// a future which returns key input
-/// 
+///
 /// see [`key_input`]
 #[derive(Debug)]
 pub struct KeyInput {
     state: Option<KeyEvent>,
     registered: bool,
-    _pinned: PhantomPinned
+    _pinned: PhantomPinned,
 }
 
-impl Future for KeyInput<> {
+impl Future for KeyInput {
     type Output = KeyEvent;
 
     fn poll(self: core::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if self.state.is_some() {
             Poll::Ready(
-                self.state.as_ref().cloned().unwrap() // this is ugly, but efficient
+                self.state.as_ref().cloned().unwrap(), // this is ugly, but efficient
             )
         } else {
-
             if self.registered {
                 return Poll::Pending;
             }
@@ -132,17 +131,19 @@ impl Future for KeyInput<> {
 
             let ptr = &raw const self.state;
             let refr = unsafe { ptr.cast_mut().as_mut().unwrap() };
-            event::add_key_listener_once(|ev| {
-                *refr = Some(ev)
-            });
+            event::add_key_listener_once(|ev| *refr = Some(ev));
             Poll::Pending
         }
     }
 }
 
 /// returns a future that returns key input.
-/// 
+///
 /// due to its implementation - it cannot be moved, thus it is pinnned
 pub fn key_input() -> Pin<Box<KeyInput>> {
-    Box::pin(KeyInput { state: None, registered: false, _pinned: PhantomPinned })
+    Box::pin(KeyInput {
+        state: None,
+        registered: false,
+        _pinned: PhantomPinned,
+    })
 }

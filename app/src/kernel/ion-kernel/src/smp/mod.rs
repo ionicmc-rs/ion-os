@@ -1,4 +1,10 @@
-use crate::{arch::{self, interrupts, smp::{self, discover_cpus, get_madt}}, cls, hlt_loop, log};
+use crate::{
+    arch::{
+        self, interrupts,
+        smp::{self, discover_cpus, get_madt},
+    },
+    cls, hlt_loop, log,
+};
 
 pub struct CpuInfo(smp::CpuInfo);
 
@@ -26,23 +32,21 @@ pub fn start() {
 
     // actual start
 
-    unsafe { smp::start_aps( &smp_start16 as *const u8 as u64) };
+    unsafe { smp::start_aps(&smp_start16 as *const u8 as u64) };
 }
 
 pub fn init_cpu0_cls() {
     let cls = cls::cpu_cls(0);
     if let Some(cls) = cls {
         cls.scheduler.init();
-    }   
+    }
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn ap_entry() -> ! {
     log::debug!("AP started!");
-    
-    let apic_id = unsafe {
-        interrupts::LocalApic::new(interrupts::lapic_base()).id()
-    };
+
+    let apic_id = unsafe { interrupts::LocalApic::new(interrupts::lapic_base()).id() };
 
     if let Some(index) = smp::cpu_index_from_apic_id(apic_id) {
         // Initialize the per-CPU LAPIC for this core

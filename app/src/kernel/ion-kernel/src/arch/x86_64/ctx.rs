@@ -5,13 +5,23 @@
 
 #![cfg(target_arch = "x86_64")]
 
-use core::{arch::{asm, naked_asm}, ffi::CStr, fmt, mem::{offset_of, size_of}, ptr};
+use core::{
+    arch::{asm, naked_asm},
+    ffi::CStr,
+    fmt,
+    mem::{offset_of, size_of},
+    ptr,
+};
 
 use alloc::vec::Vec;
 use bitflags::Flags;
 use linked_list_allocator::{align_down_size, align_up, align_up_size};
 use volatile::Volatile;
-use x86_64::{VirtAddr, registers::rflags::{self, RFlags}, structures::{gdt::SegmentSelector, idt::InterruptStackFrameValue}};
+use x86_64::{
+    VirtAddr,
+    registers::rflags::{self, RFlags},
+    structures::{gdt::SegmentSelector, idt::InterruptStackFrameValue},
+};
 
 use crate::{address_space, arch::interrupts::InterruptRegs, log, thread};
 
@@ -25,7 +35,7 @@ pub struct Context {
     regs: Regs,
     ctrl: Ctrl,
     fpu: Fpu,
-    segments: Segments
+    segments: Segments,
 }
 
 impl fmt::Debug for Context {
@@ -34,9 +44,7 @@ impl fmt::Debug for Context {
             .field("registers", &self.regs)
             .field("control", &self.ctrl)
             .field("segmentation", &self.segments)
-            .field_with("fpu", |f|
-                f.debug_list().finish_non_exhaustive()
-            )
+            .field_with("fpu", |f| f.debug_list().finish_non_exhaustive())
             .finish()
     }
 }
@@ -48,9 +56,9 @@ pub fn current() -> Context {
 }
 
 pub enum ArgLevel {
-    Normal,     // 0
-    Raw,        // 1
-    None,       // 2
+    Normal, // 0
+    Raw,    // 1
+    None,   // 2
 }
 
 impl ArgLevel {
@@ -59,53 +67,48 @@ impl ArgLevel {
             0 => Some(Self::Normal),
             1 => Some(Self::Raw),
             2 => Some(Self::None),
-            _ => None
+            _ => None,
         }
     }
 }
 
 impl Context {
     /// creates a "zero"ed context
-    /// 
-    /// Note: this function actually fills the context with data - a real zeroed context would be 
+    ///
+    /// Note: this function actually fills the context with data - a real zeroed context would be
     /// useless/start the system from the beginning (which would cause double-init)
-    /// 
+    ///
     /// on x86_64, this inherits the control registers from the current context
     pub fn initial(entry: usize, arg: usize, stack: usize) -> Self {
         let mut rsp = (align_up_size(stack, 16));
 
         rsp -= size_of::<usize>();
-        unsafe { (rsp as *mut extern "C" fn() -> !).write_volatile(exit); }
+        unsafe {
+            (rsp as *mut extern "C" fn() -> !).write_volatile(exit);
+        }
 
         extern "C" fn exit() -> ! {
             thread::exit_current();
         }
 
-        Self { 
-            regs: Regs { 
-                rip: entry as u64, 
-                rdi: arg as u64, 
-                rsp: rsp as u64, 
-                rflags: 0x202, 
-                ..Default::default() 
-            }, 
-            ctrl: capture_ctrl(), 
+        Self {
+            regs: Regs {
+                rip: entry as u64,
+                rdi: arg as u64,
+                rsp: rsp as u64,
+                rflags: 0x202,
+                ..Default::default()
+            },
+            ctrl: capture_ctrl(),
             fpu: capture_fpu(),
             segments: Segments {
                 cs: super::interrupts::gdt_selectors().kernel_code.0,
                 ss: super::interrupts::gdt_selectors().kernel_data.0,
-            }
+            },
         }
     }
 
-    pub fn user(
-        entry: usize,
-        arg: usize,
-        stack: usize,
-        argv: &[&str],
-        level: ArgLevel,
-    ) -> Self {
-
+    pub fn user(entry: usize, arg: usize, stack: usize, argv: &[&str], level: ArgLevel) -> Self {
         let mut ctx = Self::initial(entry, arg, stack);
 
         let mut seg_cs = super::interrupts::gdt_selectors().user_code;
@@ -128,11 +131,10 @@ impl Context {
         let mut arg_ptrs = Vec::with_capacity(argv.len());
 
         /* ----------------------------
-        * Copy argument strings
-        * ---------------------------- */
+         * Copy argument strings
+         * ---------------------------- */
 
         for arg in argv.iter().rev() {
-
             if arg.as_bytes().contains(&0) {
                 panic!("argument cannot contain interior NULL bytes");
             }
@@ -142,11 +144,7 @@ impl Context {
             rsp -= len;
 
             unsafe {
-                ptr::copy_nonoverlapping(
-                    arg.as_ptr(),
-                    rsp as *mut u8,
-                    arg.len(),
-                );
+                ptr::copy_nonoverlapping(arg.as_ptr(), rsp as *mut u8, arg.len());
 
                 *((rsp + arg.len()) as *mut u8) = 0;
             }
@@ -157,11 +155,10 @@ impl Context {
         rsp = align_down_size(rsp, 16);
 
         /* ----------------------------
-        * Normal Linux-style argv
-        * ---------------------------- */
+         * Normal Linux-style argv
+         * ---------------------------- */
 
         if let ArgLevel::Normal = level {
-
             rsp -= size_of::<usize>();
             unsafe { *(rsp as *mut usize) = 0 };
 
@@ -177,7 +174,6 @@ impl Context {
 
             ctx.regs.rdi = argv.len() as u64;
             ctx.regs.rsi = argv_ptr as u64;
-
         } else {
             // Raw mode: user parses manually
             ctx.regs.rdi = argv.len() as u64;
@@ -206,22 +202,25 @@ impl Context {
     pub fn address_space(&self) -> usize {
         self.ctrl.address_space() as usize
     }
-    
+
     pub fn set_addr_space(&mut self, address_space: address_space::AddressSpace) {
         self.ctrl.cr3 = address_space.ptr().as_ptr_ty();
     }
 }
-const KERNEL_RFLAGS_MASK: u64 =
-    RFlags::INTERRUPT_FLAG.bits()
-| RFlags::ZERO_FLAG.bits()
-| RFlags::SIGN_FLAG.bits()
-| RFlags::PARITY_FLAG.bits()
-| 0x2; // reserved bit
+const KERNEL_RFLAGS_MASK: u64 = RFlags::INTERRUPT_FLAG.bits()
+    | RFlags::ZERO_FLAG.bits()
+    | RFlags::SIGN_FLAG.bits()
+    | RFlags::PARITY_FLAG.bits()
+    | 0x2; // reserved bit
 
 // load/save
 
 impl Context {
-    pub(in crate::arch::x86_64) fn load_with_interrupt_frame(&self, regs_on_stack: &mut super::interrupts::InterruptRegs, mut stack_frame: Volatile<&mut InterruptStackFrameValue>) {
+    pub(in crate::arch::x86_64) fn load_with_interrupt_frame(
+        &self,
+        regs_on_stack: &mut super::interrupts::InterruptRegs,
+        mut stack_frame: Volatile<&mut InterruptStackFrameValue>,
+    ) {
         unsafe {
             // Switch address space
             asm!(
@@ -229,7 +228,6 @@ impl Context {
                 in(reg) self.ctrl.cr3,
                 options(nostack),
             );
-
 
             // Restore FPU
             asm!(
@@ -239,7 +237,7 @@ impl Context {
                 options(nostack),
             );
         }
-    
+
         // Overwrite the GPRs on the stack
         regs_on_stack.r15 = self.regs.r15;
         regs_on_stack.r14 = self.regs.r14;
@@ -256,7 +254,7 @@ impl Context {
         regs_on_stack.rcx = self.regs.rcx;
         regs_on_stack.rbx = self.regs.rbx;
         regs_on_stack.rax = self.regs.rax;
-    
+
         // Overwrite the iretq frame
         stack_frame.update(|frame_value| {
             frame_value.instruction_pointer = VirtAddr::new(self.regs.rip);
@@ -267,7 +265,11 @@ impl Context {
         });
     }
 
-    pub(in crate::arch::x86_64) fn save_from_interrupt(&mut self, regs: &InterruptRegs, stack_frame: Volatile<&mut InterruptStackFrameValue, volatile::access::ReadOnly>) {
+    pub(in crate::arch::x86_64) fn save_from_interrupt(
+        &mut self,
+        regs: &InterruptRegs,
+        stack_frame: Volatile<&mut InterruptStackFrameValue, volatile::access::ReadOnly>,
+    ) {
         self.ctrl = capture_ctrl();
         self.fpu = capture_fpu();
         self.regs.r8 = regs.r8;
@@ -303,7 +305,7 @@ impl Context {
 #[derive(Debug, Clone, Copy)]
 struct Segments {
     cs: u16,
-    ss: u16
+    ss: u16,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -317,8 +319,8 @@ struct Regs {
     rdi: u64,
     rbp: u64,
     rsp: u64,
-    r8:  u64,
-    r9:  u64,
+    r8: u64,
+    r9: u64,
     r10: u64,
     r11: u64,
     r12: u64,
@@ -397,11 +399,24 @@ fn capture_segments() -> Segments {
 
 fn capture_regs() -> Regs {
     let mut r = Regs {
-        rax: 0, rbx: 0, rcx: 0, rdx: 0,
-        rsi: 0, rdi: 0, rbp: 0, rsp: 0,
-        r8:  0, r9:  0, r10: 0, r11: 0,
-        r12: 0, r13: 0, r14: 0, r15: 0,
-        rip: 0, rflags: 0,
+        rax: 0,
+        rbx: 0,
+        rcx: 0,
+        rdx: 0,
+        rsi: 0,
+        rdi: 0,
+        rbp: 0,
+        rsp: 0,
+        r8: 0,
+        r9: 0,
+        r10: 0,
+        r11: 0,
+        r12: 0,
+        r13: 0,
+        r14: 0,
+        r15: 0,
+        rip: 0,
+        rflags: 0,
     };
 
     unsafe {
@@ -436,7 +451,7 @@ fn capture_regs() -> Regs {
 #[inline]
 fn read_rip() -> u64 {
     let rip: u64;
-    
+
     unsafe {
         asm!("lea {}, [rip]", out(reg) rip);
     }
@@ -444,7 +459,12 @@ fn read_rip() -> u64 {
 }
 
 fn capture_ctrl() -> Ctrl {
-    let mut c = Ctrl { cr0: 0, cr2: 0, cr3: 0, cr4: 0 };
+    let mut c = Ctrl {
+        cr0: 0,
+        cr2: 0,
+        cr3: 0,
+        cr4: 0,
+    };
 
     unsafe {
         asm!(
@@ -468,7 +488,7 @@ fn capture_fpu() -> Fpu {
     // unsafe {
     //     asm!(
     //         "clts",
-    //         "fxsave64 [{}]", 
+    //         "fxsave64 [{}]",
     //         in(reg) f.data.as_mut_ptr()
     //     );
     // }

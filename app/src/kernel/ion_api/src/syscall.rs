@@ -1,4 +1,3 @@
-
 /// Represents inputs to a syscall
 #[repr(C)]
 #[derive(Debug, Clone, Default, Copy, Hash, PartialEq, Eq)]
@@ -8,14 +7,14 @@ pub struct SyscallFrame {
     pub rsi: u64,
     pub rdx: u64,
     pub r10: u64,
-    pub r8:  u64,
-    pub r9:  u64,
+    pub r8: u64,
+    pub r9: u64,
 }
 
 /// Calls the syscall for this frame
-/// 
+///
 /// this is not recommended to be used directly, helpers for the specific syscall are provided.
-/// 
+///
 /// # Safety
 /// You must be using Ion OS, after syscall initialization, and the syscall must be valid
 pub unsafe fn syscall(frame: SyscallFrame) -> (u64, u64) {
@@ -72,14 +71,14 @@ macro_rules! syscall_fns {
 
 syscall_fns!(
     /// Does nothing but return.
-    /// 
+    ///
     /// This is used internally in Ion OS to enter user mode.
     ack() {};
 
     // process
 
     /// Exits the process.
-    /// 
+    ///
     /// the code is an i32, but is stored across the syscall-boundary as a u64, which may cause problems (it shouldn't)
     pexit(code: i32) {
         rax: 1,

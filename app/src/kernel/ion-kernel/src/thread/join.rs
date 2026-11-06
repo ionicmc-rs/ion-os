@@ -3,7 +3,11 @@ use core::fmt::Display;
 use alloc::{boxed::Box, format};
 
 use crate::{
-    address_space::kernel_address_space, hlt_loop, log, scheduler::{self, current_scheduler}, serial_println, thread::{self, Thread, ThreadID, build::TPriority}
+    address_space::kernel_address_space,
+    hlt_loop, log,
+    scheduler::{self, current_scheduler},
+    serial_println,
+    thread::{self, Thread, ThreadID, build::TPriority},
 };
 
 /// Handle used to retrieve the result of a spawned thread.
@@ -108,7 +112,9 @@ pub fn spawn<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
         let func = meta.func.take().expect("thread entry called twice");
 
         let sp: u64;
-        unsafe { core::arch::asm!("mov {}, rsp", out(reg) sp); }
+        unsafe {
+            core::arch::asm!("mov {}, rsp", out(reg) sp);
+        }
         serial_println!("SP before calling func: {sp:#x} (mod 16: {})", sp % 16);
 
         let res = func();

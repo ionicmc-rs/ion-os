@@ -1,7 +1,7 @@
 use alloc::alloc::{Layout, alloc, alloc_zeroed};
 use core::mem::MaybeUninit;
 
-use crate::graphics::{Surface, Color, Rect};
+use crate::graphics::{Color, Rect, Surface};
 use crate::thread::sync::Mutex;
 
 pub struct Renderer {
@@ -9,12 +9,10 @@ pub struct Renderer {
     pub back: Surface,
 }
 
-static RENDERER: Mutex<MaybeUninit<Renderer>> =
-    Mutex::new(MaybeUninit::uninit());
+static RENDERER: Mutex<MaybeUninit<Renderer>> = Mutex::new(MaybeUninit::uninit());
 
 pub fn init(front: Surface) {
-    let size = (front.pitch_bytes as usize) *
-               (front.height as usize);
+    let size = (front.pitch_bytes as usize) * (front.height as usize);
 
     let layout = Layout::from_size_align(size, 4096).unwrap();
 
@@ -27,7 +25,7 @@ pub fn init(front: Surface) {
         height: front.height,
         pitch_bytes: front.width * 4, // tightly packed
         base: ptr,
-        format: front.format
+        format: front.format,
     };
 
     RENDERER.lock().write(Renderer { front, back });

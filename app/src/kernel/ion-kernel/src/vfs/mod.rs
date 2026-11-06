@@ -2,10 +2,17 @@
 
 use alloc::{format, string::String, vec::Vec};
 
-use crate::{disk::{self, AsyncBlockDevice, DiskId}, io, log, vfs::{fs::parse::{read_inode, read_superblock}, structures::{Inode, InodeKind}}};
-pub mod structures;
-pub mod fs;
+use crate::{
+    disk::{self, AsyncBlockDevice, DiskId},
+    io, log,
+    vfs::{
+        fs::parse::{read_inode, read_superblock},
+        structures::{Inode, InodeKind},
+    },
+};
 pub mod fd;
+pub mod fs;
+pub mod structures;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Mount {
@@ -42,7 +49,10 @@ pub fn init_mounts() {
 
         unsafe {
             if MOUNT_COUNT >= MAX_MOUNTS {
-                log::error!("vfs: mount table full, ignoring additional IonFS partition on {:?}", disk_id);
+                log::error!(
+                    "vfs: mount table full, ignoring additional IonFS partition on {:?}",
+                    disk_id
+                );
                 break;
             }
 
@@ -58,7 +68,11 @@ pub fn init_mounts() {
                 ROOT_MOUNT = Some(mount);
                 log::info!("vfs: mounted root filesystem from {:?}", disk_id);
             } else {
-                log::info!("vfs: mounted IonFS partition as #{} from {:?}", mount.id, disk_id);
+                log::info!(
+                    "vfs: mounted IonFS partition as #{} from {:?}",
+                    mount.id,
+                    disk_id
+                );
             }
         }
     }
@@ -95,16 +109,12 @@ pub fn resolve_virtual_path(path: &str) -> io::Result<(DiskId, String)> {
         ));
     };
 
-    let mount_id = mount_id.parse::<usize>().map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "invalid mount identifier",
-        )
-    })?;
+    let mount_id = mount_id
+        .parse::<usize>()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid mount identifier"))?;
 
-    let mount = mount(mount_id).ok_or_else(|| {
-        io::Error::new(io::ErrorKind::NotFound, "mount not found")
-    })?;
+    let mount = mount(mount_id)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "mount not found"))?;
 
     Ok((mount.disk, format!("@/{rest}")))
 }
@@ -147,22 +157,19 @@ fn split_path(path: &str) -> io::Result<Vec<&str>> {
         .collect())
 }
 
-pub async fn resolve_path(
-    disk: &mut dyn AsyncBlockDevice,
-    path: &str,
-) -> io::Result<Inode> {
+pub async fn resolve_path(disk: &mut dyn AsyncBlockDevice, path: &str) -> io::Result<Inode> {
     let parts = split_path(path)?;
 
     // root inode is always 0
     let mut current = read_inode(disk, 0).await?;
 
     for part in parts {
-        let next_idx = lookup_in_dir(&current, disk, part)
-            .await?
-            .ok_or_else(|| io::Error::new(
+        let next_idx = lookup_in_dir(&current, disk, part).await?.ok_or_else(|| {
+            io::Error::new(
                 io::ErrorKind::NotFound,
                 format!("path component not found: {}", part),
-            ))?;
+            )
+        })?;
 
         let next = read_inode(disk, next_idx).await?;
 
@@ -186,10 +193,7 @@ pub async fn resolve_path(
     Ok(current)
 }
 
-pub async fn resolve_path_to_index(
-    disk: &mut dyn AsyncBlockDevice,
-    path: &str,
-) -> io::Result<u64> {
+pub async fn resolve_path_to_index(disk: &mut dyn AsyncBlockDevice, path: &str) -> io::Result<u64> {
     let inode = resolve_path(disk, path).await?;
     Ok(inode.index())
 }

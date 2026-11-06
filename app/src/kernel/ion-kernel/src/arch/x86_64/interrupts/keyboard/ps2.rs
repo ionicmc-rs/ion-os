@@ -161,14 +161,18 @@ fn send_with_ack<I: Ps2Io>(io: &mut I, byte: u8, max_resends: usize) -> Result<(
                 io.tiny_delay();
                 continue;
             }
-            Some(Ps2Resp::Resend) => return {
-                libc::set_os_error(OsError::Timeout);
-                Err(Ps2Error::ResendLimit)
-            },
-            None => return {
-                libc::set_os_error(OsError::HardwareFail);
-                Err(Ps2Error::UnexpectedByte(resp))
-            },
+            Some(Ps2Resp::Resend) => {
+                return {
+                    libc::set_os_error(OsError::Timeout);
+                    Err(Ps2Error::ResendLimit)
+                };
+            }
+            None => {
+                return {
+                    libc::set_os_error(OsError::HardwareFail);
+                    Err(Ps2Error::UnexpectedByte(resp))
+                };
+            }
         }
     }
 }

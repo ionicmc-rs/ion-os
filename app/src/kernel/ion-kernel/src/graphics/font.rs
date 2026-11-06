@@ -4,9 +4,15 @@
 //! - Zero allocations
 //! - Safe for kernel panic paths
 
-use core::{mem::size_of, sync::atomic::{AtomicBool, Ordering}};
+use core::{
+    mem::size_of,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
-use crate::{graphics::{self, Color, Pos, Surface, framebuffer}, log};
+use crate::{
+    graphics::{self, Color, Pos, Surface, framebuffer},
+    log,
+};
 
 /// PSF1 on-disk header
 #[repr(C)]
@@ -26,26 +32,19 @@ pub enum FontError {
     FileTooSmall,
 
     /// Magic bytes are not 0x36, 0x04
-    InvalidMagic {
-        found: [u8; 2],
-    },
+    InvalidMagic { found: [u8; 2] },
 
     /// Glyph height is zero
-    InvalidCharSize {
-        charsize: u8,
-    },
+    InvalidCharSize { charsize: u8 },
 
     /// File does not contain all glyph data
-    Truncated {
-        expected: usize,
-        found: usize,
-    },
+    Truncated { expected: usize, found: usize },
 }
 
 /// Parsed bitmap font (graphics-facing)
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct BitmapFont<'a> {
-    pub glyph_width: u8,   // always 8 for PSF1
+    pub glyph_width: u8, // always 8 for PSF1
     pub glyph_height: u8,
     pub glyph_count: u16,
     glyphs: &'a [u8],
@@ -77,9 +76,7 @@ impl<'a> BitmapFont<'a> {
             return Err(FontError::FileTooSmall);
         }
 
-        let header = unsafe {
-            &*(data.as_ptr() as *const Psf1Header)
-        };
+        let header = unsafe { &*(data.as_ptr() as *const Psf1Header) };
 
         if header.magic != PSF1_MAGIC {
             return Err(FontError::InvalidMagic {
@@ -151,21 +148,16 @@ pub fn draw_glyph(
 ) {
     unsafe {
         match surface.format {
-
             /* =========================
-               XRGB8888 FAST PATH
-               ========================= */
-
+            XRGB8888 FAST PATH
+            ========================= */
             crate::graphics::pixel::PixelFormat::Xrgb8888 => {
-
                 let pitch = surface.pitch_bytes as usize >> 2;
                 let fb = surface.base as *mut u32;
                 let color = color.raw();
 
                 for (row, byte) in glyph.iter().enumerate() {
-
-                    let mut dst =
-                        fb.add((y as usize + row) * pitch + x as usize);
+                    let mut dst = fb.add((y as usize + row) * pitch + x as usize);
 
                     let mut bits = *byte;
 
@@ -180,26 +172,20 @@ pub fn draw_glyph(
             }
 
             /* =========================
-               RGB888 PATH
-               ========================= */
-
+            RGB888 PATH
+            ========================= */
             crate::graphics::pixel::PixelFormat::Rgb888 => {
-
                 let pitch = surface.pitch_bytes as usize;
                 let raw = color.raw().to_le_bytes();
 
                 for (row, byte) in glyph.iter().enumerate() {
-
-                    let mut dst =
-                        surface.base.add(
-                            (y as usize + row) * pitch +
-                            x as usize * 3
-                        );
+                    let mut dst = surface
+                        .base
+                        .add((y as usize + row) * pitch + x as usize * 3);
 
                     let mut bits = *byte;
 
                     for _ in 0..8 {
-
                         if bits & 0x80 != 0 {
                             dst.write(raw[0]);
                             dst.add(1).write(raw[1]);
@@ -215,13 +201,7 @@ pub fn draw_glyph(
     }
 }
 
-pub fn draw_glyph_from_panic(
-    x: u32,
-    y: u32,
-    font: &BitmapFont,
-    glyph: &[u8],
-    color: Color,
-) {
+pub fn draw_glyph_from_panic(x: u32, y: u32, font: &BitmapFont, glyph: &[u8], color: Color) {
     unsafe { framebuffer::clear_poison() };
 
     let mut surface = super::framebuffer();
@@ -230,13 +210,7 @@ pub fn draw_glyph_from_panic(
 }
 
 /// Draw ASCII text using a PSF1 font
-pub fn draw_text(
-    surface: &mut Surface,
-    mut pos: Pos,
-    font: &BitmapFont,
-    text: &str,
-    color: Color,
-) {
+pub fn draw_text(surface: &mut Surface, mut pos: Pos, font: &BitmapFont, text: &str, color: Color) {
     let start_x = pos.x;
 
     for ch in text.bytes() {
@@ -255,12 +229,7 @@ pub fn draw_text(
     }
 }
 
-pub fn draw_text_from_panic(
-    mut pos: Pos,
-    font: &BitmapFont,
-    text: &str,
-    color: Color
-) {
+pub fn draw_text_from_panic(mut pos: Pos, font: &BitmapFont, text: &str, color: Color) {
     let start_x = pos.x;
 
     for ch in text.bytes() {

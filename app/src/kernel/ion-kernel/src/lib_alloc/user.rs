@@ -10,8 +10,7 @@ use alloc::{
 use crate::{
     address_space::{self, AddressSpace},
     arch::{
-        PhysAddr,
-        VirtAddr,
+        PhysAddr, VirtAddr,
         frame_allocator::alloc_4k_frame,
         mmu::{PageTableFlags, virt_to_phys_in},
     },
@@ -31,7 +30,7 @@ struct FreeBlock {
 #[derive(Debug)]
 /// A real heap allocator that manages a pre-mapped memory region,
 /// while storing all metadata on the kernel heap.
-/// 
+///
 /// This allocator can optionally map pages into an address space when allocating.
 pub struct RegionAllocator {
     head: Option<Box<FreeBlock>>,
@@ -58,7 +57,10 @@ impl RegionAllocator {
     }
 
     pub const fn empty() -> Self {
-        Self { head: None, address_space: None }
+        Self {
+            head: None,
+            address_space: None,
+        }
     }
 
     /// Initialize with an address space for automatic page mapping
@@ -165,8 +167,12 @@ impl RegionAllocator {
     }
 
     #[allow(invalid_reference_casting)]
-    pub fn allocate_with_flags(&self, layout: Layout, flags: PageTableFlags) -> Option<NonNull<[u8]>> {
-        let this = unsafe { &mut *((self as *const _ as *mut RegionAllocator)) };
+    pub fn allocate_with_flags(
+        &self,
+        layout: Layout,
+        flags: PageTableFlags,
+    ) -> Option<NonNull<[u8]>> {
+        let this = unsafe { &mut *(self as *const _ as *mut RegionAllocator) };
 
         let base = this.alloc_inner(layout)?;
 
@@ -176,7 +182,7 @@ impl RegionAllocator {
             for i in 0..pages {
                 let va = base + i * 0x1000;
                 let phys = alloc_4k_frame().expect("out of physical memory");
-                
+
                 unsafe {
                     address_space::map_4k_into_space(
                         space,
@@ -191,10 +197,7 @@ impl RegionAllocator {
         }
 
         Some(unsafe {
-            NonNull::slice_from_raw_parts(
-                NonNull::new_unchecked(base as *mut u8),
-                layout.size(),
-            )
+            NonNull::slice_from_raw_parts(NonNull::new_unchecked(base as *mut u8), layout.size())
         })
     }
 }
@@ -208,8 +211,8 @@ unsafe impl Allocator for RegionAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         // We need mutable access to map pages - use RefCell pattern
         // This is safe because we're in a single-threaded kernel
-        let this = unsafe { &mut *((self as *const _ as *mut RegionAllocator)) };
-        
+        let this = unsafe { &mut *(self as *const _ as *mut RegionAllocator) };
+
         let base = this.alloc_inner(layout).ok_or(AllocError)?;
 
         // If we have an address space, map the pages
@@ -218,7 +221,7 @@ unsafe impl Allocator for RegionAllocator {
             for i in 0..pages {
                 let va = base + i * 0x1000;
                 let phys = alloc_4k_frame().expect("out of physical memory");
-                
+
                 unsafe {
                     address_space::map_4k_into_space(
                         space,
@@ -233,10 +236,7 @@ unsafe impl Allocator for RegionAllocator {
         }
 
         Ok(unsafe {
-            NonNull::slice_from_raw_parts(
-                NonNull::new_unchecked(base as *mut u8),
-                layout.size(),
-            )
+            NonNull::slice_from_raw_parts(NonNull::new_unchecked(base as *mut u8), layout.size())
         })
     }
 
@@ -300,30 +300,29 @@ pub unsafe fn map_user_data(space: &mut AddressSpace) {
     for (i, &phys) in USER_DATA_FRAMES.iter().enumerate() {
         let va = USER_DATA_BASE + i * 0x1000;
 
-        unsafe { address_space::map_4k_into_space(
-            space,
-            VirtAddr::new(va),
-            PhysAddr::new(phys),
-            PageTableFlags::USER_PAGE
-                | PageTableFlags::WRITABLE
-                | PageTableFlags::PRESENT,
-        ) };
+        unsafe {
+            address_space::map_4k_into_space(
+                space,
+                VirtAddr::new(va),
+                PhysAddr::new(phys),
+                PageTableFlags::USER_PAGE | PageTableFlags::WRITABLE | PageTableFlags::PRESENT,
+            )
+        };
 
         let mut kernel = unsafe { address_space::kernel_address_space() };
 
-        if unsafe { virt_to_phys_in(VirtAddr::new(va), kernel.page_table_mut()).is_none() } { 
-            unsafe { address_space::map_4k_into_space(
-                &mut address_space::kernel_address_space(),
-                VirtAddr::new(va),
-                PhysAddr::new(phys),
-                PageTableFlags::USER_PAGE
-                    | PageTableFlags::WRITABLE
-                    | PageTableFlags::PRESENT,
-            ) };
+        if unsafe { virt_to_phys_in(VirtAddr::new(va), kernel.page_table_mut()).is_none() } {
+            unsafe {
+                address_space::map_4k_into_space(
+                    &mut address_space::kernel_address_space(),
+                    VirtAddr::new(va),
+                    PhysAddr::new(phys),
+                    PageTableFlags::USER_PAGE | PageTableFlags::WRITABLE | PageTableFlags::PRESENT,
+                )
+            };
         }
-
     }
-    }
+}
 
 /* ============================================================
  * Sub-region reservation

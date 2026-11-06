@@ -3,7 +3,14 @@ use core::{cell::Cell, fmt::Debug};
 use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
 
 use crate::{
-    asyncio, io::{self, ErrorKind, OpenOptions}, log, privilege::UserID, resources::{self, FdDispatch, OpenFlags, ResourceTable, channel, fd}, scheduler::current_scheduler, serial_println, thread::{self, Thread, ThreadID, sync::Mutex, tls::tcb}
+    asyncio,
+    io::{self, ErrorKind, OpenOptions},
+    log,
+    privilege::UserID,
+    resources::{self, FdDispatch, OpenFlags, ResourceTable, channel, fd},
+    scheduler::current_scheduler,
+    serial_println,
+    thread::{self, Thread, ThreadID, sync::Mutex, tls::tcb},
 };
 
 pub mod elf;
@@ -412,59 +419,60 @@ pub fn spawn_proc(
     pid
 }
 
-pub async fn exec(owner: UserID, path: &str, args: &[&str], parent: Option<ProcessID>, local_fds: ResourceTable<FdHandle>) -> io::Result<ProcessID> {
+pub async fn exec(
+    owner: UserID,
+    path: &str,
+    args: &[&str],
+    parent: Option<ProcessID>,
+    local_fds: ResourceTable<FdHandle>,
+) -> io::Result<ProcessID> {
     // get the ELF first
 
-    let file = OpenOptions::new()
-        .read(true)
-        .open(path)
-        .await?;
+    let file = OpenOptions::new().read(true).open(path).await?;
 
     let meta = file.metadata().await?;
 
     if meta.is_dir() {
         return Err(io::Error::new(
             ErrorKind::IsADirectory,
-            "cannot execute a directory"
+            "cannot execute a directory",
         ));
     }
 
     if meta.is_empty() {
         return Err(io::Error::new(
             ErrorKind::InvalidInput,
-            "cannot execute an empty file"
+            "cannot execute an empty file",
         ));
     }
 
     let file_bytes = file.read_all().await?;
 
-    let parsed = ::elf::ElfBytes::minimal_parse(&file_bytes).map_err(
-        |e| io::Error::new(ErrorKind::InvalidData, e)
-    )?;
+    let parsed = ::elf::ElfBytes::minimal_parse(&file_bytes)
+        .map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
 
-    let mut main = Thread::for_user(parsed, &file_bytes, args)
-        .map_err(io::Error::other)?;
+    let mut main = Thread::for_user(parsed, &file_bytes, args).map_err(io::Error::other)?;
 
     // actual spawn
 
     let pid = spawn_proc(path, owner, main.id(), parent);
 
-    PROCESSES
-        .lock()
-        .with_mut(pid, |proc| {
-            proc.resources = Resources {
-                local_fd_mappings: local_fds,
-                inheritable_fds: Vec::new(),
-                child_fd_templates: Vec::new(),
-            };
-        });
+    PROCESSES.lock().with_mut(pid, |proc| {
+        proc.resources = Resources {
+            local_fd_mappings: local_fds,
+            inheritable_fds: Vec::new(),
+            child_fd_templates: Vec::new(),
+        };
+    });
 
     if pid.0 != 0 && parent.is_none() {
         panic!("only the init process can be an orphan process")
     }
 
     main.set_pid(pid);
-    main.set_name(&format!("{owner:?} <{path}> {args:?} - child of {parent:?}"));
+    main.set_name(&format!(
+        "{owner:?} <{path}> {args:?} - child of {parent:?}"
+    ));
 
     current_scheduler().queue(main);
 
@@ -674,12 +682,17 @@ pub fn install_child_resource_for_proc(
         let mut processes = lock.processes.take();
         let res = match processes.iter_mut().find(|p| p.pid == parent_pid) {
             Some(parent) => {
-                parent.resources.set_child_template_global(child_fd, global_fd);
+                parent
+                    .resources
+                    .set_child_template_global(child_fd, global_fd);
                 Ok(())
             }
             None => {
                 let _ = resources::fd::close(global_fd);
-                Err(io::Error::new(ErrorKind::NotFound, "parent process not found"))
+                Err(io::Error::new(
+                    ErrorKind::NotFound,
+                    "parent process not found",
+                ))
             }
         };
         lock.processes.set(processes);
@@ -705,7 +718,10 @@ pub fn clear_child_fd_template_for_proc(parent_pid: ProcessID, child_fd: u32) ->
                 parent.resources.remove_child_template(child_fd);
                 Ok(())
             }
-            None => Err(io::Error::new(ErrorKind::NotFound, "parent process not found")),
+            None => Err(io::Error::new(
+                ErrorKind::NotFound,
+                "parent process not found",
+            )),
         };
         lock.processes.set(processes);
         res
@@ -756,7 +772,10 @@ pub fn open_child_stream_for_proc(
             }
             None => {
                 let _ = resources::fd::close(child_global_fd);
-                Err(io::Error::new(ErrorKind::NotFound, "parent process not found"))
+                Err(io::Error::new(
+                    ErrorKind::NotFound,
+                    "parent process not found",
+                ))
             }
         };
 
@@ -775,11 +794,17 @@ pub fn open_child_stream_current(
     open_child_stream_for_proc(pid, child_fd, capacity, direction)
 }
 
-pub fn open_child_stdout_stream_for_proc(parent_pid: ProcessID, capacity: usize) -> io::Result<u32> {
+pub fn open_child_stdout_stream_for_proc(
+    parent_pid: ProcessID,
+    capacity: usize,
+) -> io::Result<u32> {
     open_child_stream_for_proc(parent_pid, 1, capacity, ChildStreamDirection::ParentReads)
 }
 
-pub fn open_child_stderr_stream_for_proc(parent_pid: ProcessID, capacity: usize) -> io::Result<u32> {
+pub fn open_child_stderr_stream_for_proc(
+    parent_pid: ProcessID,
+    capacity: usize,
+) -> io::Result<u32> {
     open_child_stream_for_proc(parent_pid, 2, capacity, ChildStreamDirection::ParentReads)
 }
 

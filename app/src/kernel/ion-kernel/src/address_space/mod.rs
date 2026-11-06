@@ -1,7 +1,7 @@
 //! Tools for separating user and kernel address spaces
-//! 
+//!
 //! an [`AddressSpace`] represents a handle to a paging configuration.
-//! 
+//!
 //! You can get the current address space from [`crate::thread::current_address_space`]
 
 /// Represents a handle paging configuration
@@ -10,14 +10,28 @@
 #[repr(C)]
 pub struct AddressSpace {
     page_base: PageTable,
-    user_alloc: Option<Arc<RegionAllocator>>
+    user_alloc: Option<Arc<RegionAllocator>>,
 }
 
-use core::{cell::OnceCell};
+use core::cell::OnceCell;
 
 use alloc::sync::Arc;
 
-use crate::{arch::{self, PhysAddr, VirtAddr, frame_allocator::alloc_2mib_frame, mmu::{ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4, copy_kernel_mappings_to, zero_page_table}}, lib_alloc::{RescheduleAlloc, user::{RegionAllocator, reserve_space_for_addr}}, log};
+use crate::{
+    arch::{
+        self, PhysAddr, VirtAddr,
+        frame_allocator::alloc_2mib_frame,
+        mmu::{
+            ENTRY_PRESENT, PageTable, PageTableFlags, active_pml4, copy_kernel_mappings_to,
+            zero_page_table,
+        },
+    },
+    lib_alloc::{
+        RescheduleAlloc,
+        user::{RegionAllocator, reserve_space_for_addr},
+    },
+    log,
+};
 
 impl AddressSpace {
     /// returns the raw PML4 pointer
@@ -46,23 +60,24 @@ unsafe impl Sync for KernelSpace {}
 static KERNEL_SPACE: KernelSpace = KernelSpace(OnceCell::new());
 
 /// Gets the current kernel address space
-/// 
+///
 /// Note: this is cached after the first call.
 /// # Safety
 /// See [`active_pml4`]
-/// 
+///
 /// Additionally, this must be called early on, before any other address spaces are used.
 pub unsafe fn kernel_address_space() -> AddressSpace {
-    KERNEL_SPACE.0.get_or_init(|| {
-        AddressSpace {
+    KERNEL_SPACE
+        .0
+        .get_or_init(|| AddressSpace {
             page_base: unsafe { active_pml4() },
-            user_alloc: None
-        }
-    }).clone() // clone is cheap - pointers are Copy and Arc increases ref count
+            user_alloc: None,
+        })
+        .clone() // clone is cheap - pointers are Copy and Arc increases ref count
 }
 
 /// Creates a new address space, empty and unpaged.
-/// 
+///
 /// this inherits from the active pml4. (assuming it is the kernel)
 pub unsafe fn create_address_space(size: usize, align: usize) -> AddressSpace {
     let pml4_phys = alloc_2mib_frame();
@@ -73,11 +88,17 @@ pub unsafe fn create_address_space(size: usize, align: usize) -> AddressSpace {
 
     copy_kernel_mappings_to(&mut pml4);
 
-    let mut space = AddressSpace { page_base: pml4, user_alloc: None };
+    let mut space = AddressSpace {
+        page_base: pml4,
+        user_alloc: None,
+    };
     let alloc = reserve_space_for_addr(&mut space, size, align);
     space.user_alloc = Some(alloc.into());
 
-    log::debug!("created new address space with pml4 at {:#x}", space.page_base.as_phys().as_inner());
+    log::debug!(
+        "created new address space with pml4 at {:#x}",
+        space.page_base.as_phys().as_inner()
+    );
 
     space
 }
@@ -92,12 +113,7 @@ pub unsafe fn map_2mib_into_space(
     phys: PhysAddr,
     flags: PageTableFlags,
 ) {
-    unsafe { arch::mmu::map_2mib(
-        &mut space.page_base,
-        virt,
-        phys,
-        flags,
-    ) };
+    unsafe { arch::mmu::map_2mib(&mut space.page_base, virt, phys, flags) };
 }
 
 /// maps inside this space
@@ -110,12 +126,5 @@ pub unsafe fn map_4k_into_space(
     phys: PhysAddr,
     flags: PageTableFlags,
 ) {
-    unsafe { arch::mmu::map_4k(
-        &mut space.page_base,
-        virt,
-        phys,
-        flags,
-    ) };
+    unsafe { arch::mmu::map_4k(&mut space.page_base, virt, phys, flags) };
 }
-
-

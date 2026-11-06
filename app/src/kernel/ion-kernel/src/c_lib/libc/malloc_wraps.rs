@@ -11,7 +11,10 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::c_lib::libc::{self, mem::{free, malloc}};
+use crate::c_lib::libc::{
+    self,
+    mem::{free, malloc},
+};
 
 /// Allocator which uses malloc.
 ///

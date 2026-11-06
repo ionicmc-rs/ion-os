@@ -1,8 +1,8 @@
 //! x86_64 MMU (2 MiB huge pages only)
 
-use x86_64::registers::control::Cr3;
 use crate::address_space::kernel_address_space;
 use crate::arch::{PhysAddr, VirtAddr, defs};
+use x86_64::registers::control::Cr3;
 
 /// represents the flag for a present entry
 pub const ENTRY_PRESENT: u64 = 1 << 0;
@@ -26,7 +26,7 @@ impl PageTable {
         }
 
         let phys = phys.unwrap();
-        
+
         if phys.as_inner() != ptr.as_inner() {
             panic!("page table not identity mapped")
         }
@@ -79,7 +79,6 @@ unsafe fn next_table(entry: u64) -> *mut u64 {
     (entry & 0x000f_ffff_ffff_f000) as *mut u64
 }
 
-
 bitflags::bitflags! {
     /// Flags for page tables
     #[derive(Debug, PartialEq, Clone, Copy)]
@@ -87,7 +86,7 @@ bitflags::bitflags! {
         /// Page is 2MiB
         const HUGE_PAGE = ENTRY_HUGE;
         /// Page accessible by users
-        /// 
+        ///
         /// never apply on kernel-private data
         const USER_PAGE = 1 << 2;
         /// Page can be written to
@@ -132,7 +131,11 @@ pub unsafe fn map_2mib(
         *l4e = (pdpt as u64)
             | ENTRY_PRESENT
             | ENTRY_WRITABLE
-            | if flags.contains(PageTableFlags::USER_PAGE) { 1 << 2 } else { 0 };
+            | if flags.contains(PageTableFlags::USER_PAGE) {
+                1 << 2
+            } else {
+                0
+            };
     }
 
     let l3 = next_table(*l4e);
@@ -148,7 +151,11 @@ pub unsafe fn map_2mib(
     let l2 = next_table(*l3e);
     let pde = l2.add(pd_index(v));
 
-    assert!(*pde & ENTRY_PRESENT == 0, "PDE already mapped (virt: {:?})", virt.as_ptr::<u8>());
+    assert!(
+        *pde & ENTRY_PRESENT == 0,
+        "PDE already mapped (virt: {:?})",
+        virt.as_ptr::<u8>()
+    );
 
     let flags = PageTableFlags::PRESENT | PageTableFlags::HUGE_PAGE | flags;
 
@@ -160,30 +167,37 @@ pub unsafe fn map_2mib(
 
 /// Unmap a 4 KiB page and return its physical address if it existed.
 #[allow(unsafe_op_in_unsafe_fn)]
-pub unsafe fn unmap_4k(
-    pml4: &mut PageTable,
-    virt: VirtAddr,
-) -> Option<PhysAddr> {
+pub unsafe fn unmap_4k(pml4: &mut PageTable, virt: VirtAddr) -> Option<PhysAddr> {
     let v = virt.as_ptr_ty();
 
     let l4 = pml4.0;
     let l4e = l4.add(pml4_index(v));
-    if *l4e & ENTRY_PRESENT == 0 { return None; }
+    if *l4e & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     let l3 = next_table(*l4e);
     let l3e = l3.add(pdpt_index(v));
-    if *l3e & ENTRY_PRESENT == 0 { return None; }
+    if *l3e & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     let l2 = next_table(*l3e);
     let l2e = l2.add(pd_index(v));
-    if *l2e & ENTRY_PRESENT == 0 { return None; }
+    if *l2e & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     // must not be huge
-    if *l2e & ENTRY_HUGE != 0 { return None; }
+    if *l2e & ENTRY_HUGE != 0 {
+        return None;
+    }
 
     let pt = next_table(*l2e);
     let pte = pt.add(pt_index(v));
-    if *pte & ENTRY_PRESENT == 0 { return None; }
+    if *pte & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     let phys = (*pte & 0x000f_ffff_ffff_f000) as usize;
 
@@ -221,7 +235,11 @@ pub unsafe fn map_4k(
         *l4e = (pdpt as u64)
             | ENTRY_PRESENT
             | ENTRY_WRITABLE
-            | if flags.contains(PageTableFlags::USER_PAGE) { 1 << 2 } else { 0 };
+            | if flags.contains(PageTableFlags::USER_PAGE) {
+                1 << 2
+            } else {
+                0
+            };
     } else if flags.contains(PageTableFlags::USER_PAGE) {
         *l4e |= 1 << 2;
     }
@@ -235,7 +253,11 @@ pub unsafe fn map_4k(
         *l3e = (pd as u64)
             | ENTRY_PRESENT
             | ENTRY_WRITABLE
-            | if flags.contains(PageTableFlags::USER_PAGE) { 1 << 2 } else { 0 };
+            | if flags.contains(PageTableFlags::USER_PAGE) {
+                1 << 2
+            } else {
+                0
+            };
     } else if flags.contains(PageTableFlags::USER_PAGE) {
         *l3e |= 1 << 2;
     }
@@ -244,14 +266,21 @@ pub unsafe fn map_4k(
     let l2 = next_table(*l3e);
     let l2e = l2.add(pd_index(v));
 
-    assert!(*l2e & ENTRY_HUGE == 0, "cannot map 4KiB page: PDE is a huge page");
+    assert!(
+        *l2e & ENTRY_HUGE == 0,
+        "cannot map 4KiB page: PDE is a huge page"
+    );
 
     if *l2e & ENTRY_PRESENT == 0 {
         let pt = alloc_zeroed_page_table();
         *l2e = (pt as u64)
             | ENTRY_PRESENT
             | ENTRY_WRITABLE
-            | if flags.contains(PageTableFlags::USER_PAGE) { 1 << 2 } else { 0 };
+            | if flags.contains(PageTableFlags::USER_PAGE) {
+                1 << 2
+            } else {
+                0
+            };
     } else if flags.contains(PageTableFlags::USER_PAGE) {
         *l2e |= 1 << 2;
     }
@@ -327,7 +356,6 @@ unsafe fn alloc_zeroed_page_table() -> *mut u64 {
     unsafe { alloc.allocate() }
 }
 
-
 use crate::lib_alloc::{THREAD_STACK_REGION, THREAD_STACK_SIZE};
 
 /// initializes the kernel heap
@@ -359,24 +387,30 @@ pub unsafe fn init_thread_heap() {
 #[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe fn virt_to_phys(virt: VirtAddr) -> Option<PhysAddr> {
     let addr = virt.as_ptr_ty();
-    
+
     // Get the physical root from CR3 (just like active_pml4 does)
     let (frame, _) = x86_64::registers::control::Cr3::read();
     let pml4_ptr = frame.start_address().as_u64() as *const u64;
-    
+
     // Level 4: PML4
     let pml4e = *pml4_ptr.add(pml4_index(addr));
-    if pml4e & ENTRY_PRESENT == 0 { return None; }
+    if pml4e & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     // Level 3: PDPT
     let pdpt_ptr = next_table(pml4e) as *const u64;
     let pdpte = *pdpt_ptr.add(pdpt_index(addr));
-    if pdpte & ENTRY_PRESENT == 0 { return None; }
+    if pdpte & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     // Level 2: Page Directory
     let pd_ptr = next_table(pdpte) as *const u64;
     let pde = *pd_ptr.add(pd_index(addr));
-    if pde & ENTRY_PRESENT == 0 { return None; }
+    if pde & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     // Check if this is a 2MiB Huge Page (disk driver uses these!)
     if pde & ENTRY_HUGE != 0 {
@@ -391,7 +425,9 @@ pub unsafe fn virt_to_phys(virt: VirtAddr) -> Option<PhysAddr> {
     let pt_ptr = next_table(pde) as *const u64;
     let pt_idx = ((addr >> 12) & 0x1ff) as usize;
     let pte = *pt_ptr.add(pt_idx);
-    if pte & ENTRY_PRESENT == 0 { return None; }
+    if pte & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     let phys_base = pte & 0x000f_ffff_ffff_f000;
     let offset = addr & 0xFFF;
@@ -400,20 +436,30 @@ pub unsafe fn virt_to_phys(virt: VirtAddr) -> Option<PhysAddr> {
 
 pub unsafe fn virt_to_phys_in(virt: VirtAddr, table: &mut PageTable) -> Option<PhysAddr> {
     let addr = virt.as_ptr_ty();
-    
+
     // Level 4: PML4
-    let pml4e = unsafe { (table.as_usize() as *const u64).add(pml4_index(addr)).read() };
-    if pml4e & ENTRY_PRESENT == 0 { return None; }
+    let pml4e = unsafe {
+        (table.as_usize() as *const u64)
+            .add(pml4_index(addr))
+            .read()
+    };
+    if pml4e & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     // Level 3: PDPT
     let pdpt_ptr = next_table(pml4e) as *const u64;
     let pdpte = unsafe { pdpt_ptr.add(pdpt_index(addr)).read() };
-    if pdpte & ENTRY_PRESENT == 0 { return None; }
+    if pdpte & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     // Level 2: Page Directory
     let pd_ptr = next_table(pdpte) as *const u64;
     let pde = unsafe { pd_ptr.add(pd_index(addr)).read() };
-    if pde & ENTRY_PRESENT == 0 { return None; }
+    if pde & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     // Check if this is a 2MiB Huge Page
     if pde & ENTRY_HUGE != 0 {
@@ -426,7 +472,9 @@ pub unsafe fn virt_to_phys_in(virt: VirtAddr, table: &mut PageTable) -> Option<P
     let pt_ptr = next_table(pde) as *const u64;
     let pt_idx = ((addr >> 12) & 0x1ff) as usize;
     let pte = unsafe { pt_ptr.add(pt_idx).read() };
-    if pte & ENTRY_PRESENT == 0 { return None; }
+    if pte & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     let phys_base = pte & 0x000f_ffff_ffff_f000;
     let offset = addr & 0xFFF;
@@ -440,18 +488,26 @@ pub unsafe fn unmap_2mib(pml4: &mut PageTable, virt: VirtAddr) -> Option<PhysAdd
     let v = virt.as_ptr_ty();
     let l4 = pml4.0;
     let l4e = l4.add(pml4_index(v));
-    if *l4e & ENTRY_PRESENT == 0 { return None; }
+    if *l4e & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     let l3 = next_table(*l4e);
     let l3e = l3.add(pdpt_index(v));
-    if *l3e & ENTRY_PRESENT == 0 { return None; }
+    if *l3e & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     let l2 = next_table(*l3e);
     let pde = l2.add(pd_index(v));
-    if *pde & ENTRY_PRESENT == 0 { return None; }
+    if *pde & ENTRY_PRESENT == 0 {
+        return None;
+    }
 
     let pde_val = *pde;
-    if pde_val & ENTRY_HUGE == 0 { return None; }
+    if pde_val & ENTRY_HUGE == 0 {
+        return None;
+    }
 
     let phys_base = (pde_val & 0x000f_ffff_fffe_0000) as usize;
 
@@ -476,8 +532,7 @@ pub unsafe fn unmap_and_free_2mib(pml4: &mut PageTable, virt: VirtAddr) -> Optio
 
 pub fn copy_kernel_mappings_to(table: &mut PageTable) {
     let user_pml4 = table.as_usize() as *mut u64;
-    let kernel_pml4 =
-        unsafe { kernel_address_space().ptr().as_inner() as *mut u64 };
+    let kernel_pml4 = unsafe { kernel_address_space().ptr().as_inner() as *mut u64 };
 
     // Copy ONLY the kernel half
     for i in 0..512 {
@@ -499,41 +554,41 @@ pub fn zero_page_table(table: &mut PageTable) {
 impl PageTable {
     pub fn query_flags(&self, addr: VirtAddr) -> Option<PageTableFlags> {
         let v = addr.as_ptr_ty();
-    
+
         let pml4 = self.0.cast_const(); // identity-mapped *const u64
         let pml4e = unsafe { *pml4.add(pml4_index(v)) };
         if pml4e & ENTRY_PRESENT == 0 {
             return None;
         }
-    
+
         let pdpt = unsafe { next_table(pml4e) };
         let pdpte = unsafe { *pdpt.add(pdpt_index(v)) };
         if pdpte & ENTRY_PRESENT == 0 {
             return None;
         }
-    
+
         // 1 GiB pages (optional, but handle if you ever add them)
         if pdpte & ENTRY_HUGE != 0 {
             return Some(PageTableFlags::from_bits_truncate(pdpte));
         }
-    
+
         let pd = unsafe { next_table(pdpte) };
         let pde = unsafe { *pd.add(pd_index(v)) };
         if pde & ENTRY_PRESENT == 0 {
             return None;
         }
-    
+
         // 2 MiB page
         if pde & ENTRY_HUGE != 0 {
             return Some(PageTableFlags::from_bits_truncate(pde));
         }
-    
+
         let pt = unsafe { next_table(pde) };
         let pte = unsafe { *pt.add(pt_index(v)) };
         if pte & ENTRY_PRESENT == 0 {
             return None;
         }
-    
+
         Some(PageTableFlags::from_bits_truncate(pte))
     }
 }

@@ -4,7 +4,17 @@ use core::{cell::Cell, mem, panic::PanicInfo, sync::atomic::compiler_fence};
 use alloc::{boxed::Box, string::String, vec::Vec};
 
 use crate::{
-    arch, asyncio, c_lib::libc::{self, get_errno, perror}, graphics::{self, Color as GColor, Pos, font::{BitmapFont, draw_text_from_panic, try_get_fallback_font}, with_renderer}, hlt_loop, io::{self, Error, OpenOptions, const_err}, log, scheduler, serial_println, thread::{self, tls::tcb}
+    arch, asyncio,
+    c_lib::libc::{self, get_errno, perror},
+    graphics::{
+        self, Color as GColor, Pos,
+        font::{BitmapFont, draw_text_from_panic, try_get_fallback_font},
+        with_renderer,
+    },
+    hlt_loop,
+    io::{self, Error, OpenOptions, const_err},
+    log, scheduler, serial_println,
+    thread::{self, tls::tcb},
 };
 
 /// Sets the function run at the end of panics.
@@ -27,10 +37,8 @@ pub fn take_hooks() -> Vec<Box<dyn FnOnce(&PanicInfo) + Send + 'static>> {
     mem::take(&mut tcb().panic_hooks)
 }
 
-
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-
     // unsafe {
     //     core::arch::asm!(
     //         "mov rsp, {}",

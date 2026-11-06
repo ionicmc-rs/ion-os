@@ -1,7 +1,7 @@
 use core::ptr;
 
-use crate::graphics::{Color, Rect};
 use crate::graphics::pixel::PixelFormat;
+use crate::graphics::{Color, Rect};
 
 pub struct Surface {
     pub width: u32,
@@ -12,7 +12,6 @@ pub struct Surface {
 }
 
 impl Surface {
-
     #[inline(always)]
     pub fn draw_pixel(&mut self, x: u32, y: u32, color: Color) {
         if x >= self.width || y >= self.height {
@@ -21,7 +20,6 @@ impl Surface {
 
         unsafe {
             match self.format {
-
                 PixelFormat::Xrgb8888 => {
                     let pitch = self.pitch_bytes as usize >> 2;
                     let fb = self.base as *mut u32;
@@ -32,9 +30,7 @@ impl Surface {
 
                 PixelFormat::Rgb888 => {
                     let pitch = self.pitch_bytes as usize;
-                    let off =
-                        y as usize * pitch +
-                        x as usize * 3;
+                    let off = y as usize * pitch + x as usize * 3;
 
                     let ptr = self.base.add(off);
                     let raw = color.raw().to_le_bytes();
@@ -48,18 +44,14 @@ impl Surface {
     }
 
     pub fn clear(&mut self, color: Color) {
-        self.fill_rect(
-            Rect::new(0, 0, self.width, self.height),
-            color
-        );
+        self.fill_rect(Rect::new(0, 0, self.width, self.height), color);
     }
 
     pub fn fill_rect(&mut self, rect: Rect, color: Color) {
-
         let start_x = rect.x().min(self.width);
         let start_y = rect.y().min(self.height);
-        let end_x   = rect.right().min(self.width);
-        let end_y   = rect.bottom().min(self.height);
+        let end_x = rect.right().min(self.width);
+        let end_y = rect.bottom().min(self.height);
 
         if start_x >= end_x || start_y >= end_y {
             return;
@@ -67,13 +59,10 @@ impl Surface {
 
         unsafe {
             match self.format {
-
                 /* ----------------------------
-                   XRGB8888 FAST PATH
-                   ---------------------------- */
-
+                XRGB8888 FAST PATH
+                ---------------------------- */
                 PixelFormat::Xrgb8888 => {
-
                     let pitch = self.pitch_bytes as usize >> 2;
                     let fb = self.base as *mut u32;
                     let color = color.raw();
@@ -81,8 +70,7 @@ impl Surface {
                     let width = (end_x - start_x) as usize;
 
                     for y in start_y..end_y {
-                        let mut row =
-                            fb.add(y as usize * pitch + start_x as usize);
+                        let mut row = fb.add(y as usize * pitch + start_x as usize);
 
                         for _ in 0..width {
                             row.write_unaligned(color);
@@ -92,22 +80,15 @@ impl Surface {
                 }
 
                 /* ----------------------------
-                   RGB888 PATH
-                   ---------------------------- */
-
+                RGB888 PATH
+                ---------------------------- */
                 PixelFormat::Rgb888 => {
-
                     let pitch = self.pitch_bytes as usize;
                     let raw = color.raw().to_le_bytes();
                     let width = (end_x - start_x) as usize;
 
                     for y in start_y..end_y {
-
-                        let mut row =
-                            self.base.add(
-                                y as usize * pitch +
-                                start_x as usize * 3
-                            );
+                        let mut row = self.base.add(y as usize * pitch + start_x as usize * 3);
 
                         for _ in 0..width {
                             row.write(raw[0]);
@@ -142,8 +123,7 @@ impl Surface {
             for row in 0..height {
                 let src_ptr = src.base.add(row as usize * src.pitch_bytes as usize);
                 let dst_ptr = self.base.add(
-                    (y + row) as usize * self.pitch_bytes as usize
-                        + x as usize * bytes_per_pixel,
+                    (y + row) as usize * self.pitch_bytes as usize + x as usize * bytes_per_pixel,
                 );
                 ptr::copy_nonoverlapping(src_ptr, dst_ptr, copy_bytes);
             }
@@ -152,7 +132,6 @@ impl Surface {
 
     /// Copy a clipped rectangle from another surface.
     pub fn blit_region(&mut self, src: &Surface, rect: Rect) {
-
         if self.format != src.format {
             panic!("blit format mismatch");
         }
@@ -175,12 +154,10 @@ impl Surface {
         unsafe {
             for row in start_y..end_y {
                 let src_ptr = src.base.add(
-                    row as usize * src.pitch_bytes as usize
-                        + start_x as usize * bytes_per_pixel,
+                    row as usize * src.pitch_bytes as usize + start_x as usize * bytes_per_pixel,
                 );
                 let dst_ptr = self.base.add(
-                    row as usize * self.pitch_bytes as usize
-                        + start_x as usize * bytes_per_pixel,
+                    row as usize * self.pitch_bytes as usize + start_x as usize * bytes_per_pixel,
                 );
 
                 ptr::copy_nonoverlapping(src_ptr, dst_ptr, copy_bytes);

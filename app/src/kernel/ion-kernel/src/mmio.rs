@@ -2,7 +2,11 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use linked_list_allocator::align_up_size;
 
-use crate::{address_space::{kernel_address_space, map_2mib_into_space, map_4k_into_space}, arch::{PhysAddr, VirtAddr, mmu::PageTableFlags}, log};
+use crate::{
+    address_space::{kernel_address_space, map_2mib_into_space, map_4k_into_space},
+    arch::{PhysAddr, VirtAddr, mmu::PageTableFlags},
+    log,
+};
 
 const MMIO_TOTAL_SIZE: usize = 1024 * 1024 * 1024; // 1 GiB
 
@@ -17,11 +21,9 @@ const MMIO_4K_MAX: usize = MMIO_4K_REGION_SIZE / FRAME_4K;
 
 static MMIO_BASE: AtomicUsize = AtomicUsize::new(0);
 
-static mut MMIO_2M_BITMAP: [u64; MMIO_2M_MAX / 64] =
-    [0; MMIO_2M_MAX / 64];
+static mut MMIO_2M_BITMAP: [u64; MMIO_2M_MAX / 64] = [0; MMIO_2M_MAX / 64];
 
-static mut MMIO_4K_BITMAP: [u64; MMIO_4K_MAX / 64] =
-    [0; MMIO_4K_MAX / 64];
+static mut MMIO_4K_BITMAP: [u64; MMIO_4K_MAX / 64] = [0; MMIO_4K_MAX / 64];
 
 fn ensure_mmio_base() -> usize {
     let base = MMIO_BASE.load(Ordering::Acquire);
@@ -32,7 +34,7 @@ fn ensure_mmio_base() -> usize {
     // choose clean aligned base
     let computed = align_up_size(
         1024 * 1024 * 1024, // 1GiB
-        FRAME_2M
+        FRAME_2M,
     );
 
     MMIO_BASE.store(computed, Ordering::Release);
@@ -48,7 +50,7 @@ pub unsafe fn alloc_2m_contiguous(count: usize) -> Option<usize> {
         for i in 0..count {
             let idx = start + i;
             let word = idx / 64;
-            let bit  = idx % 64;
+            let bit = idx % 64;
 
             if (MMIO_2M_BITMAP[word] >> bit) & 1 == 1 {
                 ok = false;
@@ -60,10 +62,9 @@ pub unsafe fn alloc_2m_contiguous(count: usize) -> Option<usize> {
             for i in 0..count {
                 let idx = start + i;
                 let word = idx / 64;
-                let bit  = idx % 64;
-                MMIO_2M_BITMAP [word] |= 1u64 << bit;
+                let bit = idx % 64;
+                MMIO_2M_BITMAP[word] |= 1u64 << bit;
             }
-
 
             log::debug!("mapping: {start}");
             return Some(start);
@@ -82,7 +83,7 @@ pub unsafe fn alloc_4k_contiguous(count: usize) -> Option<usize> {
         for i in 0..count {
             let idx = start + i;
             let word = idx / 64;
-            let bit  = idx % 64;
+            let bit = idx % 64;
 
             if (MMIO_4K_BITMAP[word] >> bit) & 1 == 1 {
                 ok = false;
@@ -94,7 +95,7 @@ pub unsafe fn alloc_4k_contiguous(count: usize) -> Option<usize> {
             for i in 0..count {
                 let idx = start + i;
                 let word = idx / 64;
-                let bit  = idx % 64;
+                let bit = idx % 64;
                 MMIO_4K_BITMAP[word] |= 1u64 << bit;
             }
 
@@ -115,15 +116,17 @@ pub unsafe fn map_mmio_frame(phys: usize) -> *mut u8 {
 
     let virt = base + slot * FRAME_2M;
 
-    unsafe { map_2mib_into_space(
-        &mut kernel_address_space(),
-        VirtAddr::new(virt),
-        PhysAddr::new(phys),
-        PageTableFlags::PRESENT
-            | PageTableFlags::WRITABLE
-            | PageTableFlags::NO_EXECUTE
-            | PageTableFlags::NO_CACHE,
-    ) };
+    unsafe {
+        map_2mib_into_space(
+            &mut kernel_address_space(),
+            VirtAddr::new(virt),
+            PhysAddr::new(phys),
+            PageTableFlags::PRESENT
+                | PageTableFlags::WRITABLE
+                | PageTableFlags::NO_EXECUTE
+                | PageTableFlags::NO_CACHE,
+        )
+    };
 
     virt as *mut u8
 }
@@ -140,15 +143,17 @@ pub unsafe fn map_mmio_4k_frame(phys: usize) -> *mut u8 {
 
     let virt = region_base + slot * FRAME_4K;
 
-    unsafe { map_4k_into_space(
-        &mut kernel_address_space(),
-        VirtAddr::new(virt),
-        PhysAddr::new(phys),
-        PageTableFlags::PRESENT
-            | PageTableFlags::WRITABLE
-            | PageTableFlags::NO_EXECUTE
-            | PageTableFlags::NO_CACHE,
-    ) };
+    unsafe {
+        map_4k_into_space(
+            &mut kernel_address_space(),
+            VirtAddr::new(virt),
+            PhysAddr::new(phys),
+            PageTableFlags::PRESENT
+                | PageTableFlags::WRITABLE
+                | PageTableFlags::NO_EXECUTE
+                | PageTableFlags::NO_CACHE,
+        )
+    };
 
     virt as *mut u8
 }

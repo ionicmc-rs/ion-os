@@ -6,10 +6,10 @@ use pc_keyboard::{DecodedKey, KeyCode, KeyState};
 
 #[cfg(feature = "test")]
 use super::trivial_assertion;
-use crate::{arch::{self, interrupts::keyboard::{KEYBOARD, SC_QUEUE}}, asyncio, event, graphics::{self, Color, Pos, Rect, Surface, font::{BitmapFont, draw_glyph, draw_text, set_fallback_font}, with_renderer}, io::{File, OpenOptions, Read}, log::{self, error}, privilege::UserID, process::{self, FdHandle, spawn_proc}, resources::{self, ResourceTable, channel, fd}, scheduler::{self, current_scheduler}, thread::Thread};
 #[allow(unused)]
 use crate::{
-    c_lib, hlt_loop, arch::interrupts, lib_alloc, serial_println,
+    arch::interrupts,
+    c_lib, hlt_loop, lib_alloc, serial_println,
     test::run_tests,
     text,
     thread::{
@@ -17,6 +17,25 @@ use crate::{
         build::TPriority,
         sync::{Mutex, MutexGuard},
     },
+};
+use crate::{
+    arch::{
+        self,
+        interrupts::keyboard::{KEYBOARD, SC_QUEUE},
+    },
+    asyncio, event,
+    graphics::{
+        self, Color, Pos, Rect, Surface,
+        font::{BitmapFont, draw_glyph, draw_text, set_fallback_font},
+        with_renderer,
+    },
+    io::{File, OpenOptions, Read},
+    log::{self, error},
+    privilege::UserID,
+    process::{self, FdHandle, spawn_proc},
+    resources::{self, ResourceTable, channel, fd},
+    scheduler::{self, current_scheduler},
+    thread::Thread,
 };
 
 struct TtyCursor {
@@ -206,18 +225,13 @@ fn handle_kbd() -> ! {
     {
         let sc_q = unsafe { SC_QUEUE.assume_init_ref() };
         loop {
-            thread::block_until_true(|| {
-                !sc_q.is_empty()
-            });
+            thread::block_until_true(|| !sc_q.is_empty());
 
             let Some(sc) = sc_q.pop() else {
                 continue;
             };
 
-            let ev: pc_keyboard::KeyEvent = match KEYBOARD
-                .lock()
-                .add_byte(sc)
-            {
+            let ev: pc_keyboard::KeyEvent = match KEYBOARD.lock().add_byte(sc) {
                 Ok(Some(ev)) => ev,
                 Err(e) => {
                     error!("invalid keyboard input: {e:?}");
@@ -232,18 +246,15 @@ fn handle_kbd() -> ! {
             };
 
             event::run_kbd_hooks(ev.clone());
-            
+
             event::run_kbd_once_hooks(ev);
 
             event::wake_kbd_wakers();
 
             unsafe { scheduler::wake_kbd() };
-
         }
     }
 }
-
-
 
 /// final init.
 pub fn kernel_main() {
@@ -264,35 +275,44 @@ pub fn kernel_main() {
                     // WRITER.lock().delete_row();
                 }
                 KeyCode::Q => {
-                    thread::spawn(|| {
-                        use crate::{address_space, arch, boot_info, disk::{self, DiskId}, log::debug, process::current_process};
+                    thread::spawn(
+                        || {
+                            use crate::{
+                                address_space, arch, boot_info,
+                                disk::{self, DiskId},
+                                log::debug,
+                                process::current_process,
+                            };
 
-                        debug!("DEBUG KEY PRESSED:");
-                        debug!("Thread: \n{:#?}", thread::current());
-                        debug!("Process ID: {:?}", current_process());
-                        debug!("Context: \n{:#?}", arch::ctx::current());
-                        debug!("Boot Info: \n{:#?}", boot_info());
-                        debug!("Kernel Address Space: \n{:#?}", unsafe { address_space::kernel_address_space() });
-
-                        if let Some(id) = DiskId::new(0) {
-                            use crate::vfs::fs::parse::read_superblock;
-
-                            let dev = disk::get_disk(id);
-
-                            debug!("Disk0 Data:");
-                            asyncio::run_future(async {
-                                use crate::vfs::fs::parse::{read_alloc_block, read_inode};
-
-                                debug!("Super Block: \n{:#?}", read_superblock(dev).await);
-                                debug!("Alloc Block: \n{:#?}", read_alloc_block(dev).await);
-                                debug!("Root Inode: \n{:#?}", read_inode(dev, 0).await);
+                            debug!("DEBUG KEY PRESSED:");
+                            debug!("Thread: \n{:#?}", thread::current());
+                            debug!("Process ID: {:?}", current_process());
+                            debug!("Context: \n{:#?}", arch::ctx::current());
+                            debug!("Boot Info: \n{:#?}", boot_info());
+                            debug!("Kernel Address Space: \n{:#?}", unsafe {
+                                address_space::kernel_address_space()
                             });
-                            debug!("End of Dump")
-                        }
-                    }, 64 * 1024);
+
+                            if let Some(id) = DiskId::new(0) {
+                                use crate::vfs::fs::parse::read_superblock;
+
+                                let dev = disk::get_disk(id);
+
+                                debug!("Disk0 Data:");
+                                asyncio::run_future(async {
+                                    use crate::vfs::fs::parse::{read_alloc_block, read_inode};
+
+                                    debug!("Super Block: \n{:#?}", read_superblock(dev).await);
+                                    debug!("Alloc Block: \n{:#?}", read_alloc_block(dev).await);
+                                    debug!("Root Inode: \n{:#?}", read_inode(dev, 0).await);
+                                });
+                                debug!("End of Dump")
+                            }
+                        },
+                        64 * 1024,
+                    );
                 }
-                _ => {
-                }
+                _ => {}
             }
         }
     });
@@ -304,7 +324,6 @@ pub fn kernel_main() {
         .with_stack(64 * 1024)
         .with_entry(handle_kbd)
         .build();
-
 
     let font = asyncio::run_future(async {
         let file = OpenOptions::new()
@@ -335,18 +354,23 @@ pub fn kernel_main() {
 
     graphics::renderer::init(fb);
 
-    with_renderer(|r| {        
-        draw_text(&mut r.back, Pos::new(20, 20), &font, "[ion-os] starting ion os...\n[ion-os] this process may be lengthy - please be patient...", Color::WHITE);
+    with_renderer(|r| {
+        draw_text(
+            &mut r.back,
+            Pos::new(20, 20),
+            &font,
+            "[ion-os] starting ion os...\n[ion-os] this process may be lengthy - please be patient...",
+            Color::WHITE,
+        );
 
         r.present();
     });
 
     let f = File::open("@/testing.txt");
-    let mut f = asyncio::run_future(async {
-        f.await.expect("failed to open testing.txt")
-    });
+    let mut f = asyncio::run_future(async { f.await.expect("failed to open testing.txt") });
     let mut conts = String::new();
-    f.read_to_string(&mut conts).expect("failed to read testing.txt");
+    f.read_to_string(&mut conts)
+        .expect("failed to read testing.txt");
     serial_println!("{conts}");
 
     // init (CPU0)
@@ -372,19 +396,18 @@ pub fn kernel_main() {
     let wstdin = table.alloc(FdHandle(wstdin)).unwrap();
 
     let mut pid = asyncio::run_future(process::exec(
-        UserID::os(), 
-        "@/core/ish", 
-        &["@/core/ish"], 
+        UserID::os(),
+        "@/core/ish",
+        &["@/core/ish"],
         None,
-        table
-    )).unwrap();
+        table,
+    ))
+    .unwrap();
 
     {
         event::add_key_listener(move |ev| {
             let bytes: &[u8] = match KEYBOARD.lock().process_keyevent(ev.clone()) {
-                Some(DecodedKey::Unicode(c)) => {
-                    &[c as u8]
-                }
+                Some(DecodedKey::Unicode(c)) => &[c as u8],
 
                 Some(DecodedKey::RawKey(code)) => {
                     let res: &[u8] = match code {
@@ -395,12 +418,12 @@ pub fn kernel_main() {
                         KeyCode::ArrowDown => b"\x1b[B" as &[u8],
                         KeyCode::ArrowLeft => b"\x1b[D" as &[u8],
                         KeyCode::ArrowRight => b"\x1b[C" as &[u8],
-                        _ => {&[]}
+                        _ => &[],
                     };
                     res
                 }
 
-                None => {&[]}
+                None => &[],
             };
             if ev.state != KeyState::Up {
                 process::write_proc_fd(pid, wstdin, bytes);
@@ -409,42 +432,45 @@ pub fn kernel_main() {
         });
 
         // new thread for temporary TTY shell
-        thread::spawn(move || {
-            log::info!("starting TTY shell for ish (pid {pid:?})");
-            with_renderer(|r| {
-                r.clear(Color::BLACK);
-            });
-
-            let mut cursor = TtyCursor::new(screen_width, screen_height, &font);
-            loop {
-                let mut buf_stdout = [0u8; 256];
-                let mut buf_stderr = [0u8; 256];
-
-                let stdout_len = process::read_proc_fd(pid, rstdout, &mut buf_stdout)
-                    .unwrap_or(0)
-                    .min(buf_stdout.len() as u64) as usize;
-                let stderr_len = process::read_proc_fd(pid, rstderr, &mut buf_stderr)
-                    .unwrap_or(0)
-                    .min(buf_stderr.len() as u64) as usize;
-
-                if stdout_len == 0 && stderr_len == 0 {
-                    thread::yield_now();
-                    continue;
-                }
-
+        thread::spawn(
+            move || {
+                log::info!("starting TTY shell for ish (pid {pid:?})");
                 with_renderer(|r| {
-                    cursor.write_bytes(&mut r.back, &font, &buf_stdout[..stdout_len]);
-                    cursor.write_bytes(&mut r.back, &font, &buf_stderr[..stderr_len]);
-                    if let Some(dirty) = cursor.take_dirty() {
-                        r.present_region(dirty);
-                    }
+                    r.clear(Color::BLACK);
                 });
-            }
-        }, 16 * 1024);
+
+                let mut cursor = TtyCursor::new(screen_width, screen_height, &font);
+                loop {
+                    let mut buf_stdout = [0u8; 256];
+                    let mut buf_stderr = [0u8; 256];
+
+                    let stdout_len = process::read_proc_fd(pid, rstdout, &mut buf_stdout)
+                        .unwrap_or(0)
+                        .min(buf_stdout.len() as u64) as usize;
+                    let stderr_len = process::read_proc_fd(pid, rstderr, &mut buf_stderr)
+                        .unwrap_or(0)
+                        .min(buf_stderr.len() as u64) as usize;
+
+                    if stdout_len == 0 && stderr_len == 0 {
+                        thread::yield_now();
+                        continue;
+                    }
+
+                    with_renderer(|r| {
+                        cursor.write_bytes(&mut r.back, &font, &buf_stdout[..stdout_len]);
+                        cursor.write_bytes(&mut r.back, &font, &buf_stderr[..stderr_len]);
+                        if let Some(dirty) = cursor.take_dirty() {
+                            r.present_region(dirty);
+                        }
+                    });
+                }
+            },
+            16 * 1024,
+        );
     }
 
     // log::debug!("queued thread for test ELF");
-    
+
     cfg_if::cfg_if! {
         if #[cfg(feature = "test")] {
             use crate::stack;

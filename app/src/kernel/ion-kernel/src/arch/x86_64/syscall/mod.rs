@@ -1,8 +1,6 @@
-use x86_64::{registers::model_specific::{
-    Efer, EferFlags, LStar, Star,
-}};
+use x86_64::registers::model_specific::{Efer, EferFlags, LStar, Star};
 
-unsafe extern "C" { 
+unsafe extern "C" {
     // note: it is not actually of the "C" abi, and takes args.
     // note: however, this is (likely) the best way to do this.
     fn syscall_entry();
@@ -24,7 +22,8 @@ pub unsafe fn init_syscalls() {
         selectors.user_data,
         selectors.kernel_code,
         selectors.kernel_data,
-    ).unwrap();
+    )
+    .unwrap();
 }
 
 /// syscall impl

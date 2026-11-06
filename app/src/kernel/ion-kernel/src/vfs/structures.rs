@@ -22,14 +22,14 @@ pub const INODE_SIZE: usize = 34;
 #[derive(Debug, Clone, Copy)]
 pub enum InodeParseErr {
     InvalidKind(u8),
-    InvalidBool(u8)
+    InvalidBool(u8),
 }
 
 impl Display for InodeParseErr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::InvalidKind(x) => write!(f, "invalid kind for inode: {x}"),
-            Self::InvalidBool(x) => write!(f, "invalid usage marker for inode: {x}")
+            Self::InvalidBool(x) => write!(f, "invalid usage marker for inode: {x}"),
         }
     }
 }
@@ -53,7 +53,14 @@ impl Inode {
         let used_size = u64::from_le_bytes(*bytes[18..26].as_array().unwrap());
         let index = u64::from_le_bytes(*bytes[26..34].as_array().unwrap());
 
-        Ok(Self { kind, data_size, data_offset, used, size: used_size, index })
+        Ok(Self {
+            kind,
+            data_size,
+            data_offset,
+            used,
+            size: used_size,
+            index,
+        })
     }
 
     pub(super) fn as_bytes(&self) -> [u8; INODE_SIZE] {
@@ -62,25 +69,32 @@ impl Inode {
         res[1] = self.kind as u8;
 
         for (i, x) in self.data_size.to_le_bytes().iter().enumerate() {
-            res[i+2] = *x; 
+            res[i + 2] = *x;
         }
         for (i, x) in self.data_offset.to_le_bytes().iter().enumerate() {
-            res[i+10] = *x; 
+            res[i + 10] = *x;
         }
 
         for (i, x) in self.size.to_le_bytes().iter().enumerate() {
-            res[i+18] = *x;
+            res[i + 18] = *x;
         }
 
         for (i, x) in self.index.to_le_bytes().iter().enumerate() {
-            res[i+26] = *x;
+            res[i + 26] = *x;
         }
 
         res
     }
 
     pub(super) fn used(idx: u64) -> Self {
-        Self { used: true, kind: InodeKind::File, data_size: 0, data_offset: 0, size: 0, index: idx }
+        Self {
+            used: true,
+            kind: InodeKind::File,
+            data_size: 0,
+            data_offset: 0,
+            size: 0,
+            index: idx,
+        }
     }
 
     pub(super) fn unused() -> Self {
@@ -152,25 +166,27 @@ impl Inode {
         self.data_offset
     }
 
-    pub fn index(
-        &self,
-    ) -> u64 {
+    pub fn index(&self) -> u64 {
         self.index
     }
 
-
     /// Writes to the inode directory entries.
-    /// 
+    ///
     /// The format is:
     /// ```text
     /// [name_len: u16][name: bytes of size name_len][inode_index: u64]
     /// ```
-    /// 
+    ///
     /// for each entry
-    pub async fn write_as_dir(&mut self, disk: &mut dyn crate::disk::AsyncBlockDevice, entires: &[(&[u8], u64)]) -> io::Result {
+    pub async fn write_as_dir(
+        &mut self,
+        disk: &mut dyn crate::disk::AsyncBlockDevice,
+        entires: &[(&[u8], u64)],
+    ) -> io::Result {
         self.write_as_file(
-            disk, 
-            entires.iter()
+            disk,
+            entires
+                .iter()
                 .flat_map(|(name, idx)| {
                     let name_len = name.len() as u16;
                     let mut res = Vec::with_capacity(2 + name.len() + 8);
@@ -180,16 +196,24 @@ impl Inode {
                     res
                 })
                 .collect::<Vec<u8>>()
-                .as_slice()
-        ).await
+                .as_slice(),
+        )
+        .await
     }
 
     /// Directly writes data as a file
-    /// 
+    ///
     /// files are just raw data blobs, so this writes the data directly
-    pub async fn write_as_file(&mut self, disk: &mut dyn crate::disk::AsyncBlockDevice, data: &[u8]) -> io::Result {
+    pub async fn write_as_file(
+        &mut self,
+        disk: &mut dyn crate::disk::AsyncBlockDevice,
+        data: &[u8],
+    ) -> io::Result {
         if data.len() > self.data_size as usize {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "data exceeds allocated size (did you forget to update allocation data in the inode?)"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "data exceeds allocated size (did you forget to update allocation data in the inode?)",
+            ));
         }
 
         self.size = data.len() as u64;
@@ -248,9 +272,7 @@ fn parse_dir_entries(buf: &[u8]) -> io::Result<Vec<(Vec<u8>, u64)>> {
         let name = buf[off..off + name_len].to_vec();
         off += name_len;
 
-        let inode = u64::from_le_bytes(
-            buf[off..off + 8].try_into().unwrap()
-        );
+        let inode = u64::from_le_bytes(buf[off..off + 8].try_into().unwrap());
         off += 8;
 
         entries.push((name, inode));
@@ -259,13 +281,11 @@ fn parse_dir_entries(buf: &[u8]) -> io::Result<Vec<(Vec<u8>, u64)>> {
     Ok(entries)
 }
 
-
-
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InodeKind {
     File,
-    Directory
+    Directory,
 }
 
 impl InodeKind {
@@ -273,7 +293,7 @@ impl InodeKind {
         match byte {
             0 => Ok(Self::File),
             1 => Ok(Self::Directory),
-            invalid => Err(InodeParseErr::InvalidKind(invalid))
+            invalid => Err(InodeParseErr::InvalidKind(invalid)),
         }
     }
 }

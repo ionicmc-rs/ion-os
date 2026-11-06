@@ -10,8 +10,8 @@ use core::ptr::{read_volatile, write_volatile};
 use x86_64::instructions::port::Port;
 use x86_64::registers::model_specific::{ApicBase as IA32_APIC_BASE, ApicBaseFlags};
 
-use crate::{boot_info, log};
 use crate::c_lib::{MultibootAcpi, MultibootTag};
+use crate::{boot_info, log};
 
 const APIC_ENABLE: u64 = 1 << 11;
 
@@ -35,7 +35,6 @@ const APIC_ICR_HIGH: usize = 0x310;
 
 const APIC_DELIVERY_PENDING: u32 = 1 << 12;
 
-
 /// Local APIC interface
 pub struct LocalApic {
     base: *mut u32,
@@ -52,14 +51,14 @@ impl LocalApic {
     pub unsafe fn id(&self) -> u32 {
         self.read(APIC_ID) >> 24
     }
-    
+
     unsafe fn send_ipi_raw(&self, apic_id: u32, value: u32) {
         self.write(APIC_ICR_HIGH, apic_id << 24);
         self.write(APIC_ICR_LOW, value);
 
         while self.read(APIC_ICR_LOW) & APIC_DELIVERY_PENDING != 0 {}
     }
-    
+
     pub unsafe fn send_init_ipi(&self, apic_id: u32) {
         const INIT: u32 = 0b101 << 8;
         const LEVEL: u32 = 1 << 14;
@@ -81,29 +80,29 @@ impl LocalApic {
             self.write_icr(0, icr);
         }
     }
-    
+
     #[inline(always)]
     unsafe fn read(&self, offset: usize) -> u32 {
         read_volatile(self.base.add(offset / 4))
     }
-    
+
     #[inline(always)]
     unsafe fn write(&self, offset: usize, value: u32) {
         write_volatile(self.base.add(offset / 4), value);
     }
-    
+
     /// Enable the LAPIC
     pub unsafe fn enable(&self, vector: u8) {
         let value = (vector as u32) | (1 << 8);
         self.mask_all_lvt();
         self.write(APIC_SVR, value);
     }
-    
+
     /// Send End Of Interrupt
     pub unsafe fn eoi(&self) {
         self.write(APIC_EOI, 0);
     }
-    
+
     pub unsafe fn mask_all_lvt(&self) {
         self.write(APIC_LVT_TIMER, APIC_MASK);
         self.write(APIC_LVT_LINT0, APIC_MASK);
@@ -203,7 +202,7 @@ pub fn current_cpu_lapic() -> Option<&'static LocalApic> {
     // SAFETY: We read the LAPIC ID from the BSP LAPIC - this is safe as we just need
     // the ID to look up which CPU we're on.
     let lapic_id = unsafe { cpu_lapic().id() };
-    
+
     // Look up this CPU's index in the CPU array
     if let Some(index) = crate::arch::smp::cpu_index_from_apic_id(lapic_id) {
         // SAFETY: The per-CPU LAPIC is initialized by init_cpu_lapic or init_bsp_cpu_lapic
@@ -240,7 +239,6 @@ pub struct AcpiSdtHeader {
     pub creator_id: u32,
     pub creator_revision: u32,
 }
-
 
 #[repr(C, packed)]
 pub struct Xsdt {

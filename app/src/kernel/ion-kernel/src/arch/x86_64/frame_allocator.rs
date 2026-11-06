@@ -6,8 +6,7 @@ use spin::Mutex;
 use crate::{
     arch::defs::PAGE_2MIB,
     c_lib::{
-        MultibootMemory,
-        USABLE_ENTRY,
+        MultibootMemory, USABLE_ENTRY,
         libc::{self, OsError},
     },
 };
@@ -52,7 +51,7 @@ impl BootInfoFrameAllocator {
         let mut idx = 0;
         for e in mem.entries.iter().filter(|e| e.entry_type == USABLE_ENTRY) {
             let start = align_up(e.start_addr(), FRAME_SIZE);
-            let end   = align_down(e.end_addr(), FRAME_SIZE);
+            let end = align_down(e.end_addr(), FRAME_SIZE);
 
             let mut a = start;
             while a < end {
@@ -91,9 +90,7 @@ unsafe impl Sync for GlobalAlloc {}
 
 static FRAME_ALLOCATOR: Mutex<Option<GlobalAlloc>> = Mutex::new(None);
 
-pub unsafe fn init_global_frame_allocator(
-    memory_map: NonNull<MultibootMemory>,
-) {
+pub unsafe fn init_global_frame_allocator(memory_map: NonNull<MultibootMemory>) {
     let mut guard = FRAME_ALLOCATOR.lock();
     assert!(guard.is_none(), "frame allocator initialized twice");
     *guard = Some(GlobalAlloc(BootInfoFrameAllocator::init(memory_map)));
@@ -121,7 +118,9 @@ pub fn dealloc_2mib_frame(addr: usize) {
 
     const MAX_FRAMES: usize = 4096;
     if alloc.0.count < MAX_FRAMES {
-        unsafe { *alloc.0.frames.add(alloc.0.count) = addr; }
+        unsafe {
+            *alloc.0.frames.add(alloc.0.count) = addr;
+        }
         alloc.0.count += 1;
     } else {
         panic!("frame backing full on dealloc");
@@ -143,10 +142,9 @@ struct SmallFrameAllocator {
     blocks: [Option<SubFrameBlock>; MAX_SUBDIVIDED_FRAMES],
 }
 
-static SMALL_FRAME_ALLOCATOR: Mutex<SmallFrameAllocator> =
-    Mutex::new(SmallFrameAllocator {
-        blocks: [None; MAX_SUBDIVIDED_FRAMES],
-    });
+static SMALL_FRAME_ALLOCATOR: Mutex<SmallFrameAllocator> = Mutex::new(SmallFrameAllocator {
+    blocks: [None; MAX_SUBDIVIDED_FRAMES],
+});
 
 pub fn alloc_4k_frame() -> Option<usize> {
     let mut alloc = SMALL_FRAME_ALLOCATOR.lock();
@@ -160,9 +158,7 @@ pub fn alloc_4k_frame() -> Option<usize> {
                         let bit = (!*word).trailing_zeros() as usize;
                         *word |= 1 << bit;
                         block.used += 1;
-                        return Some(
-                            block.base + (word_idx * 64 + bit) * SMALL_FRAME_SIZE
-                        );
+                        return Some(block.base + (word_idx * 64 + bit) * SMALL_FRAME_SIZE);
                     }
                 }
             }
@@ -204,10 +200,7 @@ pub fn dealloc_4k_frame(addr: usize) {
                 let bit = index % 64;
 
                 let mask = 1u64 << bit;
-                assert!(
-                    block.bitmap[word] & mask != 0,
-                    "double free of 4 KiB frame"
-                );
+                assert!(block.bitmap[word] & mask != 0, "double free of 4 KiB frame");
 
                 block.bitmap[word] &= !mask;
                 block.used -= 1;

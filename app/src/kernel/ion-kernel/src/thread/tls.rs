@@ -62,7 +62,6 @@ pub unsafe fn alloc_thread_self(
     stack_base: *mut u8,
     stack_size: usize,
 ) -> (*mut ThreadSelf, TlsAllocation) {
-
     // --- TLS size (AUTHORITATIVE, from linker) ---
     let tls_size = (&__tls_end as *const u8 as usize) - (&__tls_start as *const u8 as usize);
 
@@ -111,7 +110,7 @@ pub unsafe fn alloc_thread_self(
             tls_size,
             stack_base,
             stack_size,
-            
+
             errno: 0,
             panicking: false,
             panic_hooks: Vec::new(),

@@ -1,18 +1,19 @@
 //! Handles Keyboard inputs
 //!
 //! You do not use this module at all directly.
-//! 
+//!
 //! This is handled once in the keyboard handler thread.
 
 use core::mem::MaybeUninit;
 
-use x86_64::{ instructions::port::Port, structures::idt::InterruptStackFrame};
+use crate::arch::interrupts::apic::handlers::notify;
 use crossbeam_queue::ArrayQueue;
 use spin::Mutex;
-use crate::arch::interrupts::apic::handlers::notify;
+use x86_64::{instructions::port::Port, structures::idt::InterruptStackFrame};
 
 use pc_keyboard::{
-    HandleControl, Keyboard, layouts::{self, Us104Key}
+    HandleControl, Keyboard,
+    layouts::{self, Us104Key},
 };
 
 lazy_static::lazy_static! {

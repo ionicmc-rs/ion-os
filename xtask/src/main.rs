@@ -272,7 +272,12 @@ fn main() -> Result<()> {
 
     match cli.command {
         Cmd::Build { release, test, .. } => build(&cli, test, release),
-        Cmd::Test { vm , no_build, ref arch, firmware } => {
+        Cmd::Test {
+            vm,
+            no_build,
+            ref arch,
+            firmware,
+        } => {
             if !SUPPORTED_ARCHS.contains(&arch.as_str()) {
                 bail!(
                     "unsupported architecture: {}\n\nThe supported architectures are: \n{}",
@@ -316,7 +321,11 @@ fn main() -> Result<()> {
             verbose,
         } => doctor(minimal, vm, verbose),
         Cmd::Fs { subcommand } => match subcommand {
-            FsCmd::Make { path, create, partition } => {
+            FsCmd::Make {
+                path,
+                create,
+                partition,
+            } => {
                 let p = PathBuf::from(path);
                 if create {
                     let f = fs::OpenOptions::new()
@@ -329,31 +338,63 @@ fn main() -> Result<()> {
                 }
                 fs_make(&p, partition)
             }
-            FsCmd::Tree { path, read_inode, partition } => {
+            FsCmd::Tree {
+                path,
+                read_inode,
+                partition,
+            } => {
                 let p = PathBuf::from(path);
                 fs_read(&p, partition, &read_inode)
             }
-            FsCmd::Port { path, dest, files, recursive, partition } => {
+            FsCmd::Port {
+                path,
+                dest,
+                files,
+                recursive,
+                partition,
+            } => {
                 let p = PathBuf::from(path);
                 fs_port(&p, partition, &dest, &files, recursive)
             }
-            FsCmd::Mkdir { path, dir, partition } => {
+            FsCmd::Mkdir {
+                path,
+                dir,
+                partition,
+            } => {
                 let p = PathBuf::from(path);
                 fs_mkdir(&p, partition, &dir)
             }
-            FsCmd::Touch { path, file, partition } => {
+            FsCmd::Touch {
+                path,
+                file,
+                partition,
+            } => {
                 let p = PathBuf::from(path);
                 fs_touch(&p, partition, &file)
             }
-            FsCmd::Rm { path, path_to_remove, partition } => {
+            FsCmd::Rm {
+                path,
+                path_to_remove,
+                partition,
+            } => {
                 let p = PathBuf::from(path);
                 fs_rm(&p, partition, &path_to_remove)
             }
-            FsCmd::Ls { path, dir, long, all, partition } => {
+            FsCmd::Ls {
+                path,
+                dir,
+                long,
+                all,
+                partition,
+            } => {
                 let p = PathBuf::from(path);
                 fs_ls(&p, partition, &dir, long, all)
             }
-            FsCmd::Cat { path, file, partition } => {
+            FsCmd::Cat {
+                path,
+                file,
+                partition,
+            } => {
                 let p = PathBuf::from(path);
                 fs_cat(&p, partition, &file)
             }
@@ -370,7 +411,11 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
         bail!("internal error: cannot build with both `test` and `release`");
     }
 
-    let (Cmd::Build { ref arch, .. } | Cmd::Run { ref arch, .. } | Cmd::Test { ref arch, .. }) = cli.command else { unreachable!() };
+    let (Cmd::Build { ref arch, .. } | Cmd::Run { ref arch, .. } | Cmd::Test { ref arch, .. }) =
+        cli.command
+    else {
+        unreachable!()
+    };
     let arch = arch.clone();
 
     let mut objects = Vec::<PathBuf>::new();
@@ -708,7 +753,8 @@ fn write_protective_mbr(file: &mut fs::File, total_lbas: u64) -> Result<()> {
     let entry = &mut mbr[446..462];
     entry[4] = 0xEE;
     entry[8..12].copy_from_slice(&1u32.to_le_bytes());
-    entry[12..16].copy_from_slice(&(total_lbas.saturating_sub(1).min(u32::MAX as u64) as u32).to_le_bytes());
+    entry[12..16]
+        .copy_from_slice(&(total_lbas.saturating_sub(1).min(u32::MAX as u64) as u32).to_le_bytes());
     mbr[510] = 0x55;
     mbr[511] = 0xAA;
 
@@ -719,7 +765,10 @@ fn write_protective_mbr(file: &mut fs::File, total_lbas: u64) -> Result<()> {
 
 fn copy_rootfs_into_disk(disk_image: &Path, root: GptPartition, rootfs: &Path) -> Result<()> {
     let mut src = fs::File::open(rootfs)?;
-    let mut dst = fs::OpenOptions::new().read(true).write(true).open(disk_image)?;
+    let mut dst = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(disk_image)?;
 
     dst.seek(SeekFrom::Start(root.byte_offset()))?;
     std::io::copy(&mut src, &mut dst)?;
@@ -727,7 +776,13 @@ fn copy_rootfs_into_disk(disk_image: &Path, root: GptPartition, rootfs: &Path) -
     Ok(())
 }
 
-fn populate_esp(disk_image: &Path, esp: GptPartition, elf: &Path, grub_cfg: &Path, efi_boot: &Path) -> Result<()> {
+fn populate_esp(
+    disk_image: &Path,
+    esp: GptPartition,
+    elf: &Path,
+    grub_cfg: &Path,
+    efi_boot: &Path,
+) -> Result<()> {
     let disk_binding = disk_image.display().to_string();
     let esp_offset_sectors = esp.first_lba.to_string();
     docker(&[
@@ -750,12 +805,29 @@ fn populate_esp(disk_image: &Path, esp: GptPartition, elf: &Path, grub_cfg: &Pat
     let efi_binding = efi_boot.display().to_string();
 
     docker(&["mcopy", "-i", &image_binding, &elf_binding, "::/kernel.elf"])?;
-    docker(&["mcopy", "-i", &image_binding, &cfg_binding, "::/boot/grub/grub.cfg"])?;
-    docker(&["mcopy", "-i", &image_binding, &efi_binding, "::/EFI/BOOT/BOOTX64.EFI"])?;
+    docker(&[
+        "mcopy",
+        "-i",
+        &image_binding,
+        &cfg_binding,
+        "::/boot/grub/grub.cfg",
+    ])?;
+    docker(&[
+        "mcopy",
+        "-i",
+        &image_binding,
+        &efi_binding,
+        "::/EFI/BOOT/BOOTX64.EFI",
+    ])?;
     Ok(())
 }
 
-fn install_bios_grub(disk_image: &Path, esp: GptPartition, grub_cfg: &Path, dist_root: &Path) -> Result<()> {
+fn install_bios_grub(
+    disk_image: &Path,
+    esp: GptPartition,
+    grub_cfg: &Path,
+    dist_root: &Path,
+) -> Result<()> {
     let _ = grub_cfg;
     let _ = dist_root;
     let disk_binding = format!("/root/env/{}", disk_image.display());
@@ -810,16 +882,16 @@ fn run_qemu(disk_image: &str, firmware: Firmware) -> Result<()> {
         "isa-debug-exit,iobase=0xf4,iosize=0x04",
         "-drive",
         &format!("file={disk_image},if=none,id=disk0,format=raw"),
-        "-device", 
+        "-device",
         "virtio-blk-pci,drive=disk0,disable-legacy=on",
         "-machine",
         "q35",
         "-d",
         "cpu_reset",
-        "-cpu", 
+        "-cpu",
         "qemu64,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+avx2,+xsave,+xsaveopt",
         "-smp",
-        "2"
+        "2",
     ]);
 
     if matches!(firmware, Firmware::Uefi) {
@@ -830,7 +902,9 @@ fn run_qemu(disk_image: &str, firmware: Firmware) -> Result<()> {
         ]
         .into_iter()
         .find(|path| Path::new(path).exists())
-        .ok_or_else(|| anyhow!("UEFI requested but no OVMF firmware image was found in a standard location"))?;
+        .ok_or_else(|| {
+            anyhow!("UEFI requested but no OVMF firmware image was found in a standard location")
+        })?;
 
         binding.args(["-bios", ovmf]);
     }
@@ -923,8 +997,6 @@ fn check_tools(minimal: bool, vm: Option<Vm>, verbose: bool) -> Result<()> {
         println!("[press a number to continue]");
         let mut buf = String::new();
         stdin().read_line(&mut buf)?;
-
-        
 
         #[allow(clippy::if_same_then_else)]
         match buf.as_str().trim() {
@@ -1107,18 +1179,15 @@ const DEFAULT_ROOTFS_SIZE_BYTES: u64 = 64 * 1024 * 1024;
 const IMAGE_ALIGNMENT_BYTES: u64 = 1024 * 1024;
 
 const BIOS_BOOT_TYPE_GUID: [u8; 16] = [
-    0x48, 0x61, 0x68, 0x21, 0x49, 0x64, 0x6F, 0x6E,
-    0x74, 0x4E, 0x65, 0x65, 0x64, 0x45, 0x46, 0x49,
+    0x48, 0x61, 0x68, 0x21, 0x49, 0x64, 0x6F, 0x6E, 0x74, 0x4E, 0x65, 0x65, 0x64, 0x45, 0x46, 0x49,
 ];
 
 const EFI_SYSTEM_TYPE_GUID: [u8; 16] = [
-    0x28, 0x73, 0x2A, 0xC1, 0x1F, 0xF8, 0xD2, 0x11,
-    0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B,
+    0x28, 0x73, 0x2A, 0xC1, 0x1F, 0xF8, 0xD2, 0x11, 0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B,
 ];
 
 const LINUX_FILESYSTEM_TYPE_GUID: [u8; 16] = [
-    0xAF, 0x3D, 0xC6, 0x0F, 0x83, 0x84, 0x72, 0x47,
-    0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4,
+    0xAF, 0x3D, 0xC6, 0x0F, 0x83, 0x84, 0x72, 0x47, 0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4,
 ];
 
 const BIOS_PARTITION_GUID: [u8; 16] = [0x11; 16];
@@ -1160,10 +1229,7 @@ struct OffsetFile {
 
 impl OffsetFile {
     fn open(path: &Path, write: bool, partition: Option<u32>) -> Result<Self> {
-        let inner = fs::OpenOptions::new()
-            .read(true)
-            .write(write)
-            .open(path)?;
+        let inner = fs::OpenOptions::new().read(true).write(write).open(path)?;
 
         let base_offset = resolve_ionfs_base_offset(path, partition)?;
         Ok(Self { inner, base_offset })
@@ -1256,10 +1322,12 @@ fn default_disk_layout(rootfs_bytes: u64) -> DiskLayout {
     let bios_first = first_usable_lba;
     let bios_last = bios_first + bios_blocks - 1;
 
-    let esp_first = align_up((bios_last + 1) * BLOCK_SIZE as u64, IMAGE_ALIGNMENT_BYTES) / BLOCK_SIZE as u64;
+    let esp_first =
+        align_up((bios_last + 1) * BLOCK_SIZE as u64, IMAGE_ALIGNMENT_BYTES) / BLOCK_SIZE as u64;
     let esp_last = esp_first + esp_blocks - 1;
 
-    let root_first = align_up((esp_last + 1) * BLOCK_SIZE as u64, IMAGE_ALIGNMENT_BYTES) / BLOCK_SIZE as u64;
+    let root_first =
+        align_up((esp_last + 1) * BLOCK_SIZE as u64, IMAGE_ALIGNMENT_BYTES) / BLOCK_SIZE as u64;
     let root_last = root_first + root_blocks - 1;
 
     let backup_entries_lba = root_last + 1;
@@ -1364,12 +1432,7 @@ fn resolve_ionfs_base_offset(path: &Path, partition: Option<u32>) -> Result<u64>
     bail!("failed to find an IonFS partition in {}", path.display())
 }
 
-
-fn write_block(
-    file: &mut OffsetFile,
-    block: u64,
-    buf: &[u8],
-) -> anyhow::Result<()> {
+fn write_block(file: &mut OffsetFile, block: u64, buf: &[u8]) -> anyhow::Result<()> {
     assert_eq!(buf.len(), BLOCK_SIZE);
     file.seek(SeekFrom::Start(block * BLOCK_SIZE as u64))?;
     file.write_all(buf)?;
@@ -1405,15 +1468,16 @@ fn write_alloc_block(file: &mut OffsetFile) -> Result<()> {
     let root_inode_bytes = [
         1, // used
         1, // Directory
-        /* data_size */   0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 512 bytes
-        /* data_offset */ 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // block 3 = byte offset 1536
-        /* size */        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0 bytes used initially
+        /* data_size */ 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 512 bytes
+        /* data_offset */ 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, // block 3 = byte offset 1536
+        /* size */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, // 0 bytes used initially
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // index 0
     ];
 
     // warn: change when inode size changes
-    inode_table_buf[4 .. 4 + 34]
-        .copy_from_slice(&root_inode_bytes);
+    inode_table_buf[4..4 + 34].copy_from_slice(&root_inode_bytes);
 
     // Write empty root directory data block
     let root_data = vec![0u8; BLOCK_SIZE];
@@ -1443,27 +1507,22 @@ fn fs_read(path: &std::path::Path, partition: Option<u32>, read_inodes: &[u64]) 
     file.seek(SeekFrom::Start(0))?;
     file.read_exact(&mut superblock)?;
 
-    let magic = u32::from_le_bytes([
-        superblock[0],
-        superblock[1],
-        superblock[2],
-        superblock[3],
-    ]);
+    let magic = u32::from_le_bytes([superblock[0], superblock[1], superblock[2], superblock[3]]);
 
     if magic != SUPER_MAGIC {
         anyhow::bail!("Invalid superblock magic: {:#x}", magic);
     }
 
-    let version = [
-        superblock[4],
-        superblock[5],
-        superblock[6],
-        superblock[7],
-    ];
+    let version = [superblock[4], superblock[5], superblock[6], superblock[7]];
 
     println!("[fs] Superblock:");
     println!("  Magic: {:#x}", magic);
-    println!("  Version: {}.{}.{}", version[0], version[1], u16::from_le_bytes([version[2], version[3]]));
+    println!(
+        "  Version: {}.{}.{}",
+        version[0],
+        version[1],
+        u16::from_le_bytes([version[2], version[3]])
+    );
 
     // Read allocation block
     let mut alloc_block = vec![0u8; BLOCK_SIZE];
@@ -1491,22 +1550,30 @@ fn fs_read(path: &std::path::Path, partition: Option<u32>, read_inodes: &[u64]) 
 
     // Read inode blocks and display structure
     let inodes_per_block = (BLOCK_SIZE - 4) / 34; // (512 - 4 header) / 34 bytes per inode
-    
+
     println!("\n[fs] Filesystem Structure:");
     let mut all_inodes: Vec<(u64, Inode)> = Vec::new();
 
     for block_idx in 0..inode_block_count {
         let block_num = u64::from_le_bytes(
-            alloc_block[24 + (block_idx as usize * 8)..24 + (block_idx as usize * 8) + 8].try_into()?
+            alloc_block[24 + (block_idx as usize * 8)..24 + (block_idx as usize * 8) + 8]
+                .try_into()?,
         );
-        
+
         let mut inode_block = vec![0u8; BLOCK_SIZE];
         file.seek(SeekFrom::Start(block_num * BLOCK_SIZE as u64))?;
         file.read_exact(&mut inode_block)?;
 
         let free_hint = u16::from_le_bytes([inode_block[0], inode_block[1]]);
         println!("  Inode Block {} (disk block {}):", block_idx, block_num);
-        println!("    Free Hint: {}", if free_hint == 0xFFFF { "FULL".to_string() } else { free_hint.to_string() });
+        println!(
+            "    Free Hint: {}",
+            if free_hint == 0xFFFF {
+                "FULL".to_string()
+            } else {
+                free_hint.to_string()
+            }
+        );
 
         // Display used inodes
         let mut inode_count = 0;
@@ -1515,26 +1582,28 @@ fn fs_read(path: &std::path::Path, partition: Option<u32>, read_inodes: &[u64]) 
             if offset + 34 > BLOCK_SIZE {
                 break;
             }
-            
+
             let used = inode_block[offset] != 0;
             if used {
-                let inode = parse_inode(&inode_block[offset..offset+34])?;
+                let inode = parse_inode(&inode_block[offset..offset + 34])?;
                 let global_inode_idx = block_idx * inodes_per_block as u64 + inode_slot as u64;
-                
+
                 let kind_str = match inode.kind {
                     0 => "File",
                     1 => "Dir",
                     _ => "Unknown",
                 };
-                
-                println!("    Inode {}: Type={}, Size={}/{} bytes, Offset={}", 
-                    global_inode_idx, kind_str, inode.size, inode.data_size, inode.data_offset);
-                
+
+                println!(
+                    "    Inode {}: Type={}, Size={}/{} bytes, Offset={}",
+                    global_inode_idx, kind_str, inode.size, inode.data_size, inode.data_offset
+                );
+
                 all_inodes.push((global_inode_idx, inode));
                 inode_count += 1;
             }
         }
-        
+
         if inode_count == 0 {
             println!("    (no inodes)");
         }
@@ -1550,7 +1619,8 @@ fn fs_read(path: &std::path::Path, partition: Option<u32>, read_inodes: &[u64]) 
         println!("\n[fs] File Contents:");
         for inode_idx in read_inodes {
             if let Some((_, inode)) = all_inodes.iter().find(|(idx, _)| *idx == *inode_idx) {
-                if inode.kind == 0 { // File
+                if inode.kind == 0 {
+                    // File
                     println!("  Inode {} ({} bytes):", inode_idx, inode.size);
                     match read_file_contents(&mut file, inode) {
                         std::result::Result::Ok(contents) => {
@@ -1558,9 +1628,11 @@ fn fs_read(path: &std::path::Path, partition: Option<u32>, read_inodes: &[u64]) 
                                 println!("    (empty)");
                             } else {
                                 let preview = if contents.len() > 256 {
-                                    format!("{}\n    ... ({} more bytes)", 
+                                    format!(
+                                        "{}\n    ... ({} more bytes)",
                                         String::from_utf8_lossy(&contents[..256]),
-                                        contents.len() - 256)
+                                        contents.len() - 256
+                                    )
                                 } else {
                                     String::from_utf8_lossy(&contents).to_string()
                                 };
@@ -1572,7 +1644,15 @@ fn fs_read(path: &std::path::Path, partition: Option<u32>, read_inodes: &[u64]) 
                         Err(e) => println!("    Error reading file: {}", e),
                     }
                 } else {
-                    println!("  Inode {} is not a file (type: {})", inode_idx, if inode.kind == 1 { "Directory" } else { "Unknown" });
+                    println!(
+                        "  Inode {} is not a file (type: {})",
+                        inode_idx,
+                        if inode.kind == 1 {
+                            "Directory"
+                        } else {
+                            "Unknown"
+                        }
+                    );
                 }
             } else {
                 println!("  Inode {} not found", inode_idx);
@@ -1602,19 +1682,25 @@ fn print_dir_tree(
                     let name_str = String::from_utf8_lossy(name);
                     let is_last = i == entry_count - 1;
                     let connector = if is_last { "└── " } else { "├── " };
-                    
-                    if let Some((_, target)) = all_inodes.iter().find(|(idx, _)| *idx == *target_inode) {
+
+                    if let Some((_, target)) =
+                        all_inodes.iter().find(|(idx, _)| *idx == *target_inode)
+                    {
                         // Show directory with / suffix, file as-is
                         let suffix = if target.kind == 1 { "/" } else { "" };
                         println!("{}{}{}{}", prefix, connector, name_str, suffix);
-                        
+
                         // Recursively print subdirectories
                         if target.kind == 1 {
-                            let next_prefix = format!("{}{}    ", prefix, if is_last { " " } else { "│" });
+                            let next_prefix =
+                                format!("{}{}    ", prefix, if is_last { " " } else { "│" });
                             print_dir_tree(file, *target_inode, &next_prefix, all_inodes)?;
                         }
                     } else {
-                        println!("{}{}{} (inode {} - broken link)", prefix, connector, name_str, target_inode);
+                        println!(
+                            "{}{}{} (inode {} - broken link)",
+                            prefix, connector, name_str, target_inode
+                        );
                     }
                 }
             }
@@ -1628,10 +1714,11 @@ fn print_dir_tree(
 #[allow(dead_code)]
 fn print_all_dirs(all_inodes: &[(u64, Inode)]) -> Result<()> {
     // Show all directories and their inode numbers
-    let dirs: Vec<_> = all_inodes.iter()
+    let dirs: Vec<_> = all_inodes
+        .iter()
         .filter(|(_, inode)| inode.kind == 1)
         .collect();
-    
+
     if dirs.is_empty() {
         println!("  (no directories)");
         return Ok(());
@@ -1640,7 +1727,7 @@ fn print_all_dirs(all_inodes: &[(u64, Inode)]) -> Result<()> {
     for (inode_idx, _) in dirs {
         println!("  Inode {}: [Directory]", inode_idx);
     }
-    
+
     Ok(())
 }
 
@@ -1658,7 +1745,7 @@ struct Inode {
     data_size: u64,
     data_offset: u64,
     size: u64,
-    index: u64
+    index: u64,
 }
 
 fn parse_inode(buf: &[u8]) -> Result<Inode> {
@@ -1714,7 +1801,13 @@ fn read_directory(file: &mut OffsetFile, inode: &Inode) -> Result<Vec<(Vec<u8>, 
     Ok(entries)
 }
 
-fn fs_ls(path: &std::path::Path, partition: Option<u32>, dir: &str, long: bool, _all: bool) -> Result<()> {
+fn fs_ls(
+    path: &std::path::Path,
+    partition: Option<u32>,
+    dir: &str,
+    long: bool,
+    _all: bool,
+) -> Result<()> {
     let mut file = OffsetFile::open(path, false, partition)?;
 
     // Read allocation block to get inode block location
@@ -1740,7 +1833,8 @@ fn fs_ls(path: &std::path::Path, partition: Option<u32>, dir: &str, long: bool, 
     };
 
     // Read the target directory inode
-    let target_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (target_inode_idx as usize * 34) as u64;
+    let target_offset =
+        inode_block_num * BLOCK_SIZE as u64 + 4 + (target_inode_idx as usize * 34) as u64;
     let mut target_inode_buf = vec![0u8; 34];
     file.seek(SeekFrom::Start(target_offset))?;
     file.read_exact(&mut target_inode_buf)?;
@@ -1767,20 +1861,20 @@ fn fs_ls(path: &std::path::Path, partition: Option<u32>, dir: &str, long: bool, 
             break;
         }
 
-        let name_len = u16::from_le_bytes([target_data[pos], target_data[pos+1]]) as usize;
+        let name_len = u16::from_le_bytes([target_data[pos], target_data[pos + 1]]) as usize;
         pos += 2;
 
         if pos + name_len + 8 > target_data.len() {
             break;
         }
 
-        let entry_name = String::from_utf8_lossy(&target_data[pos..pos+name_len]);
-        let entry_inode_idx = u64::from_le_bytes(
-            target_data[pos+name_len..pos+name_len+8].try_into()?
-        );
+        let entry_name = String::from_utf8_lossy(&target_data[pos..pos + name_len]);
+        let entry_inode_idx =
+            u64::from_le_bytes(target_data[pos + name_len..pos + name_len + 8].try_into()?);
 
         // Read the inode to get size and type
-        let entry_inode_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (entry_inode_idx as usize * 34) as u64;
+        let entry_inode_offset =
+            inode_block_num * BLOCK_SIZE as u64 + 4 + (entry_inode_idx as usize * 34) as u64;
         let mut entry_inode_buf = vec![0u8; 34];
         file.seek(SeekFrom::Start(entry_inode_offset))?;
         file.read_exact(&mut entry_inode_buf)?;
@@ -1789,7 +1883,10 @@ fn fs_ls(path: &std::path::Path, partition: Option<u32>, dir: &str, long: bool, 
         // Format output based on flags
         if long {
             let kind_char = if entry_inode.kind == 1 { "/" } else { "" };
-            println!("{:9}  {:5}  {}{}", entry_inode_idx, entry_inode.size, entry_name, kind_char);
+            println!(
+                "{:9}  {:5}  {}{}",
+                entry_inode_idx, entry_inode.size, entry_name, kind_char
+            );
         } else {
             let kind_marker = if entry_inode.kind == 1 { "/" } else { "" };
             print!("{}{} ", entry_name, kind_marker);
@@ -1827,7 +1924,8 @@ fn fs_cat(path: &std::path::Path, partition: Option<u32>, file_path: &str) -> Re
     let (parent_inode_idx, filename) = parse_path(&mut file, &all_inodes, file_path)?;
 
     // Read parent directory to find the file
-    let parent_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64;
+    let parent_offset =
+        inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64;
     let mut parent_inode_buf = vec![0u8; 34];
     file.seek(SeekFrom::Start(parent_offset))?;
     file.read_exact(&mut parent_inode_buf)?;
@@ -1847,17 +1945,16 @@ fn fs_cat(path: &std::path::Path, partition: Option<u32>, file_path: &str) -> Re
             break;
         }
 
-        let name_len = u16::from_le_bytes([parent_data[pos], parent_data[pos+1]]) as usize;
+        let name_len = u16::from_le_bytes([parent_data[pos], parent_data[pos + 1]]) as usize;
         pos += 2;
 
         if pos + name_len + 8 > parent_data.len() {
             break;
         }
 
-        let entry_name = String::from_utf8_lossy(&parent_data[pos..pos+name_len]);
-        let entry_inode_idx = u64::from_le_bytes(
-            parent_data[pos+name_len..pos+name_len+8].try_into()?
-        );
+        let entry_name = String::from_utf8_lossy(&parent_data[pos..pos + name_len]);
+        let entry_inode_idx =
+            u64::from_le_bytes(parent_data[pos + name_len..pos + name_len + 8].try_into()?);
 
         if entry_name.as_ref() == filename {
             file_inode_idx = Some(entry_inode_idx);
@@ -1867,10 +1964,12 @@ fn fs_cat(path: &std::path::Path, partition: Option<u32>, file_path: &str) -> Re
         pos += name_len + 8;
     }
 
-    let target_inode_idx = file_inode_idx.ok_or_else(|| anyhow::anyhow!("File not found: @/{}", file_path))?;
+    let target_inode_idx =
+        file_inode_idx.ok_or_else(|| anyhow::anyhow!("File not found: @/{}", file_path))?;
 
     // Read the target file inode
-    let target_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (target_inode_idx as usize * 34) as u64;
+    let target_offset =
+        inode_block_num * BLOCK_SIZE as u64 + 4 + (target_inode_idx as usize * 34) as u64;
     let mut target_inode_buf = vec![0u8; 34];
     file.seek(SeekFrom::Start(target_offset))?;
     file.read_exact(&mut target_inode_buf)?;
@@ -1900,7 +1999,13 @@ fn fs_cat(path: &std::path::Path, partition: Option<u32>, file_path: &str) -> Re
     std::result::Result::Ok(())
 }
 
-fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[PathBuf], recursive: bool) -> Result<()> {
+fn fs_port(
+    path: &std::path::Path,
+    partition: Option<u32>,
+    dest: &str,
+    files: &[PathBuf],
+    recursive: bool,
+) -> Result<()> {
     if files.is_empty() {
         println!("[fs] No files specified to port");
         return Ok(());
@@ -1915,7 +2020,7 @@ fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[
 
     let mut next_free = u64::from_le_bytes(alloc_block[8..16].try_into()?);
     let inode_block_count = u64::from_le_bytes(alloc_block[16..24].try_into()?);
-    
+
     if inode_block_count == 0 {
         anyhow::bail!("No inode blocks found. Initialize filesystem first.");
     }
@@ -1928,12 +2033,17 @@ fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[
     let dest = if dest.is_empty() { "/" } else { dest };
 
     if !recursive && dest != "/" {
-        anyhow::bail!("Non-root destination requires --recursive flag\n\nUsage:\n  cargo xtask fs port --recursive --path dist/disk.img [FILES...]\n\nThe --recursive flag is required when:\n  • Porting to a non-root destination (e.g., @/docs)\n  • Porting directories (automatic structure preservation)\n  • Porting multiple files from different locations");
+        anyhow::bail!(
+            "Non-root destination requires --recursive flag\n\nUsage:\n  cargo xtask fs port --recursive --path dist/disk.img [FILES...]\n\nThe --recursive flag is required when:\n  • Porting to a non-root destination (e.g., @/docs)\n  • Porting directories (automatic structure preservation)\n  • Porting multiple files from different locations"
+        );
     }
 
-    println!("[fs] Porting {} file(s) to {} {}", 
-        files.len(), dest, 
-        if recursive { "(recursive)" } else { "" });
+    println!(
+        "[fs] Porting {} file(s) to {} {}",
+        files.len(),
+        dest,
+        if recursive { "(recursive)" } else { "" }
+    );
 
     // Collect all files to port (recursively if needed)
     let mut items_to_process: Vec<(PathBuf, String)> = Vec::new();
@@ -1945,7 +2055,10 @@ fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[
 
         if src_path.is_dir() {
             if !recursive {
-                println!("[fs] warn: Skipping directory '{}'\n         Use --recursive flag to recursively port directories while maintaining structure", src_path.display());
+                println!(
+                    "[fs] warn: Skipping directory '{}'\n         Use --recursive flag to recursively port directories while maintaining structure",
+                    src_path.display()
+                );
                 continue;
             }
             // Recursively add all files from this directory
@@ -1977,7 +2090,8 @@ fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[
     dir_inodes.insert("/".to_string(), 0); // Root is inode 0
 
     // Track directory data to write later
-    let mut dir_data_to_write: std::collections::HashMap<u64, Vec<u8>> = std::collections::HashMap::new();
+    let mut dir_data_to_write: std::collections::HashMap<u64, Vec<u8>> =
+        std::collections::HashMap::new();
     dir_data_to_write.insert(0, Vec::new()); // Root data
 
     // First pass: create all directories and collect their entry data
@@ -2017,7 +2131,8 @@ fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[
                 dir_inode[26..34].copy_from_slice(&dir_inode_idx.to_le_bytes()); // index field
 
                 // Write directory inode
-                let inode_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (dir_inode_idx as usize * 34) as u64;
+                let inode_offset =
+                    inode_block_num * BLOCK_SIZE as u64 + 4 + (dir_inode_idx as usize * 34) as u64;
                 file.seek(SeekFrom::Start(inode_offset))?;
                 file.write_all(&dir_inode)?;
 
@@ -2026,7 +2141,10 @@ fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[
                 file.seek(SeekFrom::Start(data_offset))?;
                 file.write_all(&empty_dir)?;
 
-                println!("[fs] Created directory @/{} -> inode {}", dir_path, dir_inode_idx);
+                println!(
+                    "[fs] Created directory @/{} -> inode {}",
+                    dir_path, dir_inode_idx
+                );
                 dir_inodes.insert(dir_path.clone(), dir_inode_idx);
                 dir_data_to_write.insert(dir_inode_idx, Vec::new());
             }
@@ -2062,7 +2180,7 @@ fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[
     for (src_path, rel_path) in items_to_process {
         let metadata = fs::metadata(&src_path)?;
         let file_size = metadata.len();
-        
+
         // Read file content
         let mut file_content = Vec::new();
         let mut src_file = fs::File::open(&src_path)?;
@@ -2096,7 +2214,8 @@ fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[
         file_inode[26..34].copy_from_slice(&file_inode_idx.to_le_bytes());
 
         // Write inode
-        let inode_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (file_inode_idx as usize * 34) as u64;
+        let inode_offset =
+            inode_block_num * BLOCK_SIZE as u64 + 4 + (file_inode_idx as usize * 34) as u64;
         file.seek(SeekFrom::Start(inode_offset))?;
         file.write_all(&file_inode)?;
 
@@ -2105,15 +2224,19 @@ fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[
             std::path::Path::new(&rel_path)
                 .parent()
                 .map(|p| p.to_string_lossy().to_string())
-                .map(|p| if p.is_empty() || p == "." { "/".to_string() } else { p })
+                .map(|p| {
+                    if p.is_empty() || p == "." {
+                        "/".to_string()
+                    } else {
+                        p
+                    }
+                })
                 .unwrap_or_else(|| "/".to_string())
         } else {
             "/".to_string()
         };
 
-        let parent_inode_idx = dir_inodes.get(&parent_dir)
-            .copied()
-            .unwrap_or(0);
+        let parent_inode_idx = dir_inodes.get(&parent_dir).copied().unwrap_or(0);
 
         let filename = std::path::Path::new(&rel_path)
             .file_name()
@@ -2130,15 +2253,24 @@ fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[
             parent_data.extend_from_slice(&entry);
         }
 
-        let path_display = if recursive { format!("@/{}", rel_path) } else { format!("@/{}", filename) };
-        println!("[fs] Port: {} ({} bytes) -> inode {}", path_display, file_size, file_inode_idx);
+        let path_display = if recursive {
+            format!("@/{}", rel_path)
+        } else {
+            format!("@/{}", filename)
+        };
+        println!(
+            "[fs] Port: {} ({} bytes) -> inode {}",
+            path_display, file_size, file_inode_idx
+        );
     }
 
     // Write all directory data and update inodes
     for (dir_inode_idx, dir_data) in dir_data_to_write {
         // Read directory inode
         let mut dir_inode_buf = vec![0u8; 34];
-        file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (dir_inode_idx as usize * 34) as u64))?;
+        file.seek(SeekFrom::Start(
+            inode_block_num * BLOCK_SIZE as u64 + 4 + (dir_inode_idx as usize * 34) as u64,
+        ))?;
         file.read_exact(&mut dir_inode_buf)?;
         let mut dir_inode = parse_inode(&dir_inode_buf)?;
 
@@ -2156,7 +2288,9 @@ fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[
         dir_bytes[18..26].copy_from_slice(&dir_inode.size.to_le_bytes());
         dir_bytes[26..34].copy_from_slice(&dir_inode_idx.to_le_bytes());
 
-        file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (dir_inode_idx as usize * 34) as u64))?;
+        file.seek(SeekFrom::Start(
+            inode_block_num * BLOCK_SIZE as u64 + 4 + (dir_inode_idx as usize * 34) as u64,
+        ))?;
         file.write_all(&dir_bytes)?;
     }
 
@@ -2175,13 +2309,22 @@ fn fs_port(path: &std::path::Path, partition: Option<u32>, dest: &str, files: &[
     Ok(())
 }
 
-fn collect_files_recursive(dir: &std::path::Path, prefix: &str, result: &mut Vec<(PathBuf, String)>) -> Result<()> {
+fn collect_files_recursive(
+    dir: &std::path::Path,
+    prefix: &str,
+    result: &mut Vec<(PathBuf, String)>,
+) -> Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         let filename = entry.file_name();
-        let rel_name = format!("{}{}", 
-            if prefix.is_empty() { String::new() } else { format!("{}/", prefix) },
+        let rel_name = format!(
+            "{}{}",
+            if prefix.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", prefix)
+            },
             filename.to_string_lossy()
         );
 
@@ -2196,7 +2339,10 @@ fn collect_files_recursive(dir: &std::path::Path, prefix: &str, result: &mut Vec
 
 /// Normalize a path for output (remove @ prefix, ensure leading /)
 fn normalize_path_for_output(path: &str) -> String {
-    let path = path.trim_start_matches('@').trim_start_matches('/').trim_end_matches('/');
+    let path = path
+        .trim_start_matches('@')
+        .trim_start_matches('/')
+        .trim_end_matches('/');
     if path.is_empty() {
         "/".to_string()
     } else {
@@ -2218,10 +2364,10 @@ fn read_all_inodes(file: &mut OffsetFile, inode_block_num: u64) -> Result<Vec<(u
         if offset + 34 > BLOCK_SIZE {
             break;
         }
-        
+
         let used = inode_block[offset] != 0;
         if used {
-            let inode = parse_inode(&inode_block[offset..offset+34])?;
+            let inode = parse_inode(&inode_block[offset..offset + 34])?;
             all_inodes.push((inode_slot as u64, inode));
         }
     }
@@ -2231,13 +2377,12 @@ fn read_all_inodes(file: &mut OffsetFile, inode_block_num: u64) -> Result<Vec<(u
 
 /// Navigate to a directory by path and return its inode index
 /// Returns the inode index of the directory at the given path
-fn navigate_to_dir(
-    file: &mut OffsetFile,
-    all_inodes: &[(u64, Inode)],
-    path: &str,
-) -> Result<u64> {
-    let path = path.trim_start_matches('@').trim_start_matches('/').trim_end_matches('/');
-    
+fn navigate_to_dir(file: &mut OffsetFile, all_inodes: &[(u64, Inode)], path: &str) -> Result<u64> {
+    let path = path
+        .trim_start_matches('@')
+        .trim_start_matches('/')
+        .trim_end_matches('/');
+
     if path.is_empty() || path == "." {
         return Ok(0); // Root
     }
@@ -2247,7 +2392,9 @@ fn navigate_to_dir(
 
     for part in parts {
         // Read current directory
-        if let Some((_, current_inode)) = all_inodes.iter().find(|(idx, _)| *idx == current_inode_idx) {
+        if let Some((_, current_inode)) =
+            all_inodes.iter().find(|(idx, _)| *idx == current_inode_idx)
+        {
             match read_directory(file, current_inode) {
                 std::result::Result::Ok(entries) => {
                     let mut found = false;
@@ -2261,7 +2408,7 @@ fn navigate_to_dir(
                     if !found {
                         anyhow::bail!("Directory not found: @/{}", path);
                     }
-                },
+                }
                 std::result::Result::Err(_) => {
                     anyhow::bail!("Cannot read directory: @/{}", path);
                 }
@@ -2280,20 +2427,25 @@ fn parse_path(
     all_inodes: &[(u64, Inode)],
     path: &str,
 ) -> Result<(u64, String)> {
-    let path = path.trim_start_matches('@').trim_start_matches('/').trim_end_matches('/');
-    
+    let path = path
+        .trim_start_matches('@')
+        .trim_start_matches('/')
+        .trim_end_matches('/');
+
     if path.is_empty() {
-        anyhow::bail!("Invalid path: expected a file or directory name (e.g., 'docs' or 'docs/file.txt'), got empty path");
+        anyhow::bail!(
+            "Invalid path: expected a file or directory name (e.g., 'docs' or 'docs/file.txt'), got empty path"
+        );
     }
 
     let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-    
+
     if parts.is_empty() {
         anyhow::bail!("Invalid path");
     }
 
     let filename = parts[parts.len() - 1].to_string();
-    
+
     if parts.len() == 1 {
         // Direct child of root
         return Ok((0, filename));
@@ -2302,7 +2454,7 @@ fn parse_path(
     // Navigate to parent directory
     let parent_path = parts[..parts.len() - 1].join("/");
     let parent_inode = navigate_to_dir(file, all_inodes, &parent_path)?;
-    
+
     Ok((parent_inode, filename))
 }
 
@@ -2316,7 +2468,7 @@ fn fs_mkdir(path: &std::path::Path, partition: Option<u32>, dir_path: &str) -> R
 
     let mut next_free = u64::from_le_bytes(alloc_block[8..16].try_into()?);
     let inode_block_count = u64::from_le_bytes(alloc_block[16..24].try_into()?);
-    
+
     if inode_block_count == 0 {
         anyhow::bail!("No inode blocks found. Initialize filesystem first.");
     }
@@ -2342,13 +2494,14 @@ fn fs_mkdir(path: &std::path::Path, partition: Option<u32>, dir_path: &str) -> R
 
     // Check if directory already exists
     if let Some((_, parent_inode)) = all_inodes.iter().find(|(idx, _)| *idx == parent_inode_idx)
-        && let std::result::Result::Ok(entries) = read_directory(&mut file, parent_inode) {
-            for (entry_name, _) in entries {
-                if entry_name == dir_name.as_bytes() {
-                    anyhow::bail!("Directory already exists: @/{}", dir_path);
-                }
+        && let std::result::Result::Ok(entries) = read_directory(&mut file, parent_inode)
+    {
+        for (entry_name, _) in entries {
+            if entry_name == dir_name.as_bytes() {
+                anyhow::bail!("Directory already exists: @/{}", dir_path);
             }
         }
+    }
 
     let new_inode_idx = free_hint as u64;
 
@@ -2376,7 +2529,11 @@ fn fs_mkdir(path: &std::path::Path, partition: Option<u32>, dir_path: &str) -> R
     file.write_all(&empty_dir)?;
 
     // Update parent directory
-    if let Some((_, mut parent_inode)) = all_inodes.iter().find(|(idx, _)| *idx == parent_inode_idx).map(|(a, b)| (a, b.clone())) {
+    if let Some((_, mut parent_inode)) = all_inodes
+        .iter()
+        .find(|(idx, _)| *idx == parent_inode_idx)
+        .map(|(a, b)| (a, b.clone()))
+    {
         let mut parent_data = vec![0u8; parent_inode.size as usize];
         if parent_inode.size > 0 {
             file.seek(SeekFrom::Start(parent_inode.data_offset))?;
@@ -2404,7 +2561,9 @@ fn fs_mkdir(path: &std::path::Path, partition: Option<u32>, dir_path: &str) -> R
         parent_bytes[18..26].copy_from_slice(&parent_inode.size.to_le_bytes());
         parent_bytes[26..34].copy_from_slice(&parent_inode.index.to_le_bytes());
 
-        file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64))?;
+        file.seek(SeekFrom::Start(
+            inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64,
+        ))?;
         file.write_all(&parent_bytes)?;
     }
 
@@ -2420,7 +2579,11 @@ fn fs_mkdir(path: &std::path::Path, partition: Option<u32>, dir_path: &str) -> R
     file.write_all(&alloc_block)?;
 
     file.sync_all()?;
-    println!("[fs] Created directory: @{} (inode {})", normalize_path_for_output(dir_path), new_inode_idx);
+    println!(
+        "[fs] Created directory: @{} (inode {})",
+        normalize_path_for_output(dir_path),
+        new_inode_idx
+    );
     Ok(())
 }
 
@@ -2434,7 +2597,7 @@ fn fs_touch(path: &std::path::Path, partition: Option<u32>, file_path: &str) -> 
 
     let mut next_free = u64::from_le_bytes(alloc_block[8..16].try_into()?);
     let inode_block_count = u64::from_le_bytes(alloc_block[16..24].try_into()?);
-    
+
     if inode_block_count == 0 {
         anyhow::bail!("No inode blocks found. Initialize filesystem first.");
     }
@@ -2460,13 +2623,14 @@ fn fs_touch(path: &std::path::Path, partition: Option<u32>, file_path: &str) -> 
 
     // Check if file already exists
     if let Some((_, parent_inode)) = all_inodes.iter().find(|(idx, _)| *idx == parent_inode_idx)
-        && let std::result::Result::Ok(entries) = read_directory(&mut file, parent_inode) {
-            for (entry_name, _) in entries {
-                if entry_name == filename.as_bytes() {
-                    anyhow::bail!("File already exists: @/{}", file_path);
-                }
+        && let std::result::Result::Ok(entries) = read_directory(&mut file, parent_inode)
+    {
+        for (entry_name, _) in entries {
+            if entry_name == filename.as_bytes() {
+                anyhow::bail!("File already exists: @/{}", file_path);
             }
         }
+    }
 
     let new_inode_idx = free_hint as u64;
 
@@ -2494,7 +2658,11 @@ fn fs_touch(path: &std::path::Path, partition: Option<u32>, file_path: &str) -> 
     file.write_all(&empty_file)?;
 
     // Update parent directory
-    if let Some((_, mut parent_inode)) = all_inodes.iter().find(|(idx, _)| *idx == parent_inode_idx).map(|(a, b)| (a, b.clone())) {
+    if let Some((_, mut parent_inode)) = all_inodes
+        .iter()
+        .find(|(idx, _)| *idx == parent_inode_idx)
+        .map(|(a, b)| (a, b.clone()))
+    {
         let mut parent_data = vec![0u8; parent_inode.size as usize];
         if parent_inode.size > 0 {
             file.seek(SeekFrom::Start(parent_inode.data_offset))?;
@@ -2522,7 +2690,9 @@ fn fs_touch(path: &std::path::Path, partition: Option<u32>, file_path: &str) -> 
         parent_bytes[18..26].copy_from_slice(&parent_inode.size.to_le_bytes());
         parent_bytes[26..34].copy_from_slice(&parent_inode.index.to_le_bytes());
 
-        file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64))?;
+        file.seek(SeekFrom::Start(
+            inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64,
+        ))?;
         file.write_all(&parent_bytes)?;
     }
 
@@ -2538,7 +2708,11 @@ fn fs_touch(path: &std::path::Path, partition: Option<u32>, file_path: &str) -> 
     file.write_all(&alloc_block)?;
 
     file.sync_all()?;
-    println!("[fs] Created file: @{} (inode {})", normalize_path_for_output(file_path), new_inode_idx);
+    println!(
+        "[fs] Created file: @{} (inode {})",
+        normalize_path_for_output(file_path),
+        new_inode_idx
+    );
     Ok(())
 }
 
@@ -2566,7 +2740,9 @@ fn fs_rm(path: &std::path::Path, partition: Option<u32>, path_to_remove: &str) -
 
     // Read parent inode
     let mut parent_inode_buf = vec![0u8; 34];
-    file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64))?;
+    file.seek(SeekFrom::Start(
+        inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64,
+    ))?;
     file.read_exact(&mut parent_inode_buf)?;
     let parent_inode = parse_inode(&parent_inode_buf)?;
 
@@ -2588,17 +2764,16 @@ fn fs_rm(path: &std::path::Path, partition: Option<u32>, path_to_remove: &str) -
         }
 
         removal_start = pos;
-        let name_len = u16::from_le_bytes([parent_data[pos], parent_data[pos+1]]) as usize;
+        let name_len = u16::from_le_bytes([parent_data[pos], parent_data[pos + 1]]) as usize;
         pos += 2;
 
         if pos + name_len + 8 > parent_data.len() {
             break;
         }
 
-        let entry_name = String::from_utf8_lossy(&parent_data[pos..pos+name_len]);
-        let entry_inode_idx = u64::from_le_bytes(
-            parent_data[pos+name_len..pos+name_len+8].try_into()?
-        );
+        let entry_name = String::from_utf8_lossy(&parent_data[pos..pos + name_len]);
+        let entry_inode_idx =
+            u64::from_le_bytes(parent_data[pos + name_len..pos + name_len + 8].try_into()?);
 
         removal_end = pos + name_len + 8;
 
@@ -2631,12 +2806,15 @@ fn fs_rm(path: &std::path::Path, partition: Option<u32>, path_to_remove: &str) -
     // Update parent inode size
     let mut new_parent_inode = parent_inode_buf.clone();
     new_parent_inode[18..26].copy_from_slice(&(new_parent_data.len() as u64).to_le_bytes());
-    file.seek(SeekFrom::Start(inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64))?;
+    file.seek(SeekFrom::Start(
+        inode_block_num * BLOCK_SIZE as u64 + 4 + (parent_inode_idx as usize * 34) as u64,
+    ))?;
     file.write_all(&new_parent_inode)?;
 
     // Mark target inode as unused
     let target_inode_slot = (target_inode_idx % inodes_per_block as u64) as usize;
-    let target_inode_offset = inode_block_num * BLOCK_SIZE as u64 + 4 + (target_inode_slot * 34) as u64;
+    let target_inode_offset =
+        inode_block_num * BLOCK_SIZE as u64 + 4 + (target_inode_slot * 34) as u64;
     let mut target_inode = vec![0u8; 34];
     file.seek(SeekFrom::Start(target_inode_offset))?;
     file.read_exact(&mut target_inode)?;
@@ -2656,11 +2834,14 @@ fn fs_rm(path: &std::path::Path, partition: Option<u32>, path_to_remove: &str) -
         file.write_all(&inode_block_buf[0..4])?;
     }
 
-
     file.seek(SeekFrom::Start(target_inode_offset))?;
     file.write_all(&target_inode)?;
 
     file.sync_all()?;
-    println!("[fs] Removed @{} (inode {})", normalize_path_for_output(path_to_remove), target_inode_idx);
+    println!(
+        "[fs] Removed @{} (inode {})",
+        normalize_path_for_output(path_to_remove),
+        target_inode_idx
+    );
     Ok(())
 }

@@ -2,16 +2,16 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use core::ptr::{self, read_volatile, write_volatile};
-use core::sync::atomic::{compiler_fence, Ordering};
+use core::sync::atomic::{Ordering, compiler_fence};
 
 use alloc::boxed::Box;
 use linked_list_allocator::{align_up, align_up_size};
 
+use crate::address_space::{kernel_address_space, map_2mib_into_space, map_4k_into_space};
 use crate::arch::defs::PAGE_2MIB;
 use crate::arch::frame_allocator::alloc_2mib_frame;
 use crate::arch::mmu::{PageTable, PageTableFlags, map_2mib, virt_to_phys};
 use crate::arch::{PhysAddr, VirtAddr, defs};
-use crate::address_space::{kernel_address_space, map_2mib_into_space, map_4k_into_space};
 use crate::c_lib::libc::{self, OsError};
 use crate::io::{Error, ErrorKind, Result};
 use crate::lib_alloc::user::USER_DATA_BASE;
@@ -64,7 +64,6 @@ fn pci_write_u16(bus: u8, slot: u8, func: u8, off: u8, val: u16) {
     }
 }
 
-
 /* ========================== VirtIO =========================== */
 
 const VIRTIO_VENDOR: u16 = 0x1AF4;
@@ -72,7 +71,7 @@ const VIRTIO_BLK_DEVICE: u16 = 0x1042;
 
 const VIRTIO_PCI_CAP_COMMON: u8 = 1;
 const VIRTIO_PCI_CAP_NOTIFY: u8 = 2;
-const VIRTIO_PCI_CAP_ISR: u8    = 3;
+const VIRTIO_PCI_CAP_ISR: u8 = 3;
 const VIRTIO_PCI_CAP_DEVICE: u8 = 4;
 const VIRTIO_PCI_CAP_PCI_CFG: u8 = 5;
 
@@ -83,10 +82,10 @@ const VIRTIO_BLK_T_IN: u32 = 0;
 const VIRTIO_BLK_T_OUT: u32 = 1;
 
 const VIRTIO_STATUS_ACKNOWLEDGE: u8 = 1;
-const VIRTIO_STATUS_DRIVER: u8      = 2;
-const VIRTIO_STATUS_DRIVER_OK: u8   = 4;
+const VIRTIO_STATUS_DRIVER: u8 = 2;
+const VIRTIO_STATUS_DRIVER_OK: u8 = 4;
 const VIRTIO_STATUS_FEATURES_OK: u8 = 8;
-const VIRTIO_STATUS_FAILED: u8      = 128;
+const VIRTIO_STATUS_FAILED: u8 = 128;
 
 const VIRTIO_F_VERSION_1: u32 = 32;
 
@@ -132,7 +131,7 @@ struct VirtqAvail {
 
     // TEMPORARY(debug-hack): this should be changed to dynamically size based on
     // queue length
-    ring: [u16; 128], 
+    ring: [u16; 128],
 }
 
 #[repr(C)]
@@ -167,10 +166,10 @@ pub struct VirtioBlk {
     // DMA Scratchpad
     dma_virt: *mut u8,
     dma_phys: u64,
-    
+
     // NEW: Slot tracking
     // true = in use, false = free
-    slot_in_use: [bool; MAX_CONCURRENT], 
+    slot_in_use: [bool; MAX_CONCURRENT],
 }
 
 /* ========================= PROBE ============================== */
@@ -186,7 +185,9 @@ pub fn probe() -> Option<VirtioBlk> {
                 continue;
             }
             serial_println!("virtio-blk found at {}:{}:{}", bus, slot, 0);
-            unsafe { return Some(init(bus, slot)); }
+            unsafe {
+                return Some(init(bus, slot));
+            }
         }
     }
     None
@@ -210,17 +211,17 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
 
     while cap != 0 {
         let cfg_type = pci_read_u8(bus, slot, 0, cap + 3);
-        let bar_idx  = pci_read_u8(bus, slot, 0, cap + 4);
-        let offset   = pci_read_u32(bus, slot, 0, cap + 8);
+        let bar_idx = pci_read_u8(bus, slot, 0, cap + 4);
+        let offset = pci_read_u32(bus, slot, 0, cap + 8);
         #[allow(unused)]
-        let length   = pci_read_u32(bus, slot, 0, cap + 12); // Useful for debug
-        let next     = pci_read_u8(bus, slot, 0, cap + 1);
+        let length = pci_read_u32(bus, slot, 0, cap + 12); // Useful for debug
+        let next = pci_read_u8(bus, slot, 0, cap + 1);
 
         if bar_idx < 6 {
             // Read 32-bit BAR address
             let bar_reg = 0x10 + (bar_idx as u8 * 4);
             let bar_low = pci_read_u32(bus, slot, 0, bar_reg);
-            
+
             let is_64bit = (bar_low & 0x4) != 0;
             let is_io = (bar_low & 0x1) != 0;
 
@@ -280,7 +281,7 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
     // 2. Set ACKNOWLEDGE and DRIVER
     write_volatile(
         &mut (*common).device_status,
-        read_volatile(&(*common).device_status) | VIRTIO_STATUS_ACKNOWLEDGE | VIRTIO_STATUS_DRIVER
+        read_volatile(&(*common).device_status) | VIRTIO_STATUS_ACKNOWLEDGE | VIRTIO_STATUS_DRIVER,
     );
 
     // 3. Negotiate Features
@@ -289,7 +290,7 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
     // 4. Setup Queues
     write_volatile(&mut (*common).queue_select, 0); // Select Queue 0
     let q_size = read_volatile(&(*common).queue_size);
-    
+
     if q_size == 0 {
         libc::set_os_error(OsError::HardwareFail);
         panic!("virtio: queue size is 0 (mapping issue or device error)");
@@ -309,10 +310,10 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
     // Spec requires alignment. 2MiB frame is definitely aligned enough.
     let size_desc = core::mem::size_of::<VirtqDesc>() * q_len as usize;
     let size_avail = core::mem::size_of::<VirtqAvail>() + 2 * q_len as usize; // +2 for padding if needed, but the struct has padding
-    
+
     let desc_ptr = queue_virt as *mut VirtqDesc;
     let avail_ptr = queue_virt.add(size_desc) as *mut VirtqAvail;
-    
+
     // Used ring must be aligned to 4 bytes
     let used_off = align_up((size_desc + size_avail) as *mut u8, 4096) as usize;
     let used_ptr = queue_virt.add(used_off) as *mut VirtqUsed;
@@ -335,7 +336,7 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
     // 6. Set DRIVER_OK
     write_volatile(
         &mut (*common).device_status,
-        read_volatile(&(*common).device_status) | VIRTIO_STATUS_DRIVER_OK
+        read_volatile(&(*common).device_status) | VIRTIO_STATUS_DRIVER_OK,
     );
     compiler_fence(Ordering::SeqCst);
 
@@ -344,15 +345,15 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
         panic!("virtio: device set FAILED status");
     }
 
-    const SCRATCH_REGION: usize = USER_DATA_BASE - PAGE_2MIB; 
+    const SCRATCH_REGION: usize = USER_DATA_BASE - PAGE_2MIB;
 
     let scratch_phys = alloc_2mib_frame();
 
     map_2mib_into_space(
-        &mut kernel_address_space(), 
-        VirtAddr::new(SCRATCH_REGION), 
-        PhysAddr::new(scratch_phys), 
-        PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE
+        &mut kernel_address_space(),
+        VirtAddr::new(SCRATCH_REGION),
+        PhysAddr::new(scratch_phys),
+        PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE,
     );
 
     VirtioBlk {
@@ -368,7 +369,7 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
         dma_phys: scratch_phys as u64,
         dma_virt: SCRATCH_REGION as *mut u8,
 
-        slot_in_use: [false; MAX_CONCURRENT]
+        slot_in_use: [false; MAX_CONCURRENT],
     }
 }
 
@@ -390,14 +391,20 @@ unsafe fn negotiate_features(common: *mut VirtioPciCommonCfg) {
     // Write Driver Features
     write_volatile(&mut (*common).driver_feature_select, 0);
     write_volatile(&mut (*common).driver_feature, driver_features as u32);
-    
+
     write_volatile(&mut (*common).driver_feature_select, 1);
-    write_volatile(&mut (*common).driver_feature, (driver_features >> 32) as u32);
+    write_volatile(
+        &mut (*common).driver_feature,
+        (driver_features >> 32) as u32,
+    );
 
     // Set FEATURES_OK
     let status = read_volatile(&(*common).device_status);
-    write_volatile(&mut (*common).device_status, status | VIRTIO_STATUS_FEATURES_OK);
-    
+    write_volatile(
+        &mut (*common).device_status,
+        status | VIRTIO_STATUS_FEATURES_OK,
+    );
+
     // Re-read status to ensure device accepted it
     compiler_fence(Ordering::SeqCst);
     let new_status = read_volatile(&(*common).device_status);
@@ -407,7 +414,7 @@ unsafe fn negotiate_features(common: *mut VirtioPciCommonCfg) {
 }
 
 use crate::disk::{AsyncBlockDevice, register_disk};
-use crate::lib_alloc::{heap_end};
+use crate::lib_alloc::heap_end;
 use crate::mmio::map_mmio_frame;
 use crate::serial_println;
 
@@ -419,7 +426,6 @@ pub fn probe_and_register() {
     }
 }
 
-
 /* ====================== IO CORE ============================== */
 
 impl VirtioBlk {
@@ -427,27 +433,32 @@ impl VirtioBlk {
     /// This does NOT wait for the device to finish.
     unsafe fn submit_async(&mut self, sector: u64, buf_phys: usize, write: bool) -> Result<usize> {
         // 1. Find a free slot
-        let slot = self.slot_in_use.iter().position(|&usage| !usage)
+        let slot = self
+            .slot_in_use
+            .iter()
+            .position(|&usage| !usage)
             .ok_or_else(|| Error::new(ErrorKind::Other, "No free VirtIO slots"))?;
 
         self.slot_in_use[slot] = true;
 
         // 2. Setup DMA memory for Header and Status
-        let offset = slot * 64; 
+        let offset = slot * 64;
         let req_ptr = self.dma_virt.add(offset) as *mut VirtioBlkReq;
         let stat_ptr = self.dma_virt.add(offset + 32);
 
         (*req_ptr).type_ = if write {
             libc::set_os_error(OsError::Unsupported);
             assert!(offset % 512 == 0, "Cross sector writes are not supported");
-            VIRTIO_BLK_T_OUT 
-        } else { VIRTIO_BLK_T_IN };
+            VIRTIO_BLK_T_OUT
+        } else {
+            VIRTIO_BLK_T_IN
+        };
         (*req_ptr).sector = sector;
         *stat_ptr = 0xFF; // Device will overwrite this with 0 on success
 
         // 3. Chain 3 Descriptors (Header -> Data -> Status)
         let base_desc = (slot * 3) as u16;
-        
+
         // Header
         *self.desc.add(base_desc as usize) = VirtqDesc {
             addr: self.dma_phys + offset as u64,
@@ -459,7 +470,11 @@ impl VirtioBlk {
         *self.desc.add(base_desc as usize + 1) = VirtqDesc {
             addr: buf_phys as u64,
             len: 512,
-            flags: if write { VIRTQ_DESC_F_NEXT } else { VIRTQ_DESC_F_NEXT | VIRTQ_DESC_F_WRITE },
+            flags: if write {
+                VIRTQ_DESC_F_NEXT
+            } else {
+                VIRTQ_DESC_F_NEXT | VIRTQ_DESC_F_WRITE
+            },
             next: base_desc + 2,
         };
         // Status
@@ -478,7 +493,9 @@ impl VirtioBlk {
 
         // 5. Kick the device
         let notify_offset = (*self.common)._queue_notify_off;
-        let notify_addr = self.notify.add(notify_offset as usize * self.notify_off_mul as usize) as *mut u16;
+        let notify_addr =
+            self.notify
+                .add(notify_offset as usize * self.notify_off_mul as usize) as *mut u16;
         write_volatile(notify_addr, 0); // Notify Queue 0
 
         Ok(slot)
@@ -490,24 +507,27 @@ impl VirtioBlk {
         // If the status is no longer 0xFF, the device has written to it.
         read_volatile(stat_ptr) != 0xFF
     }
-    
+
     /// Releases the slot for reuse and returns if the operation was successful.
     unsafe fn complete_slot(&mut self, slot: usize) -> Result<()> {
         let stat_ptr = self.dma_virt.add(slot * 64 + 32);
         let status = read_volatile(stat_ptr);
-        
+
         self.slot_in_use[slot] = false;
-        
+
         // We also need to advance the internal 'last_used' tracker
         // In a real async driver, you'd process the Used Ring properly here.
         self.last_used = self.last_used.wrapping_add(1);
 
-        if status == 0 { Ok(()) } else { Err(Error::new(ErrorKind::Other, "Disk IO Error")) }
+        if status == 0 {
+            Ok(())
+        } else {
+            Err(Error::new(ErrorKind::Other, "Disk IO Error"))
+        }
     }
 }
 
 impl VirtioBlk {
-
     /// Returns a Future that resolves when the read is complete.
     /// This is the primary entry point for async disk I/O.
     fn read_async(&mut self, sector: u64, buf_phys: u64) -> Result<VirtioFuture> {
@@ -521,12 +541,7 @@ impl VirtioBlk {
 
 impl VirtioBlk {
     /// synchronously does block I/O
-    unsafe fn do_block_io(
-        &mut self,
-        block: u64,
-        buf_phys: usize,
-        write: bool,
-    ) -> Result<()> {
+    unsafe fn do_block_io(&mut self, block: u64, buf_phys: usize, write: bool) -> Result<()> {
         let slot = self.submit_async(block, buf_phys, write)?;
         while !self.poll_slot(slot) {
             crate::arch::cpu::relax();
@@ -558,10 +573,7 @@ impl VirtioBlk {
         write: bool,
     ) -> Result<VirtioFuture<'_>> {
         let slot = self.submit_async(block, phys, write)?;
-        Ok(VirtioFuture {
-            dev: self,
-            slot
-        })
+        Ok(VirtioFuture { dev: self, slot })
     }
 }
 
@@ -616,10 +628,7 @@ impl AsyncBlockDevice for VirtioBlk {
                     .ok_or_else(|| Error::new(ErrorKind::Other, "buffer not mapped"))?
             };
 
-            unsafe {
-                self.submit_block_async(block, phys.as_inner(), false)?
-            }
-            .await
+            unsafe { self.submit_block_async(block, phys.as_inner(), false)? }.await
         })
     }
 
@@ -637,10 +646,7 @@ impl AsyncBlockDevice for VirtioBlk {
                     .ok_or_else(|| Error::new(ErrorKind::Other, "buffer not mapped"))?
             };
 
-            unsafe {
-                self.submit_block_async(block, phys.as_inner(), true)?
-            }
-            .await
+            unsafe { self.submit_block_async(block, phys.as_inner(), true)? }.await
         })
     }
 }

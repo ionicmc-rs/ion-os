@@ -1,9 +1,16 @@
 // app/src/kernel/ion-kernel/src/disk/mod.rs
 
 use alloc::{boxed::Box, vec::Vec};
-use core::{pin::Pin, sync::atomic::{AtomicUsize, Ordering}};
+use core::{
+    pin::Pin,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
-use crate::{asyncio, io::{self}, log};
+use crate::{
+    asyncio,
+    io::{self},
+    log,
+};
 
 pub mod default_drivers;
 
@@ -253,11 +260,7 @@ fn discover_gpt_partitions() {
 
 // Small API
 
-pub async fn read_at(
-    dev: &mut dyn AsyncBlockDevice,
-    offset: u64,
-    buf: &mut [u8],
-) -> io::Result {
+pub async fn read_at(dev: &mut dyn AsyncBlockDevice, offset: u64, buf: &mut [u8]) -> io::Result {
     if buf.is_empty() {
         return Ok(());
     }
@@ -273,17 +276,13 @@ pub async fn read_at(
         let block = cur_offset / block_size;
         let block_off = (cur_offset % block_size) as usize;
 
-        let take = core::cmp::min(
-            remaining.len(),
-            block_size as usize - block_off,
-        );
+        let take = core::cmp::min(remaining.len(), block_size as usize - block_off);
 
         // read full block into bounce
         dev.read_block_async(block, &mut bounce).await?;
 
         // copy slice out
-        remaining[..take]
-            .copy_from_slice(&bounce[block_off..block_off + take]);
+        remaining[..take].copy_from_slice(&bounce[block_off..block_off + take]);
 
         remaining = &mut remaining[take..];
         cur_offset += take as u64;
@@ -292,11 +291,7 @@ pub async fn read_at(
     Ok(())
 }
 
-pub async fn write_at(
-    dev: &mut dyn AsyncBlockDevice,
-    offset: u64,
-    buf: &[u8],
-) -> io::Result {
+pub async fn write_at(dev: &mut dyn AsyncBlockDevice, offset: u64, buf: &[u8]) -> io::Result {
     if buf.is_empty() {
         return Ok(());
     }
@@ -312,18 +307,14 @@ pub async fn write_at(
         let block = cur_offset / block_size;
         let block_off = (cur_offset % block_size) as usize;
 
-        let take = core::cmp::min(
-            remaining.len(),
-            block_size as usize - block_off,
-        );
+        let take = core::cmp::min(remaining.len(), block_size as usize - block_off);
 
         if take != block_size as usize {
             // partial block → read-modify-write
             dev.read_block_async(block, &mut bounce).await?;
         }
 
-        bounce[block_off..block_off + take]
-            .copy_from_slice(&remaining[..take]);
+        bounce[block_off..block_off + take].copy_from_slice(&remaining[..take]);
 
         dev.write_block_async(block, &bounce).await?;
 

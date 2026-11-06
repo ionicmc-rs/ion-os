@@ -8,22 +8,18 @@
 use core::alloc::Layout;
 use core::error;
 use core::fmt::Display;
-use core::mem::{size_of, MaybeUninit};
+use core::mem::{MaybeUninit, size_of};
 
 use alloc::alloc::Allocator;
-use elf::endian::AnyEndian;
 use elf::ElfBytes;
+use elf::endian::AnyEndian;
 
 use crate::arch::ctx::ArgLevel;
-use crate::{address_space, log};
-use crate::arch::{
-    ctx::Context,
-    PhysAddr,
-    VirtAddr,
-};
-use crate::arch::mmu::{map_4k, PageTableFlags};
 use crate::arch::frame_allocator::alloc_4k_frame;
+use crate::arch::mmu::{PageTableFlags, map_4k};
+use crate::arch::{PhysAddr, VirtAddr, ctx::Context};
 use crate::lib_alloc::user::{init_user_data, map_user_data};
+use crate::{address_space, log};
 
 /* ============================
  * ELF loader errors
@@ -107,14 +103,17 @@ pub struct LoadedElf {
 }
 
 /// Find the .ion_os.requests section manually by iterating through section headers
-/// 
+///
 /// # Safety
 /// This function performs raw pointer operations and should only be called
 /// with valid ELF data that has been verified to contain the required headers.
-unsafe fn find_requests_section(elf_data: &[u8], ehdr: &Elf64_Ehdr) -> Result<*const u8, ElfLoadError> {
+unsafe fn find_requests_section(
+    elf_data: &[u8],
+    ehdr: &Elf64_Ehdr,
+) -> Result<*const u8, ElfLoadError> {
     let shstrndx = ehdr.e_shstrndx as usize;
     let shnum = ehdr.e_shnum as usize;
-    
+
     if shnum == 0 || shstrndx == 0 {
         return Err(ElfLoadError::MissingRequests);
     }
@@ -124,23 +123,21 @@ unsafe fn find_requests_section(elf_data: &[u8], ehdr: &Elf64_Ehdr) -> Result<*c
     if shstrtab_offset + size_of::<Elf64_Shdr>() > elf_data.len() {
         return Err(ElfLoadError::InvalidOffset);
     }
-    
-    let shstrtab_shdr = unsafe {
-        &*(elf_data.as_ptr().add(shstrtab_offset) as *const Elf64_Shdr)
-    };
-    
+
+    let shstrtab_shdr = unsafe { &*(elf_data.as_ptr().add(shstrtab_offset) as *const Elf64_Shdr) };
+
     // Get the string table data
     let strtab_offset = shstrtab_shdr.sh_offset as usize;
     let strtab_size = shstrtab_shdr.sh_size as usize;
     if strtab_offset + strtab_size > elf_data.len() {
         return Err(ElfLoadError::InvalidOffset);
     }
-    
+
     let strtab_data = &elf_data[strtab_offset..strtab_offset + strtab_size];
-    
+
     // Search for ".ion_os.requests" in the string table
     let target = b".ion_os.requests";
-    
+
     // Find the position of the target string in the string table
     let mut target_pos: Option<usize> = None;
     for i in 0..strtab_data.len().saturating_sub(target.len() - 1) {
@@ -149,22 +146,20 @@ unsafe fn find_requests_section(elf_data: &[u8], ehdr: &Elf64_Ehdr) -> Result<*c
             break;
         }
     }
-    
+
     let Some(name_offset) = target_pos else {
         return Err(ElfLoadError::MissingRequests);
     };
-    
+
     // Now find which section has this name offset
     for sh_idx in 0..shnum {
         let offset = ehdr.e_shoff as usize + sh_idx * size_of::<Elf64_Shdr>();
         if offset + size_of::<Elf64_Shdr>() > elf_data.len() {
             continue;
         }
-        
-        let shdr = unsafe {
-            &*(elf_data.as_ptr().add(offset) as *const Elf64_Shdr)
-        };
-        
+
+        let shdr = unsafe { &*(elf_data.as_ptr().add(offset) as *const Elf64_Shdr) };
+
         if shdr.sh_name as usize == name_offset {
             // Found the section - return its data pointer
             let req_offset = shdr.sh_offset as usize;
@@ -172,11 +167,15 @@ unsafe fn find_requests_section(elf_data: &[u8], ehdr: &Elf64_Ehdr) -> Result<*c
             if req_offset + req_size > elf_data.len() {
                 return Err(ElfLoadError::InvalidOffset);
             }
-            log::debug!("found .ion_os.requests at offset {}, size {}", req_offset, req_size);
+            log::debug!(
+                "found .ion_os.requests at offset {}, size {}",
+                req_offset,
+                req_size
+            );
             return Ok(unsafe { elf_data.as_ptr().add(req_offset) });
         }
     }
-    
+
     Err(ElfLoadError::MissingRequests)
 }
 
@@ -194,7 +193,11 @@ fn elf_flags_to_page_flags(flags: u32) -> PageTableFlags {
     pt
 }
 
-pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8], args: &[&str]) -> Result<LoadedElf, ElfLoadError> {
+pub fn load_elf(
+    elf: ElfBytes<AnyEndian>,
+    elf_data: &[u8],
+    args: &[&str],
+) -> Result<LoadedElf, ElfLoadError> {
     /* ----------------------------
      * Parse .ion_os.requests
      * ---------------------------- */
@@ -203,15 +206,16 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8], args: &[&str]) -> Res
 
     let ehdr = unsafe { &*(elf_data.as_ptr() as *const Elf64_Ehdr) };
 
-    let req_size = elf.section_header_by_name(".ion_os.requests")
+    let req_size = elf
+        .section_header_by_name(".ion_os.requests")
         .map_err(|e| ElfLoadError::ElfParseError(e))?
-        .ok_or(ElfLoadError::MissingRequests)?.sh_size as usize;
+        .ok_or(ElfLoadError::MissingRequests)?
+        .sh_size as usize;
 
     let req_data_ptr = unsafe { find_requests_section(elf_data, ehdr) }?;
     let req_data = unsafe { core::slice::from_raw_parts(req_data_ptr, req_size) };
 
-    let requests = parse_requests(req_data)
-        .map_err(ElfLoadError::RequestParseError)?;
+    let requests = parse_requests(req_data).map_err(ElfLoadError::RequestParseError)?;
 
     log::debug!(
         "parsed .ion_os.requests: stack size = {}, align = {}",
@@ -223,12 +227,8 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8], args: &[&str]) -> Res
      * Create address space
      * ---------------------------- */
 
-    let mut space = unsafe {
-        address_space::create_address_space(
-            2 * 1024 * 1024,
-            2 * 1024 * 1024,
-        )
-    };
+    let mut space =
+        unsafe { address_space::create_address_space(2 * 1024 * 1024, 2 * 1024 * 1024) };
 
     log::debug!("created new address space for ELF");
 
@@ -238,9 +238,7 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8], args: &[&str]) -> Res
      * Collect PT_LOAD segments
      * ---------------------------- */
 
-    let phdrs = elf
-        .segments()
-        .ok_or(ElfLoadError::NoLoadableSegments)?;
+    let phdrs = elf.segments().ok_or(ElfLoadError::NoLoadableSegments)?;
 
     let mut min_vaddr = usize::MAX;
     let mut max_vaddr = 0;
@@ -268,15 +266,13 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8], args: &[&str]) -> Res
      * Allocate base region
      * ---------------------------- */
 
-    let total_size =
-        align_up(max_vaddr, 0x1000) - align_down(min_vaddr, 0x1000);
+    let total_size = align_up(max_vaddr, 0x1000) - align_down(min_vaddr, 0x1000);
 
     let load_base = unsafe {
-        user_alloc
-            .allocate_with_flags(
-                Layout::from_size_align(total_size, 0x1000).unwrap(),
-                PageTableFlags::USER_PAGE | PageTableFlags::PRESENT,
-            )
+        user_alloc.allocate_with_flags(
+            Layout::from_size_align(total_size, 0x1000).unwrap(),
+            PageTableFlags::USER_PAGE | PageTableFlags::PRESENT,
+        )
     }
     .unwrap()
     .as_ptr()
@@ -299,14 +295,11 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8], args: &[&str]) -> Res
         let memsz = ph.p_memsz as usize;
         let filesz = ph.p_filesz as usize;
 
-        let seg_data = elf
-            .segment_data(&ph)
-            .map_err(ElfLoadError::ElfParseError)?;
+        let seg_data = elf.segment_data(&ph).map_err(ElfLoadError::ElfParseError)?;
 
         /* Translate ELF flags */
 
-        let mut flags =
-            PageTableFlags::PRESENT | PageTableFlags::USER_PAGE;
+        let mut flags = PageTableFlags::PRESENT | PageTableFlags::USER_PAGE;
 
         if ph.p_flags & elf::abi::PF_W != 0 {
             flags |= PageTableFlags::WRITABLE;
@@ -324,30 +317,19 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8], args: &[&str]) -> Res
 
         unsafe {
             user_alloc
-                .allocate_with_flags(
-                    Layout::from_size_align(map_size, 0x1000).unwrap(),
-                    flags,
-                )
+                .allocate_with_flags(Layout::from_size_align(map_size, 0x1000).unwrap(), flags)
                 .unwrap();
         }
 
         /* Copy file-backed data */
 
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                seg_data.as_ptr(),
-                dst_vaddr as *mut u8,
-                filesz,
-            );
+            core::ptr::copy_nonoverlapping(seg_data.as_ptr(), dst_vaddr as *mut u8, filesz);
 
             /* Zero BSS */
 
             if memsz > filesz {
-                core::ptr::write_bytes(
-                    (dst_vaddr + filesz) as *mut u8,
-                    0,
-                    memsz - filesz,
-                );
+                core::ptr::write_bytes((dst_vaddr + filesz) as *mut u8, 0, memsz - filesz);
             }
         }
     }
@@ -357,18 +339,13 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8], args: &[&str]) -> Res
      * ---------------------------- */
 
     let stack_base = unsafe {
-        user_alloc
-            .allocate_with_flags(
-                Layout::from_size_align(
-                    requests.stack.size,
-                    requests.stack.align,
-                )
-                .unwrap(),
-                PageTableFlags::NO_EXECUTE
-                    | PageTableFlags::PRESENT
-                    | PageTableFlags::USER_PAGE
-                    | PageTableFlags::WRITABLE,
-            )
+        user_alloc.allocate_with_flags(
+            Layout::from_size_align(requests.stack.size, requests.stack.align).unwrap(),
+            PageTableFlags::NO_EXECUTE
+                | PageTableFlags::PRESENT
+                | PageTableFlags::USER_PAGE
+                | PageTableFlags::WRITABLE,
+        )
     }
     .unwrap()
     .as_ptr()
@@ -389,7 +366,13 @@ pub fn load_elf(elf: ElfBytes<AnyEndian>, elf_data: &[u8], args: &[&str]) -> Res
         stack_base
     );
 
-    let mut ctx = Context::user(entry, 0, stack_top, args, ArgLevel::from_u8(requests.args.level).unwrap());
+    let mut ctx = Context::user(
+        entry,
+        0,
+        stack_top,
+        args,
+        ArgLevel::from_u8(requests.args.level).unwrap(),
+    );
 
     ctx.set_addr_space(space.clone());
 
@@ -410,7 +393,7 @@ pub enum RequestParseError {
     InvalidFormat,
     StackAlignInvalid,
     StackAlignTooSmall,
-    DuplicateStackRequest
+    DuplicateStackRequest,
 }
 
 impl Display for RequestParseError {
@@ -447,7 +430,7 @@ struct StackRequest {
 
 struct Requests {
     stack: StackRequests,
-    args: ArgsRequest
+    args: ArgsRequest,
 }
 
 struct StackRequests {
@@ -522,7 +505,8 @@ fn parse_requests(data: &[u8]) -> Result<Requests, RequestParseError> {
                     return Err(RequestParseError::DuplicateStackRequest);
                 }
 
-                let req = read::<StackRequest>(&data[tag_start..tag_start + size_of::<StackRequest>()])?;
+                let req =
+                    read::<StackRequest>(&data[tag_start..tag_start + size_of::<StackRequest>()])?;
 
                 if req.align < 16 {
                     return Err(RequestParseError::StackAlignTooSmall);
@@ -539,15 +523,14 @@ fn parse_requests(data: &[u8]) -> Result<Requests, RequestParseError> {
             }
 
             TAG_ARGS => {
-                let req = read::<ArgsRequest>(&data[tag_start..tag_start + size_of::<ArgsRequest>()])?;
+                let req =
+                    read::<ArgsRequest>(&data[tag_start..tag_start + size_of::<ArgsRequest>()])?;
 
                 if req.level > 2 {
                     return Err(RequestParseError::InvalidFormat);
                 }
 
-                args = Some(ArgsRequest {
-                    level: req.level,
-                });
+                args = Some(ArgsRequest { level: req.level });
             }
 
             _ => {
@@ -559,16 +542,12 @@ fn parse_requests(data: &[u8]) -> Result<Requests, RequestParseError> {
         offset = align_up(tag_end, 8);
     }
 
-    let stack = stack.unwrap_or(
-        StackRequests {
-            size: 0x4000,
-            align: 16
-        }
-    );
+    let stack = stack.unwrap_or(StackRequests {
+        size: 0x4000,
+        align: 16,
+    });
 
-    let args = args.unwrap_or(
-        ArgsRequest { level: 0 }
-    );
+    let args = args.unwrap_or(ArgsRequest { level: 0 });
 
     Ok(Requests { stack, args })
 }
@@ -602,4 +581,3 @@ fn align_down(x: usize, a: usize) -> usize {
 fn align_up(x: usize, a: usize) -> usize {
     (x + a - 1) & !(a - 1)
 }
-

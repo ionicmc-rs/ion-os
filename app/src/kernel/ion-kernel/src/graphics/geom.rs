@@ -90,10 +90,7 @@ impl Rect {
     /// Returns true if the point lies inside the rectangle.
     #[inline]
     pub const fn contains(&self, p: Pos) -> bool {
-        p.x >= self.pos.x
-            && p.y >= self.pos.y
-            && p.x < self.right()
-            && p.y < self.bottom()
+        p.x >= self.pos.x && p.y >= self.pos.y && p.x < self.right() && p.y < self.bottom()
     }
 
     /// Clamp this rectangle to a bounding size.

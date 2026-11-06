@@ -21,7 +21,9 @@ use core::any::{Any, TypeId, type_name};
 use alloc::{format, vec};
 
 use crate::{
-    log::error, serial_print, serial_println, thread::{self, JoinErrorKind, ThreadBuilder}
+    log::error,
+    serial_print, serial_println,
+    thread::{self, JoinErrorKind, ThreadBuilder},
 };
 
 /// Info Passed to Tests
@@ -58,7 +60,6 @@ impl TestInfo<'_> {
         self.options.ignored = true;
 
         thread::exit_current();
-
     }
 }
 

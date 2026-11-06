@@ -19,7 +19,19 @@ use core::fmt::Display;
 
 use crossbeam_queue::ArrayQueue;
 
-use crate::{arch::{self, interrupts::{self, keyboard::SC_QUEUE}, syscall::init_syscalls}, c_lib::BootInfo, disk, graphics::{self, Surface}, lib_alloc::{init_heap, init_thread_stack_region, user::init_user_data}, privilege::init_users, serial_println};
+use crate::{
+    arch::{
+        self,
+        interrupts::{self, keyboard::SC_QUEUE},
+        syscall::init_syscalls,
+    },
+    c_lib::BootInfo,
+    disk,
+    graphics::{self, Surface},
+    lib_alloc::{init_heap, init_thread_stack_region, user::init_user_data},
+    privilege::init_users,
+    serial_println,
+};
 
 /// An error while Initializing the Kernel
 ///
@@ -57,7 +69,6 @@ impl InitErr {
     }
 }
 
-
 /// Initializes the kernel.
 ///
 /// The Full list:
@@ -78,15 +89,16 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
     // interrupts
     interrupts::init_interrupt_operations();
 
-    
     // graphics (quick init to ensure users don't get a black screen)
-    
+
     graphics::init_from_boot();
-    
+
     // allocation (essential, but not totally)
 
     serial_println!("mapping thread heap...");
-    unsafe { init_thread_stack_region(); }
+    unsafe {
+        init_thread_stack_region();
+    }
     // unsafe { arch::mmu::init_kernel_heap() };
 
     serial_println!("initializing heap metadata...");
@@ -94,7 +106,7 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
     serial_println!("initializing user data heap...");
     unsafe { init_user_data() };
     serial_println!("heaps have been initialized");
-    
+
     // keyboard
 
     unsafe { SC_QUEUE.write(ArrayQueue::new(256)) };

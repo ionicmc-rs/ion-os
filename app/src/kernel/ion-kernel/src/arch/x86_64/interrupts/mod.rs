@@ -4,10 +4,21 @@
 //!
 //! These things are handled in Ion OS's initialization, so you wouldn't typically have to see them.
 
-use crate::{address_space::{self, kernel_address_space}, arch::{PhysAddr, VirtAddr, interrupts::{ ioapic::IoApic, thread::YIELD_INTERRUPT_NUMBER}, mmu::{self, PageTable, PageTableFlags}}, c_lib::libc, serial_println};
+use crate::{
+    address_space::{self, kernel_address_space},
+    arch::{
+        PhysAddr, VirtAddr,
+        interrupts::{ioapic::IoApic, thread::YIELD_INTERRUPT_NUMBER},
+        mmu::{self, PageTable, PageTableFlags},
+    },
+    c_lib::libc,
+    serial_println,
+};
 use lazy_static::lazy_static;
 use x86_64::{
-    instructions::interrupts, set_general_handler, structures::idt::{InterruptDescriptorTable, InterruptStackFrame}
+    instructions::interrupts,
+    set_general_handler,
+    structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
 };
 
 // tools
@@ -32,9 +43,9 @@ pub fn are_enabled() -> bool {
 }
 
 /// runs a function without interrupts.
-/// 
+///
 /// this keeps them disabled if they were already
-/// 
+///
 /// see [`interrupts::without_interrupts`]
 pub fn without_interrupts<R>(f: impl FnOnce() -> R) -> R {
     interrupts::without_interrupts(f)
@@ -56,7 +67,7 @@ lazy_static! {
             stack_frame: InterruptStackFrame,
             index: u8,
             error_code: Option<u64>,
-        ) {            
+        ) {
             todo!("handle irq {}\n\nerr code: {error_code:?}\n\n{stack_frame:#?}", index);
         }
 
@@ -71,11 +82,11 @@ lazy_static! {
                 .set_stack_index(double_fault::DOUBLE_FAULT_IST_INDEX);
         }
         idt.general_protection_fault.set_handler_fn(gp::protection_fault);
-        
+
         // Hardware Interrupts.
-        
+
         // APIC
-        
+
         unsafe {
             idt[TIMER_VEC]
                 .set_handler_fn(thread::timer_trampoline)
@@ -101,13 +112,15 @@ static mut IOAPIC: IoApic = unsafe { IoApic::new(0xFEC00000) };
 pub fn init_interrupt_operations() {
     gdt::init();
     IDT.load();
-    unsafe { 
-
+    unsafe {
         address_space::map_4k_into_space(
             &mut kernel_address_space(),
             VirtAddr::new(apic::lapic_base() as usize),
             PhysAddr::new(apic::lapic_base() as usize),
-            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE | PageTableFlags::NO_EXECUTE,
+            PageTableFlags::PRESENT
+                | PageTableFlags::WRITABLE
+                | PageTableFlags::NO_CACHE
+                | PageTableFlags::NO_EXECUTE,
         );
 
         address_space::map_4k_into_space(
@@ -201,24 +214,19 @@ mod gdt;
 
 pub use gdt::selectors as gdt_selectors;
 
+mod ioapic;
 /// Keyboard Interrupt Handling.
 pub mod keyboard;
 mod page_fault;
-mod ioapic;
 mod thread;
-pub use thread::{
-    ticks,
-    trigger_yield,
-    set_yield_reason,
-    YieldReason,
-};
+pub use thread::{YieldReason, set_yield_reason, ticks, trigger_yield};
 
+pub use apic::LocalApic;
 pub use apic::cpu_lapic;
 pub use apic::current_cpu_lapic;
-pub use apic::LocalApic;
-pub use apic::init_cpu0_lapic;
-pub use apic::init_cpu_lapic;
 pub use apic::init_bsp_cpu_lapic;
+pub use apic::init_cpu_lapic;
+pub use apic::init_cpu0_lapic;
 pub use apic::lapic_base;
 pub(in crate::arch) use thread::InterruptRegs;
 mod gp;

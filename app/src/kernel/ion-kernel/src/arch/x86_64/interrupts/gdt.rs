@@ -15,14 +15,18 @@
 
 use lazy_static::lazy_static;
 use x86_64::{
-    VirtAddr, registers::segmentation::Segment, structures::{
+    VirtAddr,
+    registers::segmentation::Segment,
+    structures::{
         gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector},
         tss::TaskStateSegment,
-    }
+    },
 };
 
-use crate::arch::interrupts::{double_fault::DOUBLE_FAULT_IST_INDEX, gp::GP_IST_INDEX, thread::TIMER_IST};
 use crate::arch::interrupts::page_fault::PAGE_FAULT_IST_INDEX;
+use crate::arch::interrupts::{
+    double_fault::DOUBLE_FAULT_IST_INDEX, gp::GP_IST_INDEX, thread::TIMER_IST,
+};
 
 const IST_STACK_SIZE: usize = 32 * 1024;
 
@@ -46,7 +50,7 @@ lazy_static! {
             let stack_start = VirtAddr::from_ptr(&raw const STACK);
             stack_start + IST_STACK_SIZE as u64
         };
-        
+
         // General Protection fault IST
         tss.interrupt_stack_table[GP_IST_INDEX as usize] = {
             static mut STACK: [u8; IST_STACK_SIZE] = [0; IST_STACK_SIZE];

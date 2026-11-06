@@ -44,34 +44,34 @@ use crate::{
     thread::ThreadBuilder,
 };
 
+pub mod address_space;
+pub mod arch;
 pub mod asyncio;
 pub mod c_lib;
+pub mod cls;
+pub mod disk;
 pub mod entry;
 /// tools for registering event listeners
 pub mod event;
+pub mod event_logger;
+pub mod graphics;
 pub mod init;
 pub mod io;
 pub mod lib_alloc;
 pub mod log;
+pub mod mmio;
 pub mod panic;
+pub mod privilege;
+pub mod process;
+pub mod resources;
 pub mod scheduler;
 pub mod serial;
-pub mod resources;
+pub mod smp;
+pub mod stack;
 pub mod test;
 pub mod text;
 pub mod thread;
-pub mod stack;
-pub mod arch;
-pub mod address_space;
-pub mod privilege;
-pub mod process;
-pub mod disk;
 pub mod vfs;
-pub mod graphics;
-pub mod mmio;
-pub mod event_logger;
-pub mod smp;
-pub mod cls;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {
@@ -211,9 +211,11 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
             core::panic!("Invalid Boot Info: {err}")
         })
         .into_rust();
-    
+
     #[allow(static_mut_refs)]
-    unsafe { BOOT_INFO.write(boot_info.clone()) };
+    unsafe {
+        BOOT_INFO.write(boot_info.clone())
+    };
 
     assert_cpuid_features(boot_info.cpuid_edx, boot_info.cpuid_ecx);
 

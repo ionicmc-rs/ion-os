@@ -3,12 +3,27 @@
 //! Typically, you don't use this module directly;
 //! instead, use [`alloc`] types like `Box`, `Vec`, etc.
 
-use core::{alloc::GlobalAlloc, fmt, ptr::{NonNull, addr_of_mut}};
+use core::{
+    alloc::GlobalAlloc,
+    fmt,
+    ptr::{NonNull, addr_of_mut},
+};
 
 use alloc::alloc::{AllocError, Allocator};
 use linked_list_allocator::LockedHeap;
 
-use crate::{address_space::{kernel_address_space}, arch::{self, PhysAddr, VirtAddr, defs::PAGE_2MIB, frame_allocator::alloc_2mib_frame, mmu::{PageTableFlags, map_2mib}}, c_lib::libc, lib_alloc::user::USER_DATA_BASE, thread};
+use crate::{
+    address_space::kernel_address_space,
+    arch::{
+        self, PhysAddr, VirtAddr,
+        defs::PAGE_2MIB,
+        frame_allocator::alloc_2mib_frame,
+        mmu::{PageTableFlags, map_2mib},
+    },
+    c_lib::libc,
+    lib_alloc::user::USER_DATA_BASE,
+    thread,
+};
 
 unsafe extern "C" {
     safe static mut __kernel_end: u8;
@@ -43,10 +58,12 @@ pub fn is_heap_addr(addr: usize) -> bool {
 ///   must be mapped, writable, and exclusive to the heap.
 /// - Must be called exactly once.
 pub unsafe fn init_heap() {
-    unsafe { GLOBAL_ALLOC
-        .0
-        .lock()
-        .init(heap_start() as *mut u8, HEAP_SIZE) };
+    unsafe {
+        GLOBAL_ALLOC
+            .0
+            .lock()
+            .init(heap_start() as *mut u8, HEAP_SIZE)
+    };
 }
 
 /// A global allocator that cooperates with the scheduler.
@@ -54,8 +71,7 @@ pub struct RescheduleAlloc(LockedHeap);
 
 impl fmt::Debug for RescheduleAlloc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RescheduleAlloc")
-            .finish_non_exhaustive()
+        f.debug_struct("RescheduleAlloc").finish_non_exhaustive()
     }
 }
 
@@ -114,9 +130,12 @@ unsafe impl GlobalAlloc for RescheduleAlloc {
 }
 
 unsafe impl Allocator for RescheduleAlloc {
-    fn allocate(&self, layout: core::alloc::Layout) -> Result<core::ptr::NonNull<[u8]>, alloc::alloc::AllocError> {
+    fn allocate(
+        &self,
+        layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, alloc::alloc::AllocError> {
         let alloc = unsafe { self.alloc(layout) };
-        
+
         let ptr = NonNull::new(alloc).ok_or(AllocError)?;
         Ok(NonNull::slice_from_raw_parts(ptr, layout.size()))
     }
@@ -145,7 +164,10 @@ pub static THREAD_STACK_ALLOC: RescheduleAlloc = RescheduleAlloc::empty();
 pub fn init_thread_stack_region() {
     unsafe { arch::mmu::init_thread_heap() };
 
-    unsafe { THREAD_STACK_ALLOC.0.lock()
-        .init(THREAD_STACK_REGION as *mut u8, THREAD_STACK_SIZE) };
-
+    unsafe {
+        THREAD_STACK_ALLOC
+            .0
+            .lock()
+            .init(THREAD_STACK_REGION as *mut u8, THREAD_STACK_SIZE)
+    };
 }

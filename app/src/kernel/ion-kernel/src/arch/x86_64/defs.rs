@@ -1,4 +1,7 @@
-use crate::arch::{PointerWidth, port::{Port, PortData, Read, ReadWrite, Write}};
+use crate::arch::{
+    PointerWidth,
+    port::{Port, PortData, Read, ReadWrite, Write},
+};
 
 // pointer definitions
 
@@ -43,7 +46,7 @@ pub const DEBUG_PORT: WritePort<u8> = Port::new(0xE9);
 pub const KEYBOARD_READ: ReadPort<u8> = Port::new(0x60);
 
 /// Port for sending keyboard commands
-/// 
+///
 /// this is handled by the keyboard handler thread - so you don't need to use this
 pub const KEYBOARD_WRITE: WritePort<u8> = Port::new(0x64);
 

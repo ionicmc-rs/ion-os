@@ -333,7 +333,6 @@ pub struct MultibootAcpi {
     pub typ: MultibootTagType,
     pub size: u32,
     pub rsdp: [u8; 0],
-    
 }
 
 /// Multiboot Memory Data.

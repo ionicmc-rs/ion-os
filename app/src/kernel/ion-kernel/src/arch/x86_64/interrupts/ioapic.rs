@@ -39,7 +39,7 @@ impl IoApic {
         let redir = 0x10 + (irq as u32) * 2;
 
         let low = vector as u32; // fixed delivery, edge, active high, unmasked
-        let high = 0 << 24;      // destination APIC ID (CPU0)
+        let high = 0 << 24; // destination APIC ID (CPU0)
 
         self.write(redir, low);
         self.write(redir + 1, high);

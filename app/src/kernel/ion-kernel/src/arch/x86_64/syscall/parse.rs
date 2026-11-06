@@ -7,7 +7,7 @@ pub enum ThreadCommand {
     ExitCurrent,
     GetErrno,
     Yield,
-    Unknown
+    Unknown,
 }
 
 bitflags::bitflags! {
@@ -22,22 +22,26 @@ bitflags::bitflags! {
 #[derive(Debug, Clone)]
 pub enum ProcessCommand {
     Exit(i32),
-    Spawn(*const i8 /* path */, *const *const i8 /* argv */, usize /* argc */, ProcessFlags),
+    Spawn(
+        *const i8,        /* path */
+        *const *const i8, /* argv */
+        usize,            /* argc */
+        ProcessFlags,
+    ),
     Kill(ProcessID),
     ChangeName(*const i8, usize),
-    Unknown
+    Unknown,
 }
 
 #[derive(Debug, Clone)]
 pub enum IoCommand {
-    Write(usize, usize, usize), // fd, buf, len
-    Read(usize, usize, usize), // fd, buf, len
+    Write(usize, usize, usize),  // fd, buf, len
+    Read(usize, usize, usize),   // fd, buf, len
     Open(*const i8, usize, u32), // path, path length
-    Close(usize), // fd
-    Seek(usize, i64), // fd, offset
-    Unknown
+    Close(usize),                // fd
+    Seek(usize, i64),            // fd, offset
+    Unknown,
 }
-
 
 #[derive(Debug, Clone)]
 pub enum Syscall {
@@ -47,12 +51,12 @@ pub enum Syscall {
     Thread(ThreadCommand),
     Io(IoCommand),
 
-    Unknown
+    Unknown,
 }
 
 impl Syscall {
     /// Syscall Policy: (TODO: place this somewhere safe)
-    /// 
+    ///
     /// Inputs:
     /// rax - main command
     /// rdi - sub command
@@ -61,20 +65,20 @@ impl Syscall {
             0 => Self::Ack,
             1 => Self::Process(match frame.rdi {
                 0 => ProcessCommand::Exit(frame.rsi as i32),
-                _ => ProcessCommand::Unknown
+                _ => ProcessCommand::Unknown,
             }),
             2 => Self::Io(match frame.rdi {
                 0 => IoCommand::Write(frame.rsi as usize, frame.rdx as usize, frame.r10 as usize),
                 1 => IoCommand::Read(frame.rsi as usize, frame.rdx as usize, frame.r10 as usize),
-                _ => IoCommand::Unknown
+                _ => IoCommand::Unknown,
             }),
             3 => Self::Thread(match frame.rdi {
                 0 => ThreadCommand::ExitCurrent,
                 1 => ThreadCommand::GetErrno,
                 2 => ThreadCommand::Yield,
-                _ => ThreadCommand::Unknown
+                _ => ThreadCommand::Unknown,
             }),
-            _ => Self::Unknown
+            _ => Self::Unknown,
         }
     }
 }

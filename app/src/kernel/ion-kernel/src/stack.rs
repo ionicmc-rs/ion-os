@@ -1,13 +1,13 @@
 //! Tools for creating, reading, and writing to stacks
-//! 
+//!
 //! This module contains different types of stacks, for different types of use-cases:
 //! - [`DynStack`]: a stack (stored on the stack) with a dynamic size.
 //!   - this has very niche use-cases, and most-likely does not refer to an actual stack.
 //! - [`StaticStack`]: a statically reserved stack that has known size.
 //! - [`AllocatedStack`]: a stack allocated on the heap.
-//! 
+//!
 //! None of these store the current stack pointer - that can be done via the [`Tracked`] wrapper.
-//! 
+//!
 //! Additionally, the [`Stack`] trait provides an abstraction to use in generics
 
 use core::{fmt::Debug, slice};
@@ -16,7 +16,7 @@ use alloc::{boxed::Box, vec};
 use x86_64::align_up;
 
 /// Represents a stack.
-/// 
+///
 /// note: stacks are not required to track their state (this is done by the [`Tracked`] wrapper)
 pub trait Stack {
     /// base of the stack
@@ -25,7 +25,7 @@ pub trait Stack {
     fn size(&self) -> usize;
 
     /// stack top
-    /// 
+    ///
     /// base + size by default
     fn top(&self) -> *mut u8 {
         self.base().wrapping_add(self.size())
@@ -35,15 +35,15 @@ pub trait Stack {
 // Dyn Stack
 
 /// A stack of a dynamic size - stored on the stack.
-/// 
+///
 /// this is likely a virtual stack, as larger stacks would require more space, and likely allocation
-/// 
+///
 /// if you do want allocation, see [`AllocatedStack`]
 // No Clone - stacks should not be cloned.
 #[derive(PartialEq, Eq)]
 pub struct DynStack {
     base: *mut u8,
-    size: usize
+    size: usize,
 }
 
 // trait impls
@@ -70,14 +70,14 @@ pub enum PointerError {
     /// pointer was null
     Null,
     /// pointer was not aligned to 16
-    Misaligned
+    Misaligned,
 }
 
 impl DynStack {
     // creations
-    
+
     /// Creates a new stack at `base`, of the given size.
-    /// 
+    ///
     /// # Safety
     /// base must be valid for reads and writes
     pub unsafe fn new(base: *mut u8, size: usize) -> Result<Self, PointerError> {
@@ -91,7 +91,7 @@ impl DynStack {
     }
 
     /// creates a new stack at `base` of the given size, not checking for validity.
-    /// 
+    ///
     /// # Safety
     /// pointer must be non-null, aligned, and valid for reads and writes.
     pub const unsafe fn new_unchecked(base: *mut u8, size: usize) -> Self {
@@ -99,17 +99,20 @@ impl DynStack {
     }
 
     /// creates a dynamic stack from a slice.
-    /// 
-    /// # Safety 
+    ///
+    /// # Safety
     /// it must outlive this stack
     pub const fn from_slice(slice: &[u8]) -> Self {
-        Self { base: slice.as_ptr().cast_mut(), size: slice.len() }
+        Self {
+            base: slice.as_ptr().cast_mut(),
+            size: slice.len(),
+        }
     }
 
     // size changes
 
     /// shrinks the stack by the given count.
-    /// 
+    ///
     /// note: the number is rounded up to the nearest multiple of 16 for alignment.
     /// # Panics
     /// panics if `by` is greater than the stack size.
@@ -123,7 +126,7 @@ impl DynStack {
     }
 
     /// grows the stack by the given count.
-    /// 
+    ///
     /// note: the number is rounded up to the nearest multiple of 16 for alignment.
     /// # Panics
     /// panics if `by` overflows usize when added to the current size.
@@ -133,7 +136,7 @@ impl DynStack {
     }
 
     /// sets the stack to the given size.
-    /// 
+    ///
     /// note: the number is rounded up to the nearest multiple of 16 for alignment.
     pub fn size_to(&mut self, to: usize) {
         self.size = to;
@@ -141,15 +144,15 @@ impl DynStack {
     }
 
     /// rebases the stack to the given pointer.
-    /// 
+    ///
     /// # Safety
     /// the pointer is checked to be non-null and aligned well for pointers.
     /// but the pointer must still be valid for both reads, and writes.
     pub unsafe fn rebase(&mut self, ptr: *mut u8) -> Result<(), PointerError> {
         if !ptr.cast::<usize>().is_aligned() {
-            return Err(PointerError::Misaligned)
+            return Err(PointerError::Misaligned);
         } else if ptr.is_null() {
-            return Err(PointerError::Null)
+            return Err(PointerError::Null);
         }
 
         self.base = ptr;
@@ -158,7 +161,7 @@ impl DynStack {
     }
 
     /// rebases the stack to the given pointer, without checking for validity
-    /// 
+    ///
     /// # Safety
     /// the pointer is not checked to be non-null and aligned well for pointers.
     /// the pointer must be valid for both reads, and writes.
@@ -170,13 +173,12 @@ impl DynStack {
 
     /// returns wether the given address is a part of this stack.
     pub fn contains(&self, addr: usize) -> bool {
-        self.base as usize <= addr 
-        && addr < self.top() as usize
+        self.base as usize <= addr && addr < self.top() as usize
     }
 
     /// convenience function to avoid redundant conversion from `*<const/mut> T` to
     /// usize.
-    /// 
+    ///
     /// calls [`DynStack::contains`]
     pub fn contains_ptr(&self, ptr: *mut u8) -> bool {
         self.contains(ptr as usize)
@@ -199,7 +201,7 @@ impl DynStack {
     // writing
 
     /// Copies this stack to `other`
-    /// 
+    ///
     /// # Panics
     /// panics if the other stack is smaller than self.
     /// # See also
@@ -215,7 +217,7 @@ impl DynStack {
     }
 
     /// Copies this stack to `other`, panicking if the sizes are not the same
-    /// 
+    ///
     /// # Panics
     /// panics if the other stack is smaller than self.
     /// # See also
@@ -223,14 +225,17 @@ impl DynStack {
     /// [`DynStack::write_to_truncate`] -> writes, removing excess bytes.
     pub fn write_to_exact(&self, other: &mut DynStack) {
         if self.size != other.size {
-            panic!("cannot write with size mismatch: {} != {}", self.size, other.size)
+            panic!(
+                "cannot write with size mismatch: {} != {}",
+                self.size, other.size
+            )
         }
         // Safety: stacks are valid by invariant.
         unsafe { self.base.copy_to(other.base, other.size) };
     }
 
     /// Copies this stack to `other`, panicking if the sizes are not the same
-    /// 
+    ///
     /// # Panics
     /// panics if the other stack is smaller than self.
     /// # See also
@@ -242,7 +247,7 @@ impl DynStack {
     }
 
     /// Copies this stack to `other`
-    /// 
+    ///
     /// # Safety
     /// the pointer must valid for writing.
     pub unsafe fn write_to_ptr(&self, other: *mut u8) {
@@ -265,14 +270,13 @@ impl DynStack {
     }
 
     /// Copies from `other` to self
-    /// 
+    ///
     /// # Safety
     /// the pointer must valid for reading.
     pub unsafe fn copy_from_ptr(&mut self, other: *const u8) {
         unsafe { other.copy_to(self.base, self.size) };
     }
 }
-
 
 // static stack
 
@@ -336,9 +340,7 @@ impl<const SIZE: usize> StaticStack<SIZE> {
         // - pointer is non-null
         // - pointer is aligned
         // - memory is valid for reads/writes for entire program lifetime
-        let dynamic = unsafe {
-            DynStack::new_unchecked(array.as_ptr() as *mut u8, SIZE)
-        };
+        let dynamic = unsafe { DynStack::new_unchecked(array.as_ptr() as *mut u8, SIZE) };
 
         Self { dynamic }
     }
@@ -350,8 +352,7 @@ impl<const SIZE: usize> StaticStack<SIZE> {
     /// - The array must be properly aligned.
     /// - The memory must remain valid for reads and writes.
     pub const unsafe fn from_array_unchecked(array: &[u8; SIZE]) -> Self {
-        let dynamic =
-            unsafe { DynStack::new_unchecked(array.as_ptr() as *mut u8, SIZE) };
+        let dynamic = unsafe { DynStack::new_unchecked(array.as_ptr() as *mut u8, SIZE) };
 
         Self { dynamic }
     }
@@ -410,10 +411,7 @@ impl<const SIZE: usize> StaticStack<SIZE> {
     /// # Notes
     /// - The stacks must not overlap.
     /// - This does **not** adjust any stack pointers.
-    pub fn write_to_exact<const OTHER: usize>(
-        &self,
-        other: &mut StaticStack<OTHER>,
-    ) {
+    pub fn write_to_exact<const OTHER: usize>(&self, other: &mut StaticStack<OTHER>) {
         if SIZE != OTHER {
             panic!("StaticStack size mismatch");
         }
@@ -581,8 +579,7 @@ impl AllocatedStack {
     /// # Safety
     /// - `dst` must be valid for writes of `size()` bytes.
     pub unsafe fn write_to_ptr(&self, dst: *mut u8) {
-        unsafe { self.base()
-            .copy_to_nonoverlapping(dst, self.size()) };
+        unsafe { self.base().copy_to_nonoverlapping(dst, self.size()) };
     }
 }
 
@@ -646,10 +643,7 @@ impl<S: Stack> Tracked<S> {
             panic!("Initial stack pointer must be 16-byte aligned");
         }
 
-        Self {
-            stack,
-            rsp: top,
-        }
+        Self { stack, rsp: top }
     }
 
     /// Creates a tracked stack with an explicit initial stack pointer.
@@ -660,7 +654,7 @@ impl<S: Stack> Tracked<S> {
     /// - `rsp` is not 16-byte aligned
     pub fn with_rsp(stack: S, rsp: usize) -> Self {
         let base = stack.base() as usize;
-        let top  = stack.top() as usize;
+        let top = stack.top() as usize;
 
         if rsp < base || rsp > top {
             panic!("Initial rsp is outside of stack bounds");
@@ -715,7 +709,7 @@ impl<S: Stack> Tracked<S> {
     /// - `rsp` is not 16-byte aligned
     pub fn set_rsp(&mut self, rsp: usize) {
         let base = self.stack.base() as usize;
-        let top  = self.stack.top() as usize;
+        let top = self.stack.top() as usize;
 
         if rsp < base || rsp > top {
             panic!("rsp outside of stack bounds");
@@ -760,7 +754,7 @@ impl<S: Stack> Tracked<S> {
     pub fn rsp_in_bounds(&self) -> bool {
         let rsp = self.rsp;
         let base = self.stack.base() as usize;
-        let top  = self.stack.top() as usize;
+        let top = self.stack.top() as usize;
 
         rsp >= base && rsp <= top
     }
@@ -897,9 +891,7 @@ impl<S: Stack> Tracked<S> {
             panic!("rsp misaligned for pop");
         }
 
-        let value = unsafe {
-            ptr::read(rsp as *const T)
-        };
+        let value = unsafe { ptr::read(rsp as *const T) };
 
         let new_rsp = rsp + mem::size_of::<T>();
         let top = self.stack.top() as usize;
@@ -934,7 +926,6 @@ impl<S: Stack> Tracked<S> {
     }
 }
 
-
 impl<S: Stack + Debug> Debug for Tracked<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Tracked")
@@ -947,7 +938,10 @@ impl<S: Stack + Debug> Debug for Tracked<S> {
 #[cfg(feature = "test")]
 #[allow(missing_docs)]
 pub mod tests {
-    use crate::{stack::{DynStack, Stack, StaticStack, Tracked}, test::TestInfo};
+    use crate::{
+        stack::{DynStack, Stack, StaticStack, Tracked},
+        test::TestInfo,
+    };
 
     pub fn tracked_initial_rsp_is_top(_info: TestInfo) {
         #[repr(align(16))]
@@ -958,12 +952,8 @@ pub mod tests {
         let stack = StaticStack::<4096>::from_array(&STACK.0);
         let tracked = Tracked::new(stack);
 
-        assert_eq!(
-            tracked.rsp(),
-            tracked.stack().top() as usize
-        );
+        assert_eq!(tracked.rsp(), tracked.stack().top() as usize);
     }
-
 
     pub fn tracked_rejects_misaligned_rsp(mut info: TestInfo) {
         info.should_panic();
@@ -1001,7 +991,6 @@ pub mod tests {
         assert_eq!(tracked.remaining(), 1024 - 128);
     }
 
-
     pub fn tracked_set_rsp_rejects_invalid(mut info: TestInfo) {
         info.should_panic();
 
@@ -1023,13 +1012,10 @@ pub mod tests {
 
         let rsp = stack.base() as usize + 3; // intentionally invalid
 
-        let tracked = unsafe {
-            Tracked::new_unchecked(stack, rsp)
-        };
+        let tracked = unsafe { Tracked::new_unchecked(stack, rsp) };
 
         assert_eq!(tracked.rsp(), rsp);
     }
-
 
     pub fn tracked_map_preserves_rsp(_info: TestInfo) {
         #[repr(align(16))]
@@ -1042,11 +1028,8 @@ pub mod tests {
 
         let rsp = tracked.rsp();
 
-        let mapped = tracked.map(|s| {
-            DynStack::from_slice(s.as_slice())
-        });
+        let mapped = tracked.map(|s| DynStack::from_slice(s.as_slice()));
 
         assert_eq!(mapped.rsp(), rsp);
     }
-
 }

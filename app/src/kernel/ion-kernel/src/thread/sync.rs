@@ -8,7 +8,7 @@
 //!
 //! let first = thread::spawn(|| {
 //!     // context switch can occur here! (global would be 10)
-//! 
+//!
 //!     unsafe { GLOBAL_VAR += 1 };
 //!
 //!     // context switch can occur here! (global would be 11)
@@ -38,7 +38,10 @@
 //! [^1]: using these structures on (thread) local variables has no effect.
 
 use core::{
-    cell::UnsafeCell, fmt::{Debug, Display}, ops::{Deref, DerefMut}, sync::atomic::{AtomicBool, Ordering}
+    cell::UnsafeCell,
+    fmt::{Debug, Display},
+    ops::{Deref, DerefMut},
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use alloc::string::String;

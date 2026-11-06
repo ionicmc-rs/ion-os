@@ -5,7 +5,7 @@
 //! (user / normal kernel threads) storage.
 
 use core::{
-    ffi::{c_char, CStr},
+    ffi::{CStr, c_char},
     ops::Deref,
 };
 
@@ -60,18 +60,9 @@ pub extern "C" fn perror(text: *const c_char) {
     let errno = get_errno();
 
     if let Some(meaning) = errno.meaning() {
-        serial_println!(
-            "{}: {} (os error {})",
-            prefix,
-            meaning,
-            errno.0
-        );
+        serial_println!("{}: {} (os error {})", prefix, meaning, errno.0);
     } else {
-        serial_println!(
-            "{}: (os error {})",
-            prefix,
-            errno.0
-        );
+        serial_println!("{}: (os error {})", prefix, errno.0);
     }
 }
 
@@ -148,10 +139,11 @@ impl ErrCode {
             _ => None,
         }
     }
-    
+
     /// Converts this error code
     pub const fn to_os_error(&self) -> Option<OsError> {
-        if self.code() > 14 { // Note: change this every time we add an error
+        if self.code() > 14 {
+            // Note: change this every time we add an error
             panic!("invalid value for error code created")
         }
 
@@ -162,9 +154,7 @@ impl ErrCode {
         }
 
         // Safety: we just ensured we are in the valid range
-        unsafe {
-            core::mem::transmute(*self)
-        }
+        unsafe { core::mem::transmute(*self) }
     }
 
     #[inline(always)]

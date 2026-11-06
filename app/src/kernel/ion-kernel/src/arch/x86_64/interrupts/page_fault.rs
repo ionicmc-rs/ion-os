@@ -12,7 +12,10 @@ pub(super) extern "x86-interrupt" fn page_fault(
     let tls = crate::arch::tls::read_ptr();
     libc::set_os_error(OsError::PermissionDenied); // may be useful to let underlying error appear instead
     let paging = Cr3::read().0;
-    panic!("Page Fault @ {:?} (tls: {tls:?}, paging base: {paging:?}) ec={:?}\n{:#?}", addr, error, frame);
+    panic!(
+        "Page Fault @ {:?} (tls: {tls:?}, paging base: {paging:?}) ec={:?}\n{:#?}",
+        addr, error, frame
+    );
 }
 
 pub const PAGE_FAULT_IST_INDEX: u16 = 1;

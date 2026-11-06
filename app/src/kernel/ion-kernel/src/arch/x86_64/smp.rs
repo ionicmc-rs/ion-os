@@ -1,9 +1,19 @@
-use core::{ptr::write_volatile, sync::atomic::{self, AtomicUsize, Ordering}};
+use core::{
+    ptr::write_volatile,
+    sync::atomic::{self, AtomicUsize, Ordering},
+};
 
 use alloc::vec::Vec;
 use linked_list_allocator::{align_down_size, align_up_size};
 
-use crate::{address_space, arch::{self, interrupts::apic::{self, AcpiSdtHeader, Xsdt, rsdp}}, log};
+use crate::{
+    address_space,
+    arch::{
+        self,
+        interrupts::apic::{self, AcpiSdtHeader, Xsdt, rsdp},
+    },
+    log,
+};
 
 const MAX_CPUS: usize = 64;
 
@@ -143,11 +153,9 @@ len = {len}"
 unsafe fn find_madt_table(addr: u64, entry_size: usize) -> Option<(*const u8, usize)> {
     let sdt = &*(addr as *const AcpiSdtHeader);
 
-    let entries =
-        (sdt.length as usize - core::mem::size_of::<AcpiSdtHeader>()) / entry_size;
+    let entries = (sdt.length as usize - core::mem::size_of::<AcpiSdtHeader>()) / entry_size;
 
-    let base =
-        (addr as *const u8).add(core::mem::size_of::<AcpiSdtHeader>());
+    let base = (addr as *const u8).add(core::mem::size_of::<AcpiSdtHeader>());
 
     for i in 0..entries {
         let table_addr = match entry_size {
@@ -176,7 +184,8 @@ pub fn get_madt() -> (*const u8, usize) {
         unsafe { find_madt_table(rsdp.xsdt_address, 8) }
     } else {
         unsafe { find_madt_table(rsdp.rsdt_address as u64, 4) }
-    }.expect("could not parse XSDT/RSDT for MADT table")
+    }
+    .expect("could not parse XSDT/RSDT for MADT table")
 }
 
 unsafe extern "C" {
@@ -185,10 +194,7 @@ unsafe extern "C" {
 }
 
 pub unsafe fn start_aps(trampoline: u64) {
-    let cpus = CPUS
-        .clone()
-        .into_iter()
-        .flatten();
+    let cpus = CPUS.clone().into_iter().flatten();
 
     let lapic = apic::cpu_lapic();
     let vector = (trampoline >> 12) as u8;
@@ -200,16 +206,21 @@ pub unsafe fn start_aps(trampoline: u64) {
             continue;
         }
 
-        unsafe { 
-            write_volatile(unsafe { &mut ap_stack }, 
-            align_up_size(
-                (&CPU_STACKS[i] as *const [u8; STACK_SIZE])
-                    .wrapping_add(1) as usize, 
-                    16
-                ) as u64
-            ) 
+        unsafe {
+            write_volatile(
+                unsafe { &mut ap_stack },
+                align_up_size(
+                    (&CPU_STACKS[i] as *const [u8; STACK_SIZE]).wrapping_add(1) as usize,
+                    16,
+                ) as u64,
+            )
         };
-        unsafe { write_volatile(unsafe { &mut ap_pml4_ptr }, arch::mmu::active_pml4().as_usize() as u64) };
+        unsafe {
+            write_volatile(
+                unsafe { &mut ap_pml4_ptr },
+                arch::mmu::active_pml4().as_usize() as u64,
+            )
+        };
 
         atomic::fence(Ordering::SeqCst);
 
