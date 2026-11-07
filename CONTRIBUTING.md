@@ -1,3 +1,7 @@
+> [!NOTE]
+> These docs are outdated
+> They will be updated soon
+
 # Ion OS Contributing Guide
 
 This Guide contains information on the Ion OS build system, the "bootloader" (more information later.), The C Entry, and the Kernel.
