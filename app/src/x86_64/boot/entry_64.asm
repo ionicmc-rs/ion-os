@@ -18,7 +18,7 @@ long_mode_start:
     mov fs, ax
     mov gs, ax
 
-    mov dword [0xb8000], 0x0F314F54    ; "S1" (white on black), 0x4F is 'O', adjust as you like
+    mov dword [0xb8000], 0x0F314F54    ; "S1" (white on black), 0x4F is 'O',
     mov dword [0xb8004], 0x0F324F00
 
 
