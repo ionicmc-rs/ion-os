@@ -1,18 +1,17 @@
 //! panicking.
-use core::{cell::Cell, mem, panic::PanicInfo, sync::atomic::compiler_fence};
+use core::{mem, panic::PanicInfo, sync::atomic::compiler_fence};
 
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
-    arch, asyncio,
-    c_lib::libc::{self, get_errno, perror},
+    c_lib::libc::perror,
     graphics::{
-        self, Color as GColor, Pos,
-        font::{BitmapFont, draw_text_from_panic, try_get_fallback_font},
+        Color as GColor, Pos,
+        font::{draw_text_from_panic, try_get_fallback_font},
         with_renderer,
     },
     hlt_loop,
-    io::{self, Error, OpenOptions, const_err},
+    io::Error,
     log, scheduler, serial_println,
     thread::{self, tls::tcb},
 };
@@ -143,7 +142,6 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
 /// ```
 #[allow(unused_must_use)]
 pub fn panic_raw(info: &PanicInfo) -> ! {
-    use core::fmt::Write;
     x86_64::instructions::interrupts::disable();
     let message = info.message();
     let loc = info.location();

@@ -1,6 +1,7 @@
 [alias]
 # xtask commands
-xtask = "run -p xtask --"
+xtask = "run -p xtask --release --"
+dxtask = "run -p xtask --"
 
 # Running
 xrun = "xtask run"
@@ -8,11 +9,18 @@ xecute = "xtask run --no-build"
 
 xtest = "xtask test"
 
+drun = "dxtask run"
+dexec = "dxtask run --no-build"
+dtest = "dxtask test"
+
 # Building
 xbuild = "xtask build"
+dbuild = "dxtask build"
 
 # Host utils
 
 xdoctor = "xtask doctor"
+ddoctor = "dxtask doctor"
 
 ionfs = "xtask fs"
+dfs = "dxtask fs"

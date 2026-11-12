@@ -10,8 +10,7 @@ use core::{
 };
 
 use crate::{
-    graphics::{self, Color, Pos, Surface, framebuffer},
-    log,
+    graphics::{Color, Pos, Surface, framebuffer},
 };
 
 /// PSF1 on-disk header
@@ -142,7 +141,7 @@ pub fn draw_glyph(
     surface: &mut Surface,
     x: u32,
     y: u32,
-    font: &BitmapFont,
+    _font: &BitmapFont,
     glyph: &[u8],
     color: Color,
 ) {

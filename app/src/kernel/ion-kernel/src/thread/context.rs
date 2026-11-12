@@ -1,3 +1,5 @@
+// this file is legacy and longer used. kept for reference/help. Use the appropriate architecture context in arch/.
+
 #![allow(missing_docs)]
 
 use crate::{address_space::AddressSpace, serial_println};

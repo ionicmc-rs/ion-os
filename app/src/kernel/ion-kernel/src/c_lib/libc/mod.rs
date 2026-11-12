@@ -1,3 +1,5 @@
+#![deprecated(note = "IonOS libc is mostly deprecated. only OS errors have remained")]
+
 //! libc by Rust but for Ion OS
 //!
 //! In reality, `libc` is a "`Raw FFI bindings`" crate, while in `Ion OS`, we create all the functionality, so we are simply mapping to

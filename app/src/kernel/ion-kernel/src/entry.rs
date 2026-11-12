@@ -366,15 +366,6 @@ pub fn kernel_main() {
         r.present();
     });
 
-    let f = File::open("@/testing.txt");
-    let mut f = asyncio::run_future(async { f.await.expect("failed to open testing.txt") });
-    let mut conts = String::new();
-    f.read_to_string(&mut conts)
-        .expect("failed to read testing.txt");
-    serial_println!("{conts}");
-
-    // init (CPU0)
-
     let mut table = ResourceTable::new();
 
     let (rstdout, wstdout) = channel::ring_channel_boxed(4096).unwrap();
@@ -395,7 +386,7 @@ pub fn kernel_main() {
     table.alloc(FdHandle(rstdin)).unwrap();
     let wstdin = table.alloc(FdHandle(wstdin)).unwrap();
 
-    let mut pid = asyncio::run_future(process::exec(
+    let pid = asyncio::run_future(process::exec(
         UserID::os(),
         "@/core/ish",
         &["@/core/ish"],

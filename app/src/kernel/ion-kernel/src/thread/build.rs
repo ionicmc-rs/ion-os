@@ -250,6 +250,7 @@ pub fn set_kill_safe(safe: bool) {
 }
 
 #[allow(static_mut_refs)]
+#[track_caller]
 pub fn name() -> String {
     if arch::tls::read_ptr().is_null() {
         panic!("use of TLS before initialization");
