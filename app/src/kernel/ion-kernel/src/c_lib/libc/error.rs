@@ -4,13 +4,9 @@
 //! supporting both global (kernel / early boot) and thread-local
 //! (user / normal kernel threads) storage.
 
-use core::{
-    ffi::{CStr, c_char},
-    ops::Deref,
-};
+use core::mem::variant_count;
 
 use crate::{
-    serial_println,
     thread::{self, tls::tcb},
 };
 
@@ -30,39 +26,6 @@ pub extern "C" fn __errno_location() -> *mut i32 {
         &raw mut tcb().errno
     } else {
         &raw mut GLOBAL_ERRNO
-    }
-}
-
-/// Read a C string prefix safely.
-///
-/// Used by `perror`.
-fn read_prefix(prefix: *const c_char) -> &'static str {
-    if prefix.is_null() {
-        return "";
-    }
-
-    let c_str = unsafe { CStr::from_ptr(prefix) };
-    c_str.to_str().unwrap_or("<invalid utf8>")
-}
-
-/// Print a human-readable error message.
-///
-/// libc ABI compatibility:
-/// ```c
-/// void perror(const char *s);
-/// ```
-///
-/// Output format:
-/// `{prefix}: {meaning} (os error {code})`
-#[unsafe(no_mangle)]
-pub extern "C" fn perror(text: *const c_char) {
-    let prefix = read_prefix(text);
-    let errno = get_errno();
-
-    if let Some(meaning) = errno.meaning() {
-        serial_println!("{}: {} (os error {})", prefix, meaning, errno.0);
-    } else {
-        serial_println!("{}: (os error {})", prefix, errno.0);
     }
 }
 
@@ -142,8 +105,7 @@ impl ErrCode {
 
     /// Converts this error code
     pub const fn to_os_error(&self) -> Option<OsError> {
-        if self.code() > 14 {
-            // Note: change this every time we add an error
+        if self.code() > variant_count::<OsError>() as i32 {
             panic!("invalid value for error code created")
         }
 
@@ -168,7 +130,7 @@ impl ErrCode {
     }
 }
 
-impl Deref for ErrCode {
+impl core::ops::Deref for ErrCode {
     type Target = i32;
 
     fn deref(&self) -> &Self::Target {

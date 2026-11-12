@@ -4,16 +4,11 @@ use core::{mem, panic::PanicInfo, sync::atomic::compiler_fence};
 use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
-    c_lib::libc::perror,
-    graphics::{
+    c_lib::libc, graphics::{
         Color as GColor, Pos,
         font::{draw_text_from_panic, try_get_fallback_font},
         with_renderer,
-    },
-    hlt_loop,
-    io::Error,
-    log, scheduler, serial_println,
-    thread::{self, tls::tcb},
+    }, hlt_loop, io::Error, log, scheduler, serial_println, thread::{self, tls::tcb},
 };
 
 /// Sets the function run at the end of panics.
@@ -73,8 +68,9 @@ pub fn panic_thread(info: &PanicInfo) -> ! {
 
     serial_println!("{message}");
 
-    let c = c"=> Last THREAD Error";
-    perror(c.as_ptr().cast_mut());
+    let err = libc::get_errno();
+    let etext = err.meaning().unwrap_or("User or Unknown Error");
+    serial_println!("=> Last THREAD Error: {} (os error {})", etext, err.code());
 
     // This is the old VGA buffer printing.
     // it's not needed anymore
@@ -158,9 +154,9 @@ pub fn panic_raw(info: &PanicInfo) -> ! {
         serial_println!("abort: panic caused at unknown location: ");
     }
 
-    serial_println!("{}", message);
-    let c = c"=> Last OS Error";
-    perror(c.as_ptr().cast_mut());
+    let err = libc::get_errno();
+    let etext = err.meaning().unwrap_or("User or Unknown Error");
+    serial_println!("=> Last THREAD Error: {} (os error {})", etext, err.code());
 
     // if let Some(mut wlock) = WRITER.try_lock() {
     //     wlock.set_color(Color::LightCyan, Color::Black);

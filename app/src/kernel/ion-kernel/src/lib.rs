@@ -28,7 +28,8 @@
     ptr_metadata,
     const_convert,
     never_type,
-    formatting_options
+    formatting_options,
+    variant_count
 )]
 #![test_runner(test::run_tests)] // this is unused but silences errors.
 
