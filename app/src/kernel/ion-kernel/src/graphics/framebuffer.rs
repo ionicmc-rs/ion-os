@@ -78,7 +78,7 @@ unsafe fn map_framebuffer(
     // 4. Allocate contiguous virtual MMIO region
     // ------------------------------------------------------------
 
-    let slot = alloc_2m_contiguous(pages).expect("MMIO 2MiB region exhausted");
+    let slot = unsafe { alloc_2m_contiguous(pages).expect("MMIO 2MiB region exhausted") };
 
     let virt_base = mmio_base() + slot as usize * FRAME_2M;
 
