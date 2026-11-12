@@ -58,15 +58,4 @@
 #![allow(missing_unsafe_on_extern, edition_2024_expr_fragment_specifier)]
 
 pub mod error;
-pub mod malloc_wraps;
-pub mod math;
-pub mod mem;
-pub mod primitive;
-
-// prelude
-
 pub use error::*;
-pub use malloc_wraps::*;
-pub use math::*;
-pub use mem::*;
-pub use primitive::*;

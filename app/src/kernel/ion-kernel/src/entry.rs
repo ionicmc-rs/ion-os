@@ -479,7 +479,6 @@ pub fn kernel_main() {
                 &lib_alloc::tests::test_freed_mem_used,
                 &lib_alloc::tests::test_alloc_tools,
                 // C Lib / LibC
-                &c_lib::libc::mem::test_malloc,
                 // Stack
                 &stack::tests::tracked_initial_rsp_is_top,
                 &stack::tests::tracked_map_preserves_rsp,
