@@ -89,6 +89,7 @@ fn clone(data: *const ()) -> RawWaker {
 fn wake(data: *const ()) {
     let waker = unsafe { &*(data.cast::<TWaker>()) };
     unsafe { &*waker.flag }.store(true, Ordering::Release);
+    drop_waker(data);
 }
 
 fn wake_by_ref(data: *const ()) {
@@ -116,20 +117,25 @@ impl Future for KeyInput {
     type Output = KeyEvent;
 
     fn poll(self: core::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.state.is_some() {
+        // SAFETY: `state` is not moved, so its address remains stable; only the
+        // unpinned `registered` field is mutated directly.
+        let this = unsafe { self.get_unchecked_mut() };
+
+        if this.state.is_some() {
             Poll::Ready(
-                self.state.as_ref().cloned().unwrap(), // this is ugly, but efficient
+                this.state.as_ref().cloned().unwrap(), // this is ugly, but efficient
             )
         } else {
-            if self.registered {
+            if this.registered {
                 return Poll::Pending;
             }
 
             // note: the following implementation requires `self` is not moved until completion.
 
             reg_kbd_waker(cx.waker().clone());
+            this.registered = true;
 
-            let ptr = &raw const self.state;
+            let ptr = &raw const this.state;
             let refr = unsafe { ptr.cast_mut().as_mut().unwrap() };
             event::add_key_listener_once(|ev| *refr = Some(ev));
             Poll::Pending
