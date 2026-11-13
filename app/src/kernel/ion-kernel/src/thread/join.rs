@@ -115,7 +115,6 @@ pub fn spawn<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
         unsafe {
             core::arch::asm!("mov {}, rsp", out(reg) sp);
         }
-        serial_println!("SP before calling func: {sp:#x} (mod 16: {})", sp % 16);
 
         let res = func();
 

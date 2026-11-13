@@ -512,8 +512,8 @@ fn build(cli: &Cli, test: bool, release: bool) -> Result<()> {
 
     docker(&rust_cmd)?;
 
-    // NOTE: target naming scheme => <arch>.json → <arch>/debug
-    let rust_lib = PathBuf::from(format!("{target_dir}/{arch}/debug/libion_kernel.a"));
+    let profile = if release { "release" } else { "debug" };
+    let rust_lib = PathBuf::from(format!("{target_dir}/{arch}/{profile}/libion_kernel.a"));
 
     if !rust_lib.exists() {
         bail!("Rust staticlib not found: {}", rust_lib.display());

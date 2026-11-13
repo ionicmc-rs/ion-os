@@ -142,9 +142,6 @@ pub fn init_interrupt_operations() {
 
         IOAPIC.route_irq(1, KEYBOARD_VEC);
     };
-
-    // no interrupts here
-    serial_println!("Initialized interrupt operations properly");
 }
 
 pub fn ioapic() -> &'static IoApic {

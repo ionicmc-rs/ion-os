@@ -196,8 +196,6 @@ pub fn boot_info() -> &'static c_lib::BootInfo {
 /// The boot_info ptr must point to valid data.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
-    serial_println!("\nWelcome User of QEMU! Thank you for using Ion OS");
-
     // Read the pointer
     // Safety: the pointer is guaranteed always to be valid, as this is passed in from C. other calls
     // Violate the unsafe precondition.
@@ -207,9 +205,8 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 
     let boot_info = boot_info
         .unwrap_or_else(|_| {
-            let err = Error::last_os_err();
             libc::set_errno(6);
-            core::panic!("Invalid Boot Info: {err}")
+            core::panic!("Invalid Boot Info")
         })
         .into_rust();
 
@@ -253,6 +250,7 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 
     log::info!("starting threads");
     unsafe { thread::start() };
+
     log::error!("return to the boot stack is prohibited");
     hlt_loop();
 }

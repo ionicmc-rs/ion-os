@@ -184,7 +184,6 @@ pub fn probe() -> Option<VirtioBlk> {
             if did != VIRTIO_BLK_DEVICE {
                 continue;
             }
-            serial_println!("virtio-blk found at {}:{}:{}", bus, slot, 0);
             unsafe {
                 return Some(init(bus, slot));
             }
@@ -253,13 +252,11 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
                 match cfg_type {
                     VIRTIO_PCI_CAP_COMMON => {
                         common = cap_ptr as *mut VirtioPciCommonCfg;
-                        serial_println!("Common CFG found at {:p}", common);
                     }
                     VIRTIO_PCI_CAP_NOTIFY => {
                         let mult = pci_read_u32(bus, slot, 0, cap + 16);
                         notify = cap_ptr;
                         notify_off_multiplier = mult;
-                        serial_println!("Notify CFG found at {:p}, mult: {}", notify, mult);
                     }
                     _ => {}
                 }
@@ -295,7 +292,6 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
         libc::set_os_error(OsError::HardwareFail);
         panic!("virtio: queue size is 0 (mapping issue or device error)");
     }
-    serial_println!("Queue 0 size: {}", q_size);
 
     // Allocate memory for queue (Descriptors + Avail + Used)
     // For simplicity, we stick to 128 (your original size) if device allows, or take the device max

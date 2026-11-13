@@ -109,9 +109,6 @@ pub extern "x86-interrupt" fn timer_trampoline(
 #[unsafe(no_mangle)]
 pub extern "C" fn timer_handler(regs: &mut InterruptRegs, frame: &mut InterruptStackFrame) {
     let t = TICKS.fetch_add(1, Ordering::Relaxed);
-    if t.is_multiple_of(50) {
-        serial_println!("reached notable tick: {t}");
-    }
 
     if thread::current().is_none() {
         // The timer is enabled before the first scheduler thread starts.

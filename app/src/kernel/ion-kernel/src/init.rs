@@ -95,17 +95,13 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
 
     // allocation (essential, but not totally)
 
-    serial_println!("mapping thread heap...");
     unsafe {
         init_thread_stack_region();
     }
     // unsafe { arch::mmu::init_kernel_heap() };
 
-    serial_println!("initializing heap metadata...");
     unsafe { init_heap() };
-    serial_println!("initializing user data heap...");
     unsafe { init_user_data() };
-    serial_println!("heaps have been initialized");
 
     // keyboard
 
@@ -128,6 +124,5 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
 
     x86_64::instructions::interrupts::enable();
 
-    serial_println!("Initializing Done.");
     Ok(())
 }

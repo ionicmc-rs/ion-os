@@ -23,8 +23,6 @@ pub fn init() {
     for x in 0..count {
         let scheduler = Scheduler::new();
 
-        serial_println!("initialized CPU {x} Local Storage");
-
         unsafe {
             CPU_LS[x] = Some(CpuLocalStorage {
                 id: x as u8,

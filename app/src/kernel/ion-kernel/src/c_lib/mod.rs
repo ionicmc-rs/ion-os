@@ -63,7 +63,6 @@ impl BootInfoInput {
                     SmallPtr::new_unchecked(without_provenance(self.multiboot_info as usize))
                 };
                 let inner = unsafe { ptr.into_inner().as_ref().unwrap() };
-                serial_println!("{:#?}", inner);
                 ptr
             },
             multiboot_magic: {
