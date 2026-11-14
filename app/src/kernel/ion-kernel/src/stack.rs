@@ -280,8 +280,6 @@ impl DynStack {
 
 // static stack
 
-// yes i wrote it with AI, theres nothing you can do to stop me >:)
-
 /// A stack of a fixed, statically known size.
 ///
 /// # Guarantees
