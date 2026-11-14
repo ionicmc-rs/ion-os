@@ -130,7 +130,8 @@ pub fn spawn<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
     // Safety: We fulfill all requirements
     let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size);
     let id = thread.id();
-    current_scheduler().queue(thread);
+    // current_scheduler().queue(thread);
+    thread::queue(thread, TPriority::Med);
 
     JoinHandle {
         result: result_ptr,
@@ -186,7 +187,7 @@ pub fn spawn_at<F: FnOnce() -> T + Send + 'static, T: Send + 'static>(
     }
     let thread = Thread::new(thread_entry::<T>, meta_ptr, stack_size);
     let id = thread.id();
-    current_scheduler().queue_at(prio, thread);
+    thread::queue(thread, prio);
 
     JoinHandle {
         result: result_ptr,

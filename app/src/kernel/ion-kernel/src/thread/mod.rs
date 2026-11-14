@@ -10,7 +10,7 @@ use core::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use crate::arch;
+use crate::{arch, privilege::UserID};
 #[cfg(debug_assertions)]
 use crate::scheduler::idle_entry;
 use crate::{
@@ -59,8 +59,10 @@ pub struct Thread {
     state: State,
     tls: usize,
 
+    owner: Option<UserID>,
+
     /// owned memory to ensure [`Drop`] runs on the allocation
-    _stack: Option<ThreadStack<Arc<dyn Allocator>>>, // this is a little fishy....
+    _stack: Option<ThreadStack<Arc<dyn Allocator>>>,
     // guards against forgetting to drop the allocation.
     _tls_guard: Option<TlsAllocation>, // No metadata storage here, we do that with thread local storage.
 }
@@ -130,6 +132,7 @@ impl Thread {
                 id,
                 tls: raw_ptr as usize,
                 state: State::Ready,
+                owner: None,
                 _stack: Some(stack),
                 _tls_guard: Some(guard),
             }
@@ -140,6 +143,7 @@ impl Thread {
         elf: elf::ElfBytes<AnyEndian>,
         elf_data: &[u8],
         args: &[&str],
+        user: UserID
     ) -> Result<Self, ElfLoadError> {
         log::debug!("loading ELF file");
         let loaded = load_elf(elf, elf_data, args)?;
@@ -161,6 +165,7 @@ impl Thread {
             id: ThreadID(NEXT_ID.fetch_add(1, Ordering::Relaxed)),
             state: State::Ready,
             tls,
+            owner: Some(user),
             _stack: None,
             _tls_guard, // User TLS is managed by the user address space
         })
@@ -215,6 +220,10 @@ impl Thread {
         self.id
     }
 
+    pub fn user(&self) -> Option<UserID> {
+        self.owner
+    }
+
     pub fn ctx(&self) -> &Context {
         &self.ctx
     }
@@ -258,6 +267,7 @@ pub fn id() -> ThreadID {
         .id()
 }
 
+#[cold]
 pub fn init() {
     current_scheduler().init();
 }
@@ -266,3 +276,4 @@ pub mod build;
 pub mod tls;
 
 pub use build::{TPriority, ThreadBuilder, kill_safe, name, panicking, set_kill_safe, set_name};
+pub use scheduler::global::queue;

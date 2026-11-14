@@ -193,15 +193,14 @@ static mut CPU0_LAPIC: MaybeUninit<LocalApic> = MaybeUninit::uninit();
 static mut CPUS_LAPIC: [MaybeUninit<LocalApic>; 64] = [const { MaybeUninit::uninit() }; 64];
 
 pub fn cpu_lapic() -> &'static LocalApic {
-    unsafe { CPU0_LAPIC.assume_init_ref() }
+    current_cpu_lapic().expect("LAPIC is not initialized for the current CPU")
 }
 
 /// Get the current CPU's LAPIC (for SMP)
-/// Returns the per-CPU LAPIC if initialized, falls back to BSP LAPIC otherwise
+/// Returns `None` if the current CPU has no registered or initialized LAPIC.
 pub fn current_cpu_lapic() -> Option<&'static LocalApic> {
-    // SAFETY: We read the LAPIC ID from the BSP LAPIC - this is safe as we just need
-    // the ID to look up which CPU we're on.
-    let lapic_id = unsafe { cpu_lapic().id() };
+    // The local APIC MMIO registers identify the CPU executing this read.
+    let lapic_id = unsafe { LocalApic::new(lapic_base()).id() };
 
     // Look up this CPU's index in the CPU array
     if let Some(index) = crate::arch::smp::cpu_index_from_apic_id(lapic_id) {

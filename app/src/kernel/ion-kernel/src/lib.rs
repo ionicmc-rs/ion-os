@@ -233,6 +233,8 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
 
     smp::init_cpu0_cls();
 
+    scheduler::global::init();
+
     // this is the main thread.
     log::debug!("initializing threads");
     thread::init();

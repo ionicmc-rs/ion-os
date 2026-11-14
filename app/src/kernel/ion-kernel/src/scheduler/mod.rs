@@ -25,6 +25,9 @@ use crate::{
     },
 };
 
+pub mod global;
+
+// No longer used in favor for CPU Local Schedulers.
 // /// The global Scheduler
 // ///
 // /// this static handles all the running threads for this CPU (only CPU for now).
@@ -233,15 +236,15 @@ impl Queues {
     }
 
     pub fn place_idle(&mut self, idle: Thread) -> &mut Thread {
-        if let State::Ready = idle.state() {
-        } else if idle.id() != ThreadID(0) {
-            panic!(
-                "Safety invariant violation: `Queues::place_idle` should only receive ready, 0 ID threads (idle)"
-            );
-        }
+        // the following no longer works in smp, probably
+        // if let State::Ready = idle.state() {
+        // } else if idle.id() != ThreadID(0) {
+        //     panic!(
+        //         "Safety invariant violation: `Queues::place_idle` should only receive ready, 0 ID threads (idle)"
+        //     );
+        // }
 
         if self.idle.is_some() {
-            // better error message for when we get CPUs
             panic!(
                 "Idle thread already exists, but the thread was already asserted to be the idle one. this likely indicates data being sent between CPUs"
             );
@@ -374,6 +377,14 @@ impl Queues {
 
     pub fn has_targets(&self) -> bool {
         !(self.high.0.is_empty() && self.med.0.is_empty() && self.low.0.is_empty())
+    }
+
+    pub fn active_thread_count(&self) -> usize {
+        self.high.0.len() + self.low.0.len() + self.med.0.len()
+    }
+
+    pub fn inactive_thread_count(&self) -> usize {
+        self.non_running.0.len()
     }
 }
 
@@ -636,6 +647,14 @@ impl Scheduler {
     pub fn kill(&self, id: ThreadID) {
         _ = unsafe_cell_ref!(mut self.queues).by_id(id);
     }
+
+    pub fn active_thread_count(&self) -> usize {
+        unsafe_cell_ref!(self.queues).active_thread_count()
+    }
+
+    pub fn inactive_thread_count(&self) -> usize {
+        unsafe_cell_ref!(self.queues).inactive_thread_count()
+    }
 }
 
 #[track_caller]
@@ -766,7 +785,7 @@ pub fn has_panicked(id: ThreadID) -> bool {
     current_scheduler().has_panicked(id)
 }
 
-#[cold]
+
 pub unsafe fn start() {
     schedule(ScheduleReason::Start);
 }

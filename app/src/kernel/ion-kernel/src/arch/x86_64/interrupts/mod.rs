@@ -144,6 +144,16 @@ pub fn init_interrupt_operations() {
     };
 }
 
+pub fn init_interrupt_operations_ap(id: usize) {
+    IDT.load();
+    gdt::init();
+    // unsafe { apic::init_cpu_lapic(id) };
+    unsafe {
+        cpu_lapic().enable(0xFF);
+        cpu_lapic().setup_timer(TIMER_VEC, 10_000_000);
+    }
+}
+
 pub fn ioapic() -> &'static IoApic {
     unsafe { &IOAPIC }
 }

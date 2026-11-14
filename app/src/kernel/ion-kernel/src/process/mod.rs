@@ -3,14 +3,7 @@ use core::{cell::Cell, fmt::Debug};
 use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
 
 use crate::{
-    asyncio,
-    io::{self, ErrorKind, OpenOptions},
-    log,
-    privilege::UserID,
-    resources::{self, FdDispatch, OpenFlags, ResourceTable, channel, fd},
-    scheduler::current_scheduler,
-    serial_println,
-    thread::{self, Thread, ThreadID, sync::Mutex, tls::tcb},
+    asyncio, io::{self, ErrorKind, OpenOptions}, log, privilege::UserID, resources::{self, FdDispatch, OpenFlags, ResourceTable, channel, fd}, scheduler::{self, current_scheduler}, serial_println, thread::{self, Thread, ThreadID, sync::Mutex, tls::tcb},
 };
 
 pub mod elf;
@@ -451,7 +444,7 @@ pub async fn exec(
     let parsed = ::elf::ElfBytes::minimal_parse(&file_bytes)
         .map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
 
-    let mut main = Thread::for_user(parsed, &file_bytes, args).map_err(io::Error::other)?;
+    let mut main = Thread::for_user(parsed, &file_bytes, args, owner).map_err(io::Error::other)?;
 
     // actual spawn
 
@@ -465,16 +458,17 @@ pub async fn exec(
         };
     });
 
-    if pid.0 != 0 && parent.is_none() {
-        panic!("only the init process can be an orphan process")
-    }
+    // still not decided
+    // if pid.0 != 0 && parent.is_none() {
+    //     panic!("only the init process can be an orphan process")
+    // }
 
     main.set_pid(pid);
     main.set_name(&format!(
         "{owner:?} <{path}> {args:?} - child of {parent:?}"
     ));
 
-    current_scheduler().queue(main);
+    thread::queue(main, thread::TPriority::Med);
 
     Ok(pid)
 }

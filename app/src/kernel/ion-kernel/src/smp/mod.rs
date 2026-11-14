@@ -1,9 +1,7 @@
 use crate::{
     arch::{
-        self, interrupts,
-        smp::{self, discover_cpus, get_madt},
-    },
-    cls, hlt_loop, log,
+        self, interrupts, smp::{self, cpu, discover_cpus, get_madt},
+    }, cls::{self, CpuLocalStorage}, hlt_loop, log, thread,
 };
 
 pub struct CpuInfo(smp::CpuInfo);
@@ -47,6 +45,7 @@ pub extern "C" fn ap_entry() -> ! {
     log::debug!("AP started!");
 
     let apic_id = unsafe { interrupts::LocalApic::new(interrupts::lapic_base()).id() };
+    arch::interrupts::init_interrupt_operations();
 
     if let Some(index) = smp::cpu_index_from_apic_id(apic_id) {
         // Initialize the per-CPU LAPIC for this core
@@ -61,5 +60,32 @@ pub extern "C" fn ap_entry() -> ! {
         log::debug!("AP online: cpu index {index}, apic id {apic_id}");
     }
 
+    // unsafe { thread::start() }; // start with no threads, awaiting another CPU to send threads towards this one
+
     hlt_loop()
+}
+
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CpuID(pub usize);
+
+impl CpuID {
+    pub fn new(id: usize) -> Option<Self> {
+        if id > smp::cpu_count() {
+            None
+        } else {
+            Some(Self(id))
+        }
+    }
+
+    pub const fn get(&self) -> usize {
+        self.0
+    }
+
+    pub fn info(&self) -> CpuInfo {
+        CpuInfo(cpu(self.0))
+    }
+
+    pub fn storage(&self) -> &'static CpuLocalStorage {
+        cls::cpu_cls(self.get()).unwrap() // we know this CpuID exists
+    }
 }

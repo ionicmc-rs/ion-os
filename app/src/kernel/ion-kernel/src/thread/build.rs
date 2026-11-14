@@ -20,7 +20,7 @@ struct ThreadMetadata {
     kill_safe: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy,PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum TPriority {
     High,
     #[default]
