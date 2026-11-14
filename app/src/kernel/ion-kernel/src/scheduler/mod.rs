@@ -10,15 +10,10 @@ use core::{
 };
 
 use alloc::{boxed::Box, collections::vec_deque::VecDeque, vec::Vec};
-use x86_64::structures::idt::InterruptStackFrameValue;
+use x86_64::structures::idt::{InterruptStackFrame, InterruptStackFrameValue};
 
 use crate::{
-    address_space::kernel_address_space,
-    arch::{self, ctx, interrupts::InterruptGuard},
-    cls, hlt_loop, log,
-    process::{self, PROCESSES},
-    serial_println,
-    thread::{
+    address_space::kernel_address_space, arch::{self, ctx, interrupts::InterruptGuard}, cls, hlt_loop, log, process::{self, PROCESSES}, serial_println, smp, thread::{
         self, State, Thread, ThreadID,
         build::TPriority,
         tls::{ThreadSelf, install_tls},
@@ -162,13 +157,21 @@ pub extern "C" fn idle_entry(_: usize) -> ! {
     thread::set_name("idle");
     serial_println!("in the idle thread");
     loop {
-        let scheduler = &cls::current()
-            .expect("CPU running a scheduler should always have CLS")
-            .scheduler;
+        let cls = cls::current().expect("CPU running a scheduler must always have CLS");
+        let scheduler = &cls.scheduler;
 
-        if unsafe_cell_ref!(scheduler.queues).has_targets() {
+        if scheduler.has_targets() {
             yield_now();
         }
+
+        // Work stealing touches two per-CPU queues. Keep it out of the timer
+        // interrupt path and prevent this CPU's scheduler interrupting the
+        // transfer while it temporarily owns queue entries.
+        arch::interrupts::without_interrupts(|| {
+            if global::can_work_steal(smp::CpuID(cls.id as usize)) {
+                global::work_steal();
+            }
+        });
 
         arch::interrupts::enable_and_halt();
     }
@@ -232,6 +235,14 @@ impl Queues {
             Priority::Med => self.queue_med(thread),
             Priority::Low => self.queue_low(thread),
             Priority::None => (), // let thread drop
+        }
+    }
+
+    pub fn queue_front(&mut self, priority: TPriority, thread: Thread) {
+        match priority {
+            TPriority::Low => self.low.0.push_front(thread),
+            TPriority::Med => self.med.0.push_front(thread),
+            TPriority::High => self.high.0.push_front(thread),
         }
     }
 
@@ -391,6 +402,7 @@ impl Queues {
 #[derive(Debug, Default)]
 pub struct Scheduler {
     queues: UnsafeCell<Queues>,
+    queues_lock: spin::Mutex<()>,
     needs_resched: AtomicBool,
     current: UnsafeCell<Option<(Thread, Priority)>>,
     can_reschedule: AtomicBool,
@@ -402,27 +414,39 @@ impl Scheduler {
     pub const fn new() -> Self {
         Self {
             queues: Queues::new().into(),
+            queues_lock: spin::Mutex::new(()),
             needs_resched: AtomicBool::new(false),
             can_reschedule: AtomicBool::new(false),
             current: None.into(),
         }
     }
 
+    fn with_queues<R>(&self, f: impl FnOnce(&mut Queues) -> R) -> R {
+        arch::interrupts::without_interrupts(|| {
+            let _guard = self.queues_lock.lock();
+            f(unsafe_cell_ref!(mut self.queues))
+        })
+    }
+
+    pub fn has_targets(&self) -> bool {
+        self.with_queues(|queues| queues.has_targets())
+    }
+
     pub fn init(&self) {
-        let queues = unsafe_cell_ref!(mut self.queues);
-        queues.init();
-        let idle = queues
-            .take_idle()
-            .expect("queues uninit after explicit init - likely a memory error");
-        *unsafe_cell_ref!(mut self.current) = Some((idle, Priority::None));
+        self.with_queues(|queues| {
+            queues.init();
+            let idle = queues
+                .take_idle()
+                .expect("queues uninit after explicit init - likely a memory error");
+            *unsafe_cell_ref!(mut self.current) = Some((idle, Priority::None));
+        });
 
         self.can_reschedule.store(true, Ordering::Relaxed);
     }
 
     /// Queues at medium priority
     pub fn queue(&self, thread: Thread) {
-        // Safety: scheduler may only be accessed synchronously.
-        unsafe_cell_ref!(mut self.queues).queue_med(thread);
+        self.with_queues(|queues| queues.queue_med(thread));
     }
 
     pub fn queue_at(&self, prio: TPriority, thread: Thread) {
@@ -431,7 +455,7 @@ impl Scheduler {
             TPriority::Low => Priority::Low,
             TPriority::Med => Priority::Med,
         };
-        unsafe_cell_ref!(mut self.queues).queue(prio, thread);
+        self.with_queues(|queues| queues.queue(prio, thread));
     }
 
     pub fn request_rescheduling(&self) {
@@ -461,43 +485,47 @@ impl Scheduler {
     }
 
     pub fn wake_kbd(&self) {
-        let queues = unsafe_cell_ref!(mut self.queues);
-        let len = queues.non_running.0.len();
-        for _ in 0..len {
-            let NonRunningThread(priority, mut thread) = queues.non_running.0.pop_front().unwrap();
-            match thread.state() {
-                State::Ready | State::Running => panic!(
-                    "Safety invariant violated: detected a ready/running thread in the non running queue"
-                ),
-                State::Blocked(WakeEvent::KeyInput) => {
-                    thread.set_state(State::Ready);
-                    queues.queue(priority, thread);
+        self.with_queues(|queues| {
+            let len = queues.non_running.0.len();
+            for _ in 0..len {
+                let NonRunningThread(priority, mut thread) =
+                    queues.non_running.0.pop_front().unwrap();
+                match thread.state() {
+                    State::Ready | State::Running => panic!(
+                        "Safety invariant violated: detected a ready/running thread in the non running queue"
+                    ),
+                    State::Blocked(WakeEvent::KeyInput) => {
+                        thread.set_state(State::Ready);
+                        queues.queue(priority, thread);
+                    }
+                    _ => queues.queue_norun(priority, thread),
                 }
-                _ => queues.queue_norun(priority, thread),
             }
-        }
+        });
     }
 
     pub fn wake_waiters_of(&self, id: ThreadID) {
-        let queues = unsafe_cell_ref!(mut self.queues);
-        let len = queues.non_running.0.len();
-        for _ in 0..len {
-            let NonRunningThread(priority, mut thread) = queues.non_running.0.pop_front().unwrap();
-            match thread.state() {
-                State::Ready | State::Running => {
-                    panic!("Safety invariant violated: detected a thread in the non running queue")
+        self.with_queues(|queues| {
+            let len = queues.non_running.0.len();
+            for _ in 0..len {
+                let NonRunningThread(priority, mut thread) =
+                    queues.non_running.0.pop_front().unwrap();
+                match thread.state() {
+                    State::Ready | State::Running => {
+                        panic!("Safety invariant violated: detected a thread in the non running queue")
+                    }
+                    State::Blocked(WakeEvent::EndOf(waited)) if *waited == id => {
+                        thread.set_state(State::Ready);
+                        queues.queue(priority, thread);
+                    }
+                    _ => queues.queue_norun(priority, thread),
                 }
-                State::Blocked(WakeEvent::EndOf(waited)) if *waited == id => {
-                    thread.set_state(State::Ready);
-                    queues.queue(priority, thread);
-                }
-                _ => queues.queue_norun(priority, thread),
             }
-        }
+        });
     }
 
     #[track_caller]
-    pub fn pick(
+    fn pick(
         &self,
         reason: ScheduleReason,
     ) -> Option<(Option<&mut ctx::Context>, &ctx::Context)> {
@@ -607,8 +635,24 @@ impl Scheduler {
         }
     }
 
-    pub fn pick_preempt(&self) -> Option<(Option<&mut ctx::Context>, &ctx::Context)> {
-        self.pick(ScheduleReason::Preempt)
+    /// Select and install the next context while holding this CPU's run-queue
+    /// lock. Remote enqueue and steal operations use the same lock, so they
+    /// cannot move a context while the interrupt frame is being saved.
+    pub fn switch_from_interrupt(
+        &self,
+        reason: ScheduleReason,
+        regs: &mut arch::interrupts::InterruptRegs,
+        frame: &mut InterruptStackFrame,
+    ) {
+        arch::interrupts::without_interrupts(|| {
+            let _guard = self.queues_lock.lock();
+            if let Some((old, new)) = self.pick(reason) {
+                if let Some(old) = old {
+                    old.save_from_interrupt(regs, unsafe { frame.as_mut().read_only() });
+                }
+                new.load_with_interrupt_frame(regs, unsafe { frame.as_mut() });
+            }
+        });
     }
 
     // /// Switches contexts
@@ -626,11 +670,11 @@ impl Scheduler {
     // }
 
     pub fn has_panicked(&self, id: ThreadID) -> bool {
-        unsafe_cell_ref!(self.queues).has_panicked(id)
+        self.with_queues(|queues| queues.has_panicked(id))
     }
 
     pub fn remove_panic(&self, id: ThreadID) {
-        unsafe_cell_ref!(mut self.queues).remove_panic(id);
+        self.with_queues(|queues| queues.remove_panic(id));
     }
 
     pub fn reschedule_if_needed(&self) {
@@ -654,15 +698,23 @@ impl Scheduler {
     }
 
     pub fn kill(&self, id: ThreadID) {
-        _ = unsafe_cell_ref!(mut self.queues).by_id(id);
+        self.with_queues(|queues| _ = queues.by_id(id));
     }
 
     pub fn active_thread_count(&self) -> usize {
-        unsafe_cell_ref!(self.queues).active_thread_count()
+        self.with_queues(|queues| queues.active_thread_count())
     }
 
     pub fn inactive_thread_count(&self) -> usize {
-        unsafe_cell_ref!(self.queues).inactive_thread_count()
+        self.with_queues(|queues| queues.inactive_thread_count())
+    }
+
+    pub fn steal(&self) -> Option<(Thread, Priority)> {
+        self.with_queues(|queues| queues.next())
+    }
+
+    pub fn queue_front(&self, thread: Thread, prio: TPriority) {
+        self.with_queues(|queues| queues.queue_front(prio, thread));
     }
 }
 
@@ -766,7 +818,7 @@ pub fn request_reschedule() {
 }
 
 pub fn wake_done() {
-    unsafe_cell_ref!(mut current_scheduler().queues).restore_done();
+    current_scheduler().with_queues(|queues| queues.restore_done());
 }
 
 pub fn reschedule_if_needed() {

@@ -216,7 +216,7 @@ const KERNEL_RFLAGS_MASK: u64 = RFlags::INTERRUPT_FLAG.bits()
 // load/save
 
 impl Context {
-    pub(in crate::arch::x86_64) fn load_with_interrupt_frame(
+    pub(crate) fn load_with_interrupt_frame(
         &self,
         regs_on_stack: &mut super::interrupts::InterruptRegs,
         mut stack_frame: Volatile<&mut InterruptStackFrameValue>,
@@ -265,7 +265,7 @@ impl Context {
         });
     }
 
-    pub(in crate::arch::x86_64) fn save_from_interrupt(
+    pub(crate) fn save_from_interrupt(
         &mut self,
         regs: &InterruptRegs,
         stack_frame: Volatile<&mut InterruptStackFrameValue, volatile::access::ReadOnly>,

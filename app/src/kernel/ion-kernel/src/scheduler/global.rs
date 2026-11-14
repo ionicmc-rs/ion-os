@@ -1,9 +1,10 @@
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, vec::{self, Vec}};
 
 use crate::{
-    arch, privilege::UserID, smp::{self, CpuID}, thread::{TPriority, Thread},
+    arch, cls, log, privilege::UserID, scheduler::Priority, smp::{self, CpuID}, thread::{TPriority, Thread},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CpuData {
     id: CpuID,
     workload: CpuWorkload,
@@ -14,12 +15,15 @@ pub struct ThreadController {
     cpus: Vec<CpuData>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CpuWorkload {
+    Disabled,
     Normal,
     Kernel,
     User,
     UserPrivileged,
     Priority(TPriority),
+    Weighted(u8),
     Emergency,
 }
 
@@ -77,8 +81,72 @@ fn queue_thread_to_cpu(id: CpuID, priority: TPriority, thread: Thread) {
     id.storage().scheduler.queue_at(priority, thread);
 }
 
-impl ThreadController {
+fn workload_for_cpu(division: &DivisionType, id: CpuID) -> CpuWorkload {
+    match division {
+        DivisionType::Single | DivisionType::Equal => CpuWorkload::Normal,
+        DivisionType::KernelUsers {
+            kernel_cores,
+            user_cores,
+        } => {
+            if kernel_cores.contains(&id) {
+                CpuWorkload::Kernel
+            } else if user_cores.contains(&id) {
+                CpuWorkload::User
+            } else {
+                CpuWorkload::Disabled
+            }
+        }
+        DivisionType::KernelUserPrivileged {
+            kernel_cores,
+            reg_user_cores,
+            privileged_user_cores,
+        } => {
+            if kernel_cores.contains(&id) {
+                CpuWorkload::Kernel
+            } else if privileged_user_cores.contains(&id) {
+                CpuWorkload::UserPrivileged
+            } else if reg_user_cores.contains(&id) {
+                CpuWorkload::User
+            } else {
+                CpuWorkload::Disabled
+            }
+        }
+        DivisionType::Priority {
+            low,
+            high,
+            med_cores,
+        } => {
+            if id == *high {
+                CpuWorkload::Priority(TPriority::High)
+            } else if id == *low {
+                CpuWorkload::Priority(TPriority::Low)
+            } else if med_cores.contains(&id) {
+                CpuWorkload::Priority(TPriority::Med)
+            } else {
+                CpuWorkload::Disabled
+            }
+        }
+        DivisionType::EmergencyCore {
+            emergency_core,
+            remaining,
+        } => {
+            if id == *emergency_core {
+                CpuWorkload::Emergency
+            } else {
+                workload_for_cpu(remaining, id)
+            }
+        }
+        DivisionType::PerCpuWorkload { workloads } => {
+            if workloads.get(id.get()).copied().unwrap_or(0) == 0 {
+                CpuWorkload::Disabled
+            } else {
+                CpuWorkload::Normal
+            }
+        }
+    }
+}
 
+impl ThreadController {
     pub const fn new() -> Self {
         Self {
             cpus: Vec::new(),
@@ -89,6 +157,8 @@ impl ThreadController {
     /// Queues a regular runnable thread.
     pub fn queue(&self, thread: Thread, priority: TPriority) {
         let cpu = self.choose_cpu(priority, thread.user());
+
+        log::debug!("sent a thread to {cpu:?}");
 
         queue_thread_to_cpu(cpu, priority, thread);
     }
@@ -107,8 +177,12 @@ impl ThreadController {
         queue_thread_to_cpu(cpu, priority, thread);
     }
 
+    pub fn cpu_workload(&self, id: CpuID) -> CpuWorkload {
+        self.cpus[id.0].workload
+    }
+
     /// Chooses a CPU for a regular runnable thread.
-    pub fn choose_cpu(
+    fn choose_cpu(
         &self,
         priority: TPriority,
         user: Option<UserID>,
@@ -249,7 +323,15 @@ static THREAD_CONTROLLER: spin::Mutex<ThreadController> = spin::Mutex::new(Threa
 pub fn init() {
     let count = arch::smp::cpu_count();
     let div = default_division(count);
-    let ids = (0..count).map(|id| CpuData { id: CpuID(id), workload: CpuWorkload::Kernel /* TODO: proper workload info */ }).collect();
+    let ids = (0..count)
+        .map(|index| {
+            let id = CpuID(index);
+            CpuData {
+                id,
+                workload: workload_for_cpu(&div, id),
+            }
+        })
+        .collect();
     let mut l = THREAD_CONTROLLER.lock();
     l.division = div;
     l.cpus = ids;
@@ -293,6 +375,15 @@ pub fn queue(thread: Thread, priority: TPriority) {
     THREAD_CONTROLLER.lock().queue(thread, priority);
 }
 
+pub fn cpu_workload() -> CpuWorkload {
+    let id = cls::current().unwrap().id;
+    THREAD_CONTROLLER.lock().cpu_workload(CpuID(id as usize))
+}
+
+pub fn cpu_workload_of(id: CpuID) -> CpuWorkload {
+    THREAD_CONTROLLER.lock().cpu_workload(id)
+}
+
 /// Wake keyboard-blocked threads regardless of which CPU owns them.
 /// Keyboard interrupts are routed to the BSP, while the global scheduler may
 /// place input consumers on any CPU.
@@ -307,4 +398,179 @@ pub fn wake_kbd() {
     for cpu in cpus {
         cpu.storage().scheduler.wake_kbd();
     }
+}
+
+// WORK STEALING IMPL
+
+/// Migrates runnable threads onto the current CPU from other CPUs,
+/// balancing work
+///
+/// Call from an interrupt to avoid bugs
+pub fn work_steal() {
+    let current_id = CpuID(cls::current().unwrap().id as usize);
+
+    // Snapshot controller metadata.
+    let cpus = {
+        let controller = THREAD_CONTROLLER.lock();
+        controller.cpus.clone()
+    };
+
+    let this = cpus[current_id.0];
+
+    // Snapshot CPU workloads.
+    let thread_counts: Vec<usize> = cpus
+        .iter()
+        .map(|cpu| cpu_active_threads(cpu.id))
+        .collect();
+
+    let this_count = thread_counts[current_id.0];
+
+    // Find potential victims, ordered by descending workload.
+    let mut victims: Vec<(CpuData, usize)> = cpus
+        .iter()
+        .copied()
+        .zip(thread_counts.iter().copied())
+        .filter(|(cpu, count)| {
+            cpu.id != current_id && *count > this_count + 1
+        })
+        .collect();
+
+    victims.sort_unstable_by_key(
+        |(_, count)| core::cmp::Reverse(*count)
+    );
+
+    for (from, from_count) in victims {
+        let steal_count = match (this.workload, from.workload) {
+            (CpuWorkload::Weighted(a), CpuWorkload::Weighted(b)) => {
+                if a == 0 || b == 0 {
+                    continue;
+                }
+
+                // Balance according to relative CPU capacity.
+                let total = a as usize + b as usize;
+
+                let target = (
+                    (this_count + from_count) * a as usize
+                ) / total;
+
+                target.saturating_sub(this_count)
+            }
+
+            _ => (from_count - this_count) / 2,
+        };
+
+        if steal_count == 0 {
+            continue;
+        }
+
+        let sched = &from.id.storage().scheduler;
+        let this_sched = &this.id.storage().scheduler;
+        let mut not_ellig = Vec::new();
+        for _ in 0..steal_count {
+            let Some((t, p)) = sched.steal() else {
+                break;
+            };
+            let tp = match p {
+                Priority::High => TPriority::High,
+                Priority::Med => TPriority::Med,
+                Priority::Low => TPriority::Low,
+                _ => panic!("idle thread cannot be stolen")
+            };
+            if work_stealing_eligible(this, from, &t, tp) {
+                this_sched.queue_at(tp, t);
+            } else {
+                not_ellig.push((tp, t));
+            }
+        }
+        for (prio, thread) in not_ellig.into_iter().rev() {
+            sched.queue_front(thread, prio);
+        }
+    }
+}
+
+pub fn can_work_steal(this: CpuID) -> bool {
+    let cpus = {
+        let controller = THREAD_CONTROLLER.lock();
+        controller.cpus.clone()
+    };
+
+    let Some(this_cpu) = cpus.get(this.0).copied() else {
+        return false;
+    };
+
+    if matches!(
+        this_cpu.workload,
+        CpuWorkload::Disabled | CpuWorkload::Emergency
+    ) {
+        return false;
+    }
+
+    let this_count = cpu_active_threads(this);
+
+    for other in cpus.iter().copied() {
+        if other.id == this {
+            continue;
+        }
+
+        if matches!(
+            other.workload,
+            CpuWorkload::Disabled | CpuWorkload::Emergency
+        ) {
+            continue;
+        }
+
+        let other_count = cpu_active_threads(other.id);
+
+        // Require a meaningful imbalance.
+        if other_count > this_count.saturating_add(2) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn work_stealing_eligible(
+    this: CpuData,
+    from: CpuData,
+    thread: &Thread,
+    priority: TPriority,
+) -> bool {
+    use CpuWorkload::*;
+
+    // Disabled and emergency CPUs cannot participate.
+    if matches!(this.workload, Disabled | Emergency)
+        || matches!(from.workload, Disabled | Emergency)
+    {
+        return false;
+    }
+
+    // Weighted CPUs can only exchange work with other weighted CPUs.
+    match (this.workload, from.workload) {
+        (Weighted(a), Weighted(b)) if a >= b => {}
+        (Weighted(_), _) | (_, Weighted(_)) => return false,
+        _ => {}
+    }
+
+    let user = thread.user();
+
+    let accepts = |workload: CpuWorkload| -> bool {
+        match workload {
+            Disabled | Emergency => false,
+
+            Normal => true,
+
+            Kernel => user.is_none(),
+
+            User => matches!(user, Some(id) if id != UserID::os()),
+
+            UserPrivileged => user == Some(UserID::os()),
+
+            Priority(p) => p == priority,
+
+            Weighted(weight) => weight > 0,
+        }
+    };
+
+    accepts(this.workload) && accepts(from.workload)
 }

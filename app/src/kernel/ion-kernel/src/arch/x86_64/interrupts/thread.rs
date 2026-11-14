@@ -1,20 +1,15 @@
 use core::{
     arch::naked_asm,
-    sync::atomic::{AtomicU8, AtomicU64, Ordering, compiler_fence, fence},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use spin::Mutex;
 use x86_64::structures::idt::InterruptStackFrame;
 
 use crate::{
-    arch::{
-        cpu,
-        interrupts::{self, InterruptGuard, apic::handlers::notify, without_interrupts},
-    },
-    event_logger::{self, Event, push_event},
-    log,
+    arch::interrupts::{self, apic::handlers::notify, without_interrupts},
     scheduler::{self, ScheduleReason, current_scheduler},
-    serial_println, thread,
+    thread,
 };
 
 // pub extern "x86-interrupt" fn timer_isr_entry(_: InterruptStackFrame) {
@@ -119,14 +114,7 @@ pub extern "C" fn timer_handler(regs: &mut InterruptRegs, frame: &mut InterruptS
         return;
     }
 
-    let next = current_scheduler().pick_preempt();
-
-    if let Some(v) = next {
-        if let Some(old) = v.0 {
-            old.save_from_interrupt(regs, unsafe { frame.as_mut().read_only() }); // does not need the actual memory
-        }
-        v.1.load_with_interrupt_frame(regs, unsafe { frame.as_mut() });
-    }
+    current_scheduler().switch_from_interrupt(ScheduleReason::Preempt, regs, frame);
 
     scheduler::request_reschedule();
     scheduler::wake_done();
@@ -189,14 +177,7 @@ extern "C" fn yield_handler(regs: &mut InterruptRegs, frame: &mut InterruptStack
     without_interrupts(|| {
         if let Some(mut lock) = current_yield_reason().try_lock() {
             if let Some(reason) = lock.take() {
-                if let Some(v) = current_scheduler().pick(reason.0) {
-                    fence(Ordering::SeqCst);
-                    if let Some(old) = v.0 {
-                        old.save_from_interrupt(regs, unsafe { frame.as_mut().read_only() });
-                    }
-
-                    v.1.load_with_interrupt_frame(regs, unsafe { frame.as_mut() });
-                }
+                current_scheduler().switch_from_interrupt(reason.0, regs, frame);
             }
         }
     });
