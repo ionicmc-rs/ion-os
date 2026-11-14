@@ -1,19 +1,7 @@
-//! Global Descriptor Table (GDT) and Task State Segment (TSS) setup.
-//!
-//! This module defines all segment descriptors required by Ion OS:
-//! - Kernel code / data
-//! - User code / data
-//! - Task State Segment (TSS)
-//!
-//! It is fully compatible with:
-//! - long mode
-//! - interrupts & IST
-//! - syscall/sysret
-//!
-//! Segmentation is used only for privilege and CPU transitions;
-//! paging remains the primary isolation mechanism.
+//! Global Descriptor Table (GDT) and per-CPU Task State Segment setup.
 
-use lazy_static::lazy_static;
+use core::mem::MaybeUninit;
+
 use x86_64::{
     VirtAddr,
     registers::segmentation::Segment,
@@ -28,45 +16,18 @@ use crate::arch::interrupts::{
     double_fault::DOUBLE_FAULT_IST_INDEX, gp::GP_IST_INDEX, thread::TIMER_IST,
 };
 
+const MAX_CPUS: usize = 64;
 const IST_STACK_SIZE: usize = 32 * 1024;
+const IST_STACKS_PER_CPU: usize = 4;
 
-lazy_static! {
-    /// Global Task State Segment.
-    ///
-    /// Holds stack pointers for fault handlers.
-    static ref TSS: TaskStateSegment = {
-        let mut tss = TaskStateSegment::new();
-
-        // Double fault IST
-        tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
-            static mut STACK: [u8; IST_STACK_SIZE] = [0; IST_STACK_SIZE];
-            let stack_start = VirtAddr::from_ptr(&raw const STACK);
-            stack_start + IST_STACK_SIZE as u64
-        };
-
-        // Page fault IST
-        tss.interrupt_stack_table[PAGE_FAULT_IST_INDEX as usize] = {
-            static mut STACK: [u8; IST_STACK_SIZE] = [0; IST_STACK_SIZE];
-            let stack_start = VirtAddr::from_ptr(&raw const STACK);
-            stack_start + IST_STACK_SIZE as u64
-        };
-
-        // General Protection fault IST
-        tss.interrupt_stack_table[GP_IST_INDEX as usize] = {
-            static mut STACK: [u8; IST_STACK_SIZE] = [0; IST_STACK_SIZE];
-            let stack_start = VirtAddr::from_ptr(&raw const STACK);
-            stack_start + IST_STACK_SIZE as u64
-        };
-
-        tss.interrupt_stack_table[TIMER_IST as usize] = {
-            static mut STACK: [u8; IST_STACK_SIZE] = [0; IST_STACK_SIZE];
-            let stack_start = VirtAddr::from_ptr(&raw const STACK);
-            stack_start + IST_STACK_SIZE as u64
-        };
-
-        tss
-    };
-}
+/// Each CPU must have its own TSS: the descriptor becomes busy after `ltr`,
+/// and each CPU needs private IST stacks for nested/fault interrupts.
+static mut TSS: [MaybeUninit<TaskStateSegment>; MAX_CPUS] =
+    [const { MaybeUninit::uninit() }; MAX_CPUS];
+static mut GDT: [MaybeUninit<(GlobalDescriptorTable, Selectors)>; MAX_CPUS] =
+    [const { MaybeUninit::uninit() }; MAX_CPUS];
+static mut IST_STACKS: [[[u8; IST_STACK_SIZE]; IST_STACKS_PER_CPU]; MAX_CPUS] =
+    [[[0; IST_STACK_SIZE]; IST_STACKS_PER_CPU]; MAX_CPUS];
 
 /// GDT segment selectors used throughout the kernel.
 #[derive(Debug, Clone, Copy)]
@@ -78,58 +39,70 @@ pub struct Selectors {
     pub tss: SegmentSelector,
 }
 
-lazy_static! {
-    /// Global Descriptor Table and its selectors.
-    static ref GDT: (GlobalDescriptorTable, Selectors) = {
-        let mut gdt = GlobalDescriptorTable::new();
+/// Initialize this CPU's GDT and load its TSS.
+///
+/// Must be called once on each CPU before enabling interrupts on that CPU.
+pub fn init_cpu(cpu_index: usize) {
+    use x86_64::instructions::{
+        segmentation::{CS, DS, ES, SS},
+        tables::load_tss,
+    };
 
+    unsafe {
+        let mut tss = TaskStateSegment::new();
+        let stacks_base = core::ptr::addr_of_mut!(IST_STACKS).cast::<u8>();
+
+        for (stack_number, ist_index) in [
+            DOUBLE_FAULT_IST_INDEX,
+            PAGE_FAULT_IST_INDEX,
+            GP_IST_INDEX,
+            TIMER_IST,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let stack = stacks_base.add(
+                (cpu_index * IST_STACKS_PER_CPU + stack_number) * IST_STACK_SIZE,
+            );
+            let stack_start = VirtAddr::from_ptr(stack);
+            tss.interrupt_stack_table[ist_index as usize] = stack_start + IST_STACK_SIZE as u64;
+        }
+
+        TSS[cpu_index].write(tss);
+        let tss = TSS[cpu_index].assume_init_ref();
+
+        let mut gdt = GlobalDescriptorTable::new();
         let kernel_code = gdt.append(Descriptor::kernel_code_segment());
         let kernel_data = gdt.append(Descriptor::kernel_data_segment());
-
         let user_data = gdt.append(Descriptor::user_data_segment());
         let user_code = gdt.append(Descriptor::user_code_segment());
+        let tss_selector = gdt.append(Descriptor::tss_segment(tss));
 
-        let tss = gdt.append(Descriptor::tss_segment(&TSS));
-
-        (
+        GDT[cpu_index].write((
             gdt,
             Selectors {
                 kernel_code,
                 kernel_data,
                 user_code,
                 user_data,
-                tss,
+                tss: tss_selector,
             },
-        )
-    };
-}
+        ));
 
-/// Initialize the GDT and load the TSS.
-///
-/// Must be called once during early kernel initialization,
-/// before enabling syscalls or interrupts.
-pub fn init() {
-    use x86_64::instructions::{
-        segmentation::{CS, DS, ES, SS},
-        tables::load_tss,
-    };
+        let (gdt, selectors) = GDT[cpu_index].assume_init_ref();
+        gdt.load();
 
-    GDT.0.load();
-
-    unsafe {
-        CS::set_reg(GDT.1.kernel_code);
-        DS::set_reg(GDT.1.kernel_data);
-        ES::set_reg(GDT.1.kernel_data);
-        SS::set_reg(GDT.1.kernel_data);
-
-        load_tss(GDT.1.tss);
+        CS::set_reg(selectors.kernel_code);
+        DS::set_reg(selectors.kernel_data);
+        ES::set_reg(selectors.kernel_data);
+        SS::set_reg(selectors.kernel_data);
+        load_tss(selectors.tss);
     }
 }
 
-/// Get the active GDT selectors.
-///
-/// Intended for syscall initialization and low-level CPU setup.
+/// Get the active CPU's segment selectors.
 #[inline]
 pub fn selectors() -> Selectors {
-    GDT.1
+    // Selectors have identical values in each per-CPU GDT.
+    unsafe { GDT[0].assume_init_ref().1 }
 }

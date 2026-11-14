@@ -179,7 +179,7 @@ impl<'mutex, T: ?Sized> Drop for MutexGuard<'mutex, T> {
         if thread::panicking() {
             self.poisoned.store(true, Ordering::Relaxed);
         }
-        self.lock.store(false, Ordering::Relaxed);
+        self.lock.store(false, Ordering::Release);
     }
 }
 
@@ -212,17 +212,25 @@ impl<T> Mutex<T> {
 
     #[track_caller]
     pub fn lock(&'static self) -> MutexGuard<'static, T> {
-        if self.is_locked() {
+        loop {
+            if self
+                .locked
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .is_ok()
+            {
+                if self.poisoned.load(Ordering::Acquire) {
+                    // Release the lock we just acquired before propagating poison.
+                    self.locked.store(false, Ordering::Release);
+                    panic!("attempted to lock a poisoned mutex");
+                }
+
+                return MutexGuard::new(&self.locked, &self.value, &self.poisoned);
+            }
+
+            // The value may have changed since the failed compare_exchange.
+            // atomic_block_until rechecks it before blocking to avoid a lost wake.
             thread::atomic_block_until(&self.locked);
         }
-        if self.poisoned.load(Ordering::Acquire) {
-            // thread holding mutex panicked, we must panic too.
-            panic!("attempted to lock a poisoned mutex");
-        }
-
-        self.locked.store(true, Ordering::Release);
-
-        MutexGuard::new(&self.locked, &self.value, &self.poisoned)
     }
 
     pub fn try_lock(&'_ self) -> Result<MutexGuard<'_, T>, TryLockError> {
@@ -231,6 +239,7 @@ impl<T> Mutex<T> {
         }
 
         if self.poisoned.load(Ordering::Relaxed) {
+            self.locked.store(false, Ordering::Release);
             return Err(TryLockError::Poisoned);
         }
 

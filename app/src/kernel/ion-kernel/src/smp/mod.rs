@@ -1,3 +1,5 @@
+use core::sync::atomic::{AtomicBool, Ordering};
+
 use crate::{
     arch::{
         self, interrupts, smp::{self, cpu, discover_cpus, get_madt},
@@ -5,6 +7,8 @@ use crate::{
 };
 
 pub struct CpuInfo(smp::CpuInfo);
+
+static AP_SCHEDULERS_READY: AtomicBool = AtomicBool::new(false);
 
 unsafe extern "C" {
     static smp_start16: u8;
@@ -40,16 +44,20 @@ pub fn init_cpu0_cls() {
     }
 }
 
+/// Allow application processors to begin scheduling after the shared
+/// scheduler's CPU table has been initialized by the BSP.
+pub fn release_ap_schedulers() {
+    AP_SCHEDULERS_READY.store(true, Ordering::Release);
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn ap_entry() -> ! {
-    log::debug!("AP started!");
-
-    let apic_id = unsafe { interrupts::LocalApic::new(interrupts::lapic_base()).id() };
-    arch::interrupts::init_interrupt_operations();
-
+    // The AP's LAPIC MMIO mapping is not guaranteed to be usable until its
+    // interrupt setup has run. CPUID leaf 1 reports the initial APIC ID
+    // without touching that mapping.
+    let apic_id = unsafe { core::arch::x86_64::__cpuid(1).ebx >> 24 };
     if let Some(index) = smp::cpu_index_from_apic_id(apic_id) {
-        // Initialize the per-CPU LAPIC for this core
-        unsafe { arch::interrupts::init_cpu_lapic(index) };
+        arch::interrupts::init_interrupt_operations_ap(index);
 
         // Initialize CLS for this AP (using its index in the CPU array)
         let cls = cls::cpu_cls(index);
@@ -58,9 +66,17 @@ pub extern "C" fn ap_entry() -> ! {
         }
 
         log::debug!("AP online: cpu index {index}, apic id {apic_id}");
-    }
 
-    // unsafe { thread::start() }; // start with no threads, awaiting another CPU to send threads towards this one
+        while !AP_SCHEDULERS_READY.load(Ordering::Acquire) {
+            core::hint::spin_loop();
+        }
+
+        // Give this CPU its scheduler after its idle thread and LAPIC are
+        // ready. The AP will then run queued local work or its idle thread.
+        unsafe { thread::start() };
+    } else {
+        log::error!("AP started with unrecognized APIC id {apic_id}");
+    }
 
     hlt_loop()
 }

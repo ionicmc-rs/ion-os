@@ -120,9 +120,5 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
     let alloc = alloc::boxed::Box::new(10);
     assert_eq!(*alloc, 10);
 
-    // init interrupts now, it is safe
-
-    x86_64::instructions::interrupts::enable();
-
     Ok(())
 }

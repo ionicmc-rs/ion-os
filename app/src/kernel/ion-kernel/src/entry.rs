@@ -380,11 +380,17 @@ pub fn kernel_main() {
     let wstdin = fd::alloc(wstdin).unwrap();
 
     let rstdout = table.alloc(FdHandle(rsdtout)).unwrap();
-    table.alloc(FdHandle(wstodut)).unwrap();
+    let wstdout = table.alloc(FdHandle(wstodut)).unwrap();
     let rstderr = table.alloc(FdHandle(rstderr)).unwrap();
-    table.alloc(FdHandle(wstderr)).unwrap();
-    table.alloc(FdHandle(rstdin)).unwrap();
+    let wstderr = table.alloc(FdHandle(wstderr)).unwrap();
+    let rstdin = table.alloc(FdHandle(rstdin)).unwrap();
     let wstdin = table.alloc(FdHandle(wstdin)).unwrap();
+
+    // The bundled shell uses local FD 1 for stdout and FD 4 for stdin.
+    // ResourceTable allocations start at 3, so explicitly route these slots.
+    table.dup2(wstdout, 1).unwrap();
+    table.dup2(wstderr, 2).unwrap();
+    table.dup2(rstdin, 4).unwrap();
 
     let pid = asyncio::run_future(process::exec(
         UserID::os(),

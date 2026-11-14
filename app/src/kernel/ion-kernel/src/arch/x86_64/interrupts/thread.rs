@@ -27,6 +27,7 @@ use crate::{
 // }
 
 static TICKS: AtomicU64 = AtomicU64::new(0);
+const MAX_CPUS: usize = 64;
 
 /// Returns the number of ticks since startup
 ///
@@ -186,7 +187,7 @@ pub extern "x86-interrupt" fn yield_trampoline(
 
 extern "C" fn yield_handler(regs: &mut InterruptRegs, frame: &mut InterruptStackFrame) {
     without_interrupts(|| {
-        if let Some(mut lock) = YIELD_REASON.try_lock() {
+        if let Some(mut lock) = current_yield_reason().try_lock() {
             if let Some(reason) = lock.take() {
                 if let Some(v) = current_scheduler().pick(reason.0) {
                     fence(Ordering::SeqCst);
@@ -208,11 +209,19 @@ pub struct YieldReason(pub ScheduleReason);
 unsafe impl Sync for YieldReason {}
 unsafe impl Send for YieldReason {}
 
-static YIELD_REASON: Mutex<Option<YieldReason>> = Mutex::new(None);
+static YIELD_REASON: [Mutex<Option<YieldReason>>; MAX_CPUS] =
+    [const { Mutex::new(None) }; MAX_CPUS];
+
+fn current_yield_reason() -> &'static Mutex<Option<YieldReason>> {
+    let apic_id = unsafe { core::arch::x86_64::__cpuid(1).ebx >> 24 };
+    let index = crate::arch::smp::cpu_index_from_apic_id(apic_id)
+        .expect("yield interrupt on an undiscovered CPU");
+    &YIELD_REASON[index]
+}
 
 #[inline]
 pub fn set_yield_reason(reason: ScheduleReason) {
-    *YIELD_REASON.lock() = Some(YieldReason(reason));
+    *current_yield_reason().lock() = Some(YieldReason(reason));
 }
 
 pub unsafe fn trigger_yield() {

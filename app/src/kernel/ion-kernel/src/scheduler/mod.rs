@@ -523,6 +523,18 @@ impl Scheduler {
                     ScheduleReason::Yield | ScheduleReason::Preempt => {
                         return None; // no other threads - safely continue
                     }
+                    ScheduleReason::Start => {
+                        // A CPU can start with only its initialized idle
+                        // thread (this is the normal AP bring-up case).
+                        // Launch that context directly; it will run queued
+                        // work when it becomes available.
+                        let current = current.as_ref().unwrap();
+                        let context = current.0.ctx();
+                        let tls = current.0.tls_block();
+                        unsafe { install_tls(tls as *mut ThreadSelf) };
+                        self.needs_resched.store(false, Ordering::Release);
+                        return Some((None, context));
+                    }
                     ScheduleReason::Exit
                     | ScheduleReason::Block(_)
                     | ScheduleReason::Sleep(_)
@@ -530,9 +542,6 @@ impl Scheduler {
                         Some(idle) => (idle, Priority::None),
                         None => panic!("idle thread must never exit."),
                     },
-                    ScheduleReason::Start => {
-                        panic!("Started scheduler with no available threads");
-                    }
                 }
             }
         };
@@ -801,7 +810,7 @@ pub unsafe fn panic_current() -> ! {
 }
 
 pub unsafe fn wake_kbd() {
-    current_scheduler().wake_kbd();
+    global::wake_kbd();
 }
 
 fn wake_waiters_of(id: ThreadID) {

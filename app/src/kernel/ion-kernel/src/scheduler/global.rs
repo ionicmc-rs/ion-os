@@ -292,3 +292,19 @@ pub fn default_division(cpu_count: usize) -> DivisionType {
 pub fn queue(thread: Thread, priority: TPriority) {
     THREAD_CONTROLLER.lock().queue(thread, priority);
 }
+
+/// Wake keyboard-blocked threads regardless of which CPU owns them.
+/// Keyboard interrupts are routed to the BSP, while the global scheduler may
+/// place input consumers on any CPU.
+pub fn wake_kbd() {
+    let cpus: Vec<CpuID> = THREAD_CONTROLLER
+        .lock()
+        .cpus
+        .iter()
+        .map(|cpu| cpu.id)
+        .collect();
+
+    for cpu in cpus {
+        cpu.storage().scheduler.wake_kbd();
+    }
+}

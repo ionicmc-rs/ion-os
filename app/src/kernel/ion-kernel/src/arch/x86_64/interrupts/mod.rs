@@ -110,7 +110,7 @@ static mut IOAPIC: IoApic = unsafe { IoApic::new(0xFEC00000) };
 
 /// inits the IDT, GDT, TSS, PIC8259, and interrupts.
 pub fn init_interrupt_operations() {
-    gdt::init();
+    gdt::init_cpu(0);
     IDT.load();
     unsafe {
         address_space::map_4k_into_space(
@@ -136,9 +136,9 @@ pub fn init_interrupt_operations() {
         apic::init_cpu0_lapic();
         // Initialize BSP's per-CPU LAPIC entry (CPU0 is always at index 0)
         apic::init_bsp_cpu_lapic();
-        cpu_lapic().enable(0xFF);
+        apic::bsp_lapic().enable(0xFF);
 
-        cpu_lapic().setup_timer(TIMER_VEC, 10_000_000);
+        apic::bsp_lapic().setup_timer(TIMER_VEC, 10_000_000);
 
         IOAPIC.route_irq(1, KEYBOARD_VEC);
     };
@@ -146,11 +146,14 @@ pub fn init_interrupt_operations() {
 
 pub fn init_interrupt_operations_ap(id: usize) {
     IDT.load();
-    gdt::init();
-    // unsafe { apic::init_cpu_lapic(id) };
+    gdt::init_cpu(id);
     unsafe {
-        cpu_lapic().enable(0xFF);
-        cpu_lapic().setup_timer(TIMER_VEC, 10_000_000);
+        // Register this CPU before looking up its LAPIC. The BSP setup path
+        // owns the shared IOAPIC and must not be run on application processors.
+        apic::enable_apic_msr();
+        let lapic = apic::init_cpu_lapic(id);
+        lapic.enable(0xFF);
+        lapic.setup_timer(TIMER_VEC, 10_000_000);
     }
 }
 

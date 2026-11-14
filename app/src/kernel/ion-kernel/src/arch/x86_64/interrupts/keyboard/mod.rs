@@ -12,17 +12,20 @@ use spin::Mutex;
 use x86_64::{instructions::port::Port, structures::idt::InterruptStackFrame};
 
 use pc_keyboard::{
-    HandleControl, Keyboard,
+    HandleControl, Keyboard, ScancodeSet1,
     layouts::{self, Us104Key},
 };
 
 lazy_static::lazy_static! {
     /// Global keyboard
-    pub static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ps2::ScancodeSet>> = {
+    pub static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> = {
         // let mut data = Port::new(0x60);
         // let mut write = Port::new(0x64);
 
-        Mutex::new(Keyboard::new(ps2::ScancodeSet::None, Us104Key, HandleControl::Ignore))
+        // QEMU's legacy PS/2 controller supplies translated Set 1 scancodes.
+        // Keep the decoder instance in Keyboard so it can preserve prefix
+        // state across bytes (for example the E0 prefix on arrow keys).
+        Mutex::new(Keyboard::new(ScancodeSet1::new(), Us104Key, HandleControl::Ignore))
     };
 }
 

@@ -199,8 +199,9 @@ pub fn cpu_lapic() -> &'static LocalApic {
 /// Get the current CPU's LAPIC (for SMP)
 /// Returns `None` if the current CPU has no registered or initialized LAPIC.
 pub fn current_cpu_lapic() -> Option<&'static LocalApic> {
-    // The local APIC MMIO registers identify the CPU executing this read.
-    let lapic_id = unsafe { LocalApic::new(lapic_base()).id() };
+    // Avoid reading LAPIC MMIO to discover the current CPU: early AP startup
+    // may run before its LAPIC mapping and per-CPU state are ready.
+    let lapic_id = unsafe { core::arch::x86_64::__cpuid(1).ebx >> 24 };
 
     // Look up this CPU's index in the CPU array
     if let Some(index) = crate::arch::smp::cpu_index_from_apic_id(lapic_id) {
@@ -215,8 +216,9 @@ pub fn current_cpu_lapic() -> Option<&'static LocalApic> {
 /// Initialize LAPIC for a specific CPU index
 /// # Safety
 /// Must be called with the correct CPU index
-pub unsafe fn init_cpu_lapic(index: usize) {
+pub unsafe fn init_cpu_lapic(index: usize) -> &'static LocalApic {
     CPUS_LAPIC[index].write(LocalApic::new(lapic_base()));
+    CPUS_LAPIC[index].assume_init_ref()
 }
 
 /// Initialize the per-CPU LAPIC for CPU0 (BSP)
@@ -224,6 +226,13 @@ pub unsafe fn init_cpu_lapic(index: usize) {
 pub unsafe fn init_bsp_cpu_lapic() {
     // CPU0 is always at index 0
     CPUS_LAPIC[0].write(LocalApic::new(lapic_base()));
+}
+
+/// Get the BSP LAPIC during early initialization, before CPU discovery has
+/// populated the APIC-ID-to-index table used by `current_cpu_lapic`.
+pub fn bsp_lapic() -> &'static LocalApic {
+    // SAFETY: This accessor is only used after `init_bsp_cpu_lapic`.
+    unsafe { CPUS_LAPIC[0].assume_init_ref() }
 }
 
 #[repr(C, packed)]

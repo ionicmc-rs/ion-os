@@ -234,6 +234,11 @@ pub unsafe extern "C" fn rust_kernel_entry(boot_info: *const BootInfoC) -> ! {
     smp::init_cpu0_cls();
 
     scheduler::global::init();
+    smp::release_ap_schedulers();
+
+    // Defer hardware interrupts until CPU discovery has populated the APIC-ID
+    // table used by per-CPU LAPIC lookup.
+    arch::interrupts::enable();
 
     // this is the main thread.
     log::debug!("initializing threads");

@@ -281,6 +281,7 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                         }
                     }
                     Err(e) => {
+                        log::error!("read syscall failed for fd {fd}: {e}");
                         libc::set_os_error(io_error_to_os_error(e.kind()));
                         (u64::MAX, 0)
                     }
