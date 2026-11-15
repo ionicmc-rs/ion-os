@@ -110,7 +110,7 @@ pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
         let name = test.name();
         serial_print!("[{}] {name}: ", i + 1);
 
-        let options_ptr = unsafe { (&raw mut options).as_mut() }.unwrap();
+        let options_ptr = &mut options;
 
         let thread = ThreadBuilder::new()
             .with_name(format!("test <{name}>"))
@@ -220,7 +220,7 @@ pub fn exit(code: QemuExitCode) -> ! {
 
 /// exits without a panic.
 pub fn exit_raw(code: QemuExitCode) {
-    use x86_64::instructions::port::Port;
+    use crate::arch::port::Port;
 
     unsafe {
         let mut port = Port::new(0xf4);
