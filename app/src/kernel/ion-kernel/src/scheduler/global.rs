@@ -320,6 +320,18 @@ impl ThreadController {
 
 static THREAD_CONTROLLER: spin::Mutex<ThreadController> = spin::Mutex::new(ThreadController::new());
 
+/// Access the controller with local interrupts disabled. A timer interrupt can
+/// preempt a thread while it owns a spinlock; if the replacement thread then
+/// spins on that lock, the owner can never run again. The controller is touched
+/// from normal threads as well as scheduler/idle paths, so keep this invariant
+/// local to every controller lock acquisition.
+fn with_controller<R>(f: impl FnOnce(&mut ThreadController) -> R) -> R {
+    arch::interrupts::without_interrupts(|| {
+        let mut controller = THREAD_CONTROLLER.lock();
+        f(&mut controller)
+    })
+}
+
 pub fn init() {
     let count = arch::smp::cpu_count();
     let div = default_division(count);
@@ -332,9 +344,10 @@ pub fn init() {
             }
         })
         .collect();
-    let mut l = THREAD_CONTROLLER.lock();
-    l.division = div;
-    l.cpus = ids;
+    with_controller(|controller| {
+        controller.division = div;
+        controller.cpus = ids;
+    });
 }
 
 pub fn default_division(cpu_count: usize) -> DivisionType {
@@ -372,28 +385,25 @@ pub fn default_division(cpu_count: usize) -> DivisionType {
 }
 
 pub fn queue(thread: Thread, priority: TPriority) {
-    THREAD_CONTROLLER.lock().queue(thread, priority);
+    with_controller(|controller| controller.queue(thread, priority));
 }
 
 pub fn cpu_workload() -> CpuWorkload {
     let id = cls::current().unwrap().id;
-    THREAD_CONTROLLER.lock().cpu_workload(CpuID(id as usize))
+    with_controller(|controller| controller.cpu_workload(CpuID(id as usize)))
 }
 
 pub fn cpu_workload_of(id: CpuID) -> CpuWorkload {
-    THREAD_CONTROLLER.lock().cpu_workload(id)
+    with_controller(|controller| controller.cpu_workload(id))
 }
 
 /// Wake keyboard-blocked threads regardless of which CPU owns them.
 /// Keyboard interrupts are routed to the BSP, while the global scheduler may
 /// place input consumers on any CPU.
 pub fn wake_kbd() {
-    let cpus: Vec<CpuID> = THREAD_CONTROLLER
-        .lock()
-        .cpus
-        .iter()
-        .map(|cpu| cpu.id)
-        .collect();
+    let cpus: Vec<CpuID> = with_controller(|controller| {
+        controller.cpus.iter().map(|cpu| cpu.id).collect()
+    });
 
     for cpu in cpus {
         cpu.storage().scheduler.wake_kbd();
@@ -410,10 +420,7 @@ pub fn work_steal() {
     let current_id = CpuID(cls::current().unwrap().id as usize);
 
     // Snapshot controller metadata.
-    let cpus = {
-        let controller = THREAD_CONTROLLER.lock();
-        controller.cpus.clone()
-    };
+    let cpus = with_controller(|controller| controller.cpus.clone());
 
     let this = cpus[current_id.0];
 
@@ -489,10 +496,7 @@ pub fn work_steal() {
 }
 
 pub fn can_work_steal(this: CpuID) -> bool {
-    let cpus = {
-        let controller = THREAD_CONTROLLER.lock();
-        controller.cpus.clone()
-    };
+    let cpus = with_controller(|controller| controller.cpus.clone());
 
     let Some(this_cpu) = cpus.get(this.0).copied() else {
         return false;
@@ -576,10 +580,7 @@ fn work_stealing_eligible(
 }
 
 pub fn total_active_threads() -> usize {
-    let cpus = {
-        let lock = THREAD_CONTROLLER.lock();
-        lock.cpus.clone()
-    };
+    let cpus = with_controller(|controller| controller.cpus.clone());
     cpus.
         iter()
         .map(|cpu| cpu_active_threads(cpu.id))

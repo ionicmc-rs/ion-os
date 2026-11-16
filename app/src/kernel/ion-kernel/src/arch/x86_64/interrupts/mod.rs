@@ -74,6 +74,11 @@ lazy_static! {
         set_general_handler!(&mut idt, general_handler);
 
         idt.breakpoint.set_handler_fn(breakpoint_handler);
+        unsafe {
+            idt.debug
+                .set_handler_fn(debug_exception_handler)
+                .set_stack_index(gdt::DEBUG_IST_INDEX);
+        }
         idt.invalid_opcode.set_handler_fn(ud::invalid_opcode);
         unsafe {
             idt.page_fault.set_handler_fn(page_fault::page_fault)
@@ -101,6 +106,20 @@ lazy_static! {
 
         idt
     };
+}
+
+/// Reports the architectural debug exception (#DB, IDT vector 1).
+extern "x86-interrupt" fn debug_exception_handler(frame: InterruptStackFrame) {
+    let dr6: u64;
+    unsafe {
+        core::arch::asm!(
+            "mov {}, dr6",
+            out(reg) dr6,
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+
+    panic!("debug exception (#DB, vector 1): DR6={dr6:#x}\n{frame:#?}");
 }
 
 const TIMER_VEC: u8 = 48;

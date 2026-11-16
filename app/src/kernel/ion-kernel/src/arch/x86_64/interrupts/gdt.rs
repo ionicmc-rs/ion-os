@@ -18,7 +18,8 @@ use crate::arch::interrupts::{
 
 const MAX_CPUS: usize = 64;
 const IST_STACK_SIZE: usize = 32 * 1024;
-const IST_STACKS_PER_CPU: usize = 4;
+const IST_STACKS_PER_CPU: usize = 5;
+pub(super) const DEBUG_IST_INDEX: u16 = 5;
 
 #[repr(C, align(16))]
 struct AlignedIstStacks([[[u8; IST_STACK_SIZE]; IST_STACKS_PER_CPU]; MAX_CPUS]);
@@ -60,6 +61,7 @@ pub fn init_cpu(cpu_index: usize) {
             PAGE_FAULT_IST_INDEX,
             GP_IST_INDEX,
             TIMER_IST,
+            DEBUG_IST_INDEX,
         ]
         .into_iter()
         .enumerate()

@@ -745,9 +745,15 @@ pub fn current() -> Option<&'static Thread> {
 
 fn schedule(reason: ScheduleReason) {
     use crate::arch;
-    arch::interrupts::set_yield_reason(reason);
-    arch::cpu::full_fence(Ordering::SeqCst);
-    unsafe { arch::interrupts::trigger_yield() };
+    // The reason and software interrupt are one per-CPU operation. If a timer
+    // preempts between publishing the reason and executing `int`, another
+    // thread can overwrite it (or block on YIELD_REASON's lock while its owner
+    // is suspended). That can apply Block/Exit to the wrong saved context.
+    arch::interrupts::without_interrupts(|| {
+        arch::interrupts::set_yield_reason(reason);
+        arch::cpu::full_fence(Ordering::SeqCst);
+        unsafe { arch::interrupts::trigger_yield() };
+    });
 }
 
 #[track_caller]

@@ -302,7 +302,10 @@ pub fn kernel_main() {
                             debug!("Total Processes: {}", total_processes());
                             debug!("Kernel Allocation Usage: {}", allocated)
                         },
-                        8 * 1024,
+                        // Formatting and the analytics queries below can nest
+                        // several subsystem calls. 8 KiB was too small and
+                        // let the debug worker overwrite its return context.
+                        64 * 1024,
                     );
                 }
                 _ => {}
