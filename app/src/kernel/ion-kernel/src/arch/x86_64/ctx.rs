@@ -108,8 +108,34 @@ impl Context {
         }
     }
 
-    pub fn user(entry: usize, arg: usize, stack: usize, argv: &[&str], level: ArgLevel) -> Self {
-        let mut ctx = Self::initial(entry, arg, stack);
+    pub fn user(
+        entry: usize,
+        arg: usize,
+        stack: usize,
+        argv: &[&str],
+        level: ArgLevel,
+        mut write_user: impl FnMut(usize, &[u8]),
+    ) -> Self {
+        // Do not use `initial` here: it writes an exit sentinel directly to
+        // the stack pointer, which is a user virtual address in another CR3.
+        // Reserve the same word but let the caller initialize user memory via
+        // its address-space-aware writer.
+        let rsp = align_up_size(stack, 16) - size_of::<usize>();
+        let mut ctx = Self {
+            regs: Regs {
+                rip: entry as u64,
+                rdi: arg as u64,
+                rsp: rsp as u64,
+                rflags: 0x202,
+                ..Default::default()
+            },
+            ctrl: capture_ctrl(),
+            fpu: capture_fpu(),
+            segments: Segments {
+                cs: super::interrupts::gdt_selectors().kernel_code.0,
+                ss: super::interrupts::gdt_selectors().kernel_data.0,
+            },
+        };
 
         let mut seg_cs = super::interrupts::gdt_selectors().user_code;
         seg_cs.set_rpl(x86_64::PrivilegeLevel::Ring3);
@@ -143,11 +169,8 @@ impl Context {
 
             rsp -= len;
 
-            unsafe {
-                ptr::copy_nonoverlapping(arg.as_ptr(), rsp as *mut u8, arg.len());
-
-                *((rsp + arg.len()) as *mut u8) = 0;
-            }
+            write_user(rsp, arg.as_bytes());
+            write_user(rsp + arg.len(), &[0]);
 
             arg_ptrs.push(rsp);
         }
@@ -160,17 +183,17 @@ impl Context {
 
         if let ArgLevel::Normal = level {
             rsp -= size_of::<usize>();
-            unsafe { *(rsp as *mut usize) = 0 };
+            write_user(rsp, &0usize.to_ne_bytes());
 
             for ptr in arg_ptrs.iter() {
                 rsp -= size_of::<usize>();
-                unsafe { *(rsp as *mut usize) = *ptr };
+                write_user(rsp, &ptr.to_ne_bytes());
             }
 
             let argv_ptr = rsp;
 
             rsp -= size_of::<usize>();
-            unsafe { *(rsp as *mut usize) = argv.len() };
+            write_user(rsp, &argv.len().to_ne_bytes());
 
             ctx.regs.rdi = argv.len() as u64;
             ctx.regs.rsi = argv_ptr as u64;

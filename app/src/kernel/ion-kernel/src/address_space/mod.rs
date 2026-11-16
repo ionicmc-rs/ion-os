@@ -28,7 +28,7 @@ use crate::{
     },
     lib_alloc::{
         RescheduleAlloc,
-        user::{RegionAllocator, reserve_space_for_addr},
+        user::RegionAllocator,
     },
     log,
 };
@@ -92,8 +92,10 @@ pub unsafe fn create_address_space(size: usize, align: usize) -> AddressSpace {
         page_base: pml4,
         user_alloc: None,
     };
-    let alloc = reserve_space_for_addr(&mut space, size, align);
-    space.user_alloc = Some(alloc.into());
+    let base = 0x0000_4000_0000_0000usize;
+    let base = (base + align - 1) & !(align - 1);
+    let allocator = unsafe { RegionAllocator::init_with_space(base, size, space.clone()) };
+    space.user_alloc = Some(allocator.into());
 
     log::debug!(
         "created new address space with pml4 at {:#x}",

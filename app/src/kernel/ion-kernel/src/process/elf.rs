@@ -1,7 +1,7 @@
 //! Tools for loading ELFs and parsing Ion OS-specific requests.
 //!
 //! Uses PT_LOAD segments and the userspace allocator.
-//! All user memory lives above USER_BASE.
+//! User PT_LOAD segments are mapped at their linked virtual addresses.
 
 #![allow(dead_code)]
 
@@ -16,9 +16,8 @@ use elf::endian::AnyEndian;
 
 use crate::arch::ctx::ArgLevel;
 use crate::arch::frame_allocator::alloc_4k_frame;
-use crate::arch::mmu::{PageTableFlags, map_4k};
+use crate::arch::mmu::PageTableFlags;
 use crate::arch::{PhysAddr, VirtAddr, ctx::Context};
-use crate::lib_alloc::user::{init_user_data, map_user_data};
 use crate::{address_space, log};
 
 /* ============================
@@ -100,6 +99,28 @@ pub struct LoadedElf {
     pub context: Context,
     pub stack_size: usize,
     pub address_space: address_space::AddressSpace,
+}
+
+/// Copies bytes into a process mapping through the physical identity map.
+/// User virtual addresses cannot be dereferenced while the kernel CR3 is active.
+fn write_user_bytes(space: &mut address_space::AddressSpace, mut address: usize, bytes: &[u8]) {
+    let mut written = 0;
+    while written < bytes.len() {
+        let phys = unsafe {
+            crate::arch::mmu::virt_to_phys_in(VirtAddr::new(address), space.page_table_mut())
+        }
+        .expect("user stack page was not mapped");
+        let chunk = (0x1000 - (address & 0xfff)).min(bytes.len() - written);
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                bytes.as_ptr().add(written),
+                (crate::arch::KERNEL_BASE + phys.as_inner()) as *mut u8,
+                chunk,
+            );
+        }
+        address += chunk;
+        written += chunk;
+    }
 }
 
 /// Find the .ion_os.requests section manually by iterating through section headers
@@ -233,15 +254,16 @@ pub fn load_elf(
     log::debug!("created new address space for ELF");
 
     let user_alloc = space.allocator().unwrap();
+    crate::serial_println!("ELF: address space ready");
 
     /* ----------------------------
      * Collect PT_LOAD segments
      * ---------------------------- */
 
     let phdrs = elf.segments().ok_or(ElfLoadError::NoLoadableSegments)?;
+    crate::serial_println!("ELF: program headers parsed");
 
     let mut min_vaddr = usize::MAX;
-    let mut max_vaddr = 0;
     let mut found = false;
 
     for ph in phdrs.iter() {
@@ -252,33 +274,12 @@ pub fn load_elf(
         found = true;
 
         let start = ph.p_vaddr as usize;
-        let end = start + ph.p_memsz as usize;
-
         min_vaddr = min_vaddr.min(start);
-        max_vaddr = max_vaddr.max(end);
     }
 
     if !found {
         return Err(ElfLoadError::NoLoadableSegments);
     }
-
-    /* ----------------------------
-     * Allocate base region
-     * ---------------------------- */
-
-    let total_size = align_up(max_vaddr, 0x1000) - align_down(min_vaddr, 0x1000);
-
-    let load_base = unsafe {
-        user_alloc.allocate_with_flags(
-            Layout::from_size_align(total_size, 0x1000).unwrap(),
-            PageTableFlags::USER_PAGE | PageTableFlags::PRESENT,
-        )
-    }
-    .unwrap()
-    .as_ptr()
-    .addr();
-
-    let delta = load_base.wrapping_sub(min_vaddr);
 
     /* ----------------------------
      * Load PT_LOAD segments
@@ -290,7 +291,7 @@ pub fn load_elf(
         }
 
         let src_vaddr = ph.p_vaddr as usize;
-        let dst_vaddr = src_vaddr + delta;
+        let dst_vaddr = src_vaddr;
 
         let memsz = ph.p_memsz as usize;
         let filesz = ph.p_filesz as usize;
@@ -313,25 +314,67 @@ pub fn load_elf(
 
         let map_start = align_down(dst_vaddr, 0x1000);
         let map_end = align_up(dst_vaddr + memsz, 0x1000);
-        let map_size = map_end - map_start;
-
-        unsafe {
-            user_alloc
-                .allocate_with_flags(Layout::from_size_align(map_size, 0x1000).unwrap(), flags)
-                .unwrap();
-        }
-
-        /* Copy file-backed data */
-
-        unsafe {
-            core::ptr::copy_nonoverlapping(seg_data.as_ptr(), dst_vaddr as *mut u8, filesz);
-
-            /* Zero BSS */
-
-            if memsz > filesz {
-                core::ptr::write_bytes((dst_vaddr + filesz) as *mut u8, 0, memsz - filesz);
+        crate::serial_println!("ELF: mapping PT_LOAD {map_start:#x}..{map_end:#x}");
+        for page in (map_start..map_end).step_by(0x1000) {
+            if unsafe {
+                crate::arch::mmu::virt_to_phys_in(
+                    VirtAddr::new(page),
+                    space.page_table_mut(),
+                )
+            }
+            .is_none()
+            {
+                let phys = alloc_4k_frame().expect("out of physical memory");
+                unsafe {
+                    crate::address_space::map_4k_into_space(
+                        &mut space,
+                        VirtAddr::new(page),
+                        PhysAddr::new(phys),
+                        flags,
+                    );
+                }
             }
         }
+
+        // Write through the physical frames rather than the user virtual
+        // address. This works for images linked at address zero too, where a
+        // Rust pointer to the destination would be null/invalid.
+        let mut copied = 0;
+        while copied < filesz {
+            let va = dst_vaddr + copied;
+            let phys = unsafe {
+                crate::arch::mmu::virt_to_phys_in(VirtAddr::new(va), space.page_table_mut())
+            }
+            .expect("ELF segment page was not mapped");
+            let chunk = (0x1000 - (va & 0xfff)).min(filesz - copied);
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    seg_data.as_ptr().add(copied),
+                    (crate::arch::KERNEL_BASE + phys.as_inner()) as *mut u8,
+                    chunk,
+                );
+            }
+            copied += chunk;
+        }
+
+        let mut zeroed = filesz;
+        while zeroed < memsz {
+            let va = dst_vaddr + zeroed;
+            let phys = unsafe {
+                crate::arch::mmu::virt_to_phys_in(VirtAddr::new(va), space.page_table_mut())
+            }
+            .expect("ELF BSS page was not mapped");
+            let chunk = (0x1000 - (va & 0xfff)).min(memsz - zeroed);
+            unsafe {
+                core::ptr::write_bytes(
+                    (crate::arch::KERNEL_BASE + phys.as_inner()) as *mut u8,
+                    0,
+                    chunk,
+                );
+            }
+            zeroed += chunk;
+        }
+        crate::serial_println!("ELF: PT_LOAD copied");
     }
 
     /* ----------------------------
@@ -350,6 +393,7 @@ pub fn load_elf(
     .unwrap()
     .as_ptr()
     .addr();
+    crate::serial_println!("ELF: user stack mapped at {stack_base:#x}");
 
     let stack_top = stack_base + requests.stack.size;
 
@@ -357,12 +401,12 @@ pub fn load_elf(
      * Entry point
      * ---------------------------- */
 
-    let entry = elf.ehdr.e_entry as usize + delta;
+    let entry = elf.ehdr.e_entry as usize;
 
     log::info!(
-        "ELF loaded: entry={:#x}, load_base={:#x}, stack_base={:#x}",
+        "ELF loaded: entry={:#x}, image_base={:#x}, stack_base={:#x}",
         entry,
-        load_base,
+        min_vaddr,
         stack_base
     );
 
@@ -372,6 +416,7 @@ pub fn load_elf(
         stack_top,
         args,
         ArgLevel::from_u8(requests.args.level).unwrap(),
+        |address, bytes| write_user_bytes(&mut space, address, bytes),
     );
 
     ctx.set_addr_space(space.clone());

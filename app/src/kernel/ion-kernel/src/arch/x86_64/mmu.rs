@@ -11,27 +11,18 @@ pub const ENTRY_WRITABLE: u64 = 1 << 1;
 /// represents the flag for a "huge" page (2 MiB)
 pub const ENTRY_HUGE: u64 = 1 << 7;
 
-/// Raw page-table pointer (identity-mapped)
+/// Raw page-table pointer through the shared upper-half physical alias.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PageTable(*mut u64);
 
 impl PageTable {
-    /// Creates a new page table, panicking if it is not mapped
+    /// Creates a page-table handle for a frame allocated from physical memory.
     pub fn new(ptr: VirtAddr) -> Self {
-        let phys = unsafe { ptr.to_phys() };
-
-        if phys.is_none() {
-            panic!("cannot create a page table from an unmapped virtual address")
-        }
-
-        let phys = phys.unwrap();
-
-        if phys.as_inner() != ptr.as_inner() {
-            panic!("page table not identity mapped")
-        }
-
-        Self(ptr.as_ptr())
+        // Callers pass the frame's physical address wrapped as a VirtAddr for
+        // historical API compatibility. Access the frame through the direct
+        // map so page-table operations also work under process CR3s.
+        Self((crate::arch::KERNEL_BASE + ptr.as_inner()) as *mut u64)
     }
 
     pub fn as_usize(self) -> usize {
@@ -39,20 +30,20 @@ impl PageTable {
     }
 
     pub fn as_phys(self) -> PhysAddr {
-        PhysAddr::new(self.0 as usize)
+        PhysAddr::new(self.0.addr() - crate::arch::KERNEL_BASE)
     }
 
     pub fn as_virt(self) -> VirtAddr {
-        VirtAddr::new(self.0 as usize)
+        VirtAddr::new(self.0.addr())
     }
 }
 
 /// # Safety
 /// - Paging must be active
-/// - Page tables must be identity-mapped
+/// - Page-table frames must be reachable through the x86_64 upper-half direct map
 pub unsafe fn active_pml4() -> PageTable {
     let (frame, _) = Cr3::read();
-    PageTable(frame.start_address().as_u64() as *mut u64)
+    PageTable((crate::arch::KERNEL_BASE + frame.start_address().as_u64() as usize) as *mut u64)
 }
 
 #[inline]
@@ -76,7 +67,12 @@ fn pt_index(addr: u64) -> usize {
 }
 
 unsafe fn next_table(entry: u64) -> *mut u64 {
-    (entry & 0x000f_ffff_ffff_f000) as *mut u64
+    (crate::arch::KERNEL_BASE + (entry & 0x000f_ffff_ffff_f000) as usize) as *mut u64
+}
+
+#[inline]
+fn table_phys(table: *mut u64) -> u64 {
+    (table as usize - crate::arch::KERNEL_BASE) as u64
 }
 
 bitflags::bitflags! {
@@ -103,7 +99,7 @@ bitflags::bitflags! {
 /// # Safety
 /// - `virt` and `phys` must be 2 MiB aligned
 /// - Mapping must not already exist
-/// - Page tables must be identity-mapped
+/// - Page-table frames must be reachable through the x86_64 upper-half direct map
 #[allow(unsafe_op_in_unsafe_fn)]
 #[track_caller]
 pub unsafe fn map_2mib(
@@ -128,7 +124,7 @@ pub unsafe fn map_2mib(
     if *l4e & ENTRY_PRESENT == 0 {
         let pdpt = alloc_zeroed_page_table();
 
-        *l4e = (pdpt as u64)
+        *l4e = table_phys(pdpt)
             | ENTRY_PRESENT
             | ENTRY_WRITABLE
             | if flags.contains(PageTableFlags::USER_PAGE) {
@@ -143,9 +139,9 @@ pub unsafe fn map_2mib(
     if *l3e & ENTRY_PRESENT == 0 {
         let pd = alloc_zeroed_page_table();
         if flags & PageTableFlags::USER_PAGE == PageTableFlags::from_bits_truncate(4) {
-            *l3e = (pd as u64) | ENTRY_PRESENT | ENTRY_WRITABLE | 1 << 2;
+            *l3e = table_phys(pd) | ENTRY_PRESENT | ENTRY_WRITABLE | 1 << 2;
         } else {
-            *l3e = (pd as u64) | ENTRY_PRESENT | ENTRY_WRITABLE;
+            *l3e = table_phys(pd) | ENTRY_PRESENT | ENTRY_WRITABLE;
         }
     }
     let l2 = next_table(*l3e);
@@ -213,7 +209,7 @@ pub unsafe fn unmap_4k(pml4: &mut PageTable, virt: VirtAddr) -> Option<PhysAddr>
 /// - `virt` and `phys` must be 4 KiB aligned
 /// - Mapping must not already exist
 /// - Paging must be active
-/// - Page tables must be identity-mapped
+/// - Page-table frames must be reachable through the x86_64 upper-half direct map
 #[allow(unsafe_op_in_unsafe_fn)]
 #[track_caller]
 pub unsafe fn map_4k(
@@ -232,7 +228,7 @@ pub unsafe fn map_4k(
 
     if *l4e & ENTRY_PRESENT == 0 {
         let pdpt = alloc_zeroed_page_table();
-        *l4e = (pdpt as u64)
+        *l4e = table_phys(pdpt)
             | ENTRY_PRESENT
             | ENTRY_WRITABLE
             | if flags.contains(PageTableFlags::USER_PAGE) {
@@ -250,7 +246,7 @@ pub unsafe fn map_4k(
 
     if *l3e & ENTRY_PRESENT == 0 {
         let pd = alloc_zeroed_page_table();
-        *l3e = (pd as u64)
+        *l3e = table_phys(pd)
             | ENTRY_PRESENT
             | ENTRY_WRITABLE
             | if flags.contains(PageTableFlags::USER_PAGE) {
@@ -273,7 +269,7 @@ pub unsafe fn map_4k(
 
     if *l2e & ENTRY_PRESENT == 0 {
         let pt = alloc_zeroed_page_table();
-        *l2e = (pt as u64)
+        *l2e = table_phys(pt)
             | ENTRY_PRESENT
             | ENTRY_WRITABLE
             | if flags.contains(PageTableFlags::USER_PAGE) {
@@ -326,7 +322,7 @@ impl PageTableAllocator {
     }
 
     /// Allocate a 4 KiB page table (512 u64 entries), zero-initialized
-    /// Returns a *virtual* pointer (identity-mapped)
+    /// Returns a *virtual* pointer through the upper-half direct map
     unsafe fn allocate(&mut self) -> *mut u64 {
         // Need a new frame?
         if self.count_in_frame >= Self::TABLES_PER_FRAME {
@@ -336,8 +332,10 @@ impl PageTableAllocator {
         }
 
         // Get pointer to this table
-        // SAFETY: frame allocator returns identity-mapped physical addresses
-        let ptr = (self.current_frame + self.count_in_frame * Self::TABLE_SIZE) as *mut u64;
+        // SAFETY: frame allocator returns frames covered by the upper-half direct map
+        let ptr = (crate::arch::KERNEL_BASE
+            + self.current_frame
+            + self.count_in_frame * Self::TABLE_SIZE) as *mut u64;
 
         // Zero it (4 KiB = 512 u64 entries)
         for i in 0..512 {
@@ -390,7 +388,8 @@ pub unsafe fn virt_to_phys(virt: VirtAddr) -> Option<PhysAddr> {
 
     // Get the physical root from CR3 (just like active_pml4 does)
     let (frame, _) = x86_64::registers::control::Cr3::read();
-    let pml4_ptr = frame.start_address().as_u64() as *const u64;
+    let pml4_ptr = (crate::arch::KERNEL_BASE + frame.start_address().as_u64() as usize)
+        as *const u64;
 
     // Level 4: PML4
     let pml4e = *pml4_ptr.add(pml4_index(addr));
@@ -482,7 +481,7 @@ pub unsafe fn virt_to_phys_in(virt: VirtAddr, table: &mut PageTable) -> Option<P
 }
 
 /// Unmap a 2MiB mapping and return the physical base if it existed.
-/// Safety: paging must be active and page tables identity-mapped.
+/// Safety: paging must be active and page-table frames must be directly mapped.
 #[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe fn unmap_2mib(pml4: &mut PageTable, virt: VirtAddr) -> Option<PhysAddr> {
     let v = virt.as_ptr_ty();
@@ -532,10 +531,12 @@ pub unsafe fn unmap_and_free_2mib(pml4: &mut PageTable, virt: VirtAddr) -> Optio
 
 pub fn copy_kernel_mappings_to(table: &mut PageTable) {
     let user_pml4 = table.as_usize() as *mut u64;
-    let kernel_pml4 = unsafe { kernel_address_space().ptr().as_inner() as *mut u64 };
+    let kernel_space = unsafe { kernel_address_space() };
+    let kernel_pml4 = kernel_space.page_table().as_usize() as *mut u64;
 
-    // Copy ONLY the kernel half
-    for i in 0..512 {
+    // Copy only the canonical upper half, sharing kernel code, stacks, direct
+    // map, and MMIO while leaving lower-half addresses for user ELFs.
+    for i in 256..512 {
         let entry = unsafe { kernel_pml4.add(i).read() };
         if entry & ENTRY_PRESENT != 0 {
             unsafe { user_pml4.add(i).write(entry) };
@@ -555,7 +556,7 @@ impl PageTable {
     pub fn query_flags(&self, addr: VirtAddr) -> Option<PageTableFlags> {
         let v = addr.as_ptr_ty();
 
-        let pml4 = self.0.cast_const(); // identity-mapped *const u64
+        let pml4 = self.0.cast_const(); // upper-half direct-map *const u64
         let pml4e = unsafe { *pml4.add(pml4_index(v)) };
         if pml4e & ENTRY_PRESENT == 0 {
             return None;

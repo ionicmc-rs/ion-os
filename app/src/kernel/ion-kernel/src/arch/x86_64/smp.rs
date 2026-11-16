@@ -218,7 +218,7 @@ pub unsafe fn start_aps(trampoline: u64) {
         unsafe {
             write_volatile(
                 unsafe { &mut ap_pml4_ptr },
-                arch::mmu::active_pml4().as_usize() as u64,
+                arch::mmu::active_pml4().as_phys().as_inner() as u64,
             )
         };
 

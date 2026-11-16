@@ -1,5 +1,8 @@
 //! Tools for x86_64 specific code
 
+/// Virtual base address where the x86_64 kernel image is linked.
+pub const KERNEL_BASE: usize = 0xffff_ffff_8000_0000;
+
 /// cpu instructions
 pub mod cpu;
 /// const defs

@@ -1,7 +1,7 @@
 //! Local APIC support
 //!
 //! Minimal LAPIC implementation for early kernel use.
-//! Assumes LAPIC is mapped at its physical address.
+//! LAPIC MMIO is accessed through a shared upper-half mapping.
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use core::mem::MaybeUninit;
@@ -34,6 +34,9 @@ const APIC_ICR_LOW: usize = 0x300;
 const APIC_ICR_HIGH: usize = 0x310;
 
 const APIC_DELIVERY_PENDING: u32 = 1 << 12;
+
+/// Shared upper-half virtual mapping for the local APIC MMIO page.
+pub const LAPIC_VIRT_BASE: u64 = 0xffff_9000_0000_0000;
 
 /// Local APIC interface
 pub struct LocalApic {
@@ -171,9 +174,7 @@ pub unsafe fn init() -> LocalApic {
     disable_pic();
     enable_apic_msr();
 
-    let base = lapic_base();
-
-    let lapic = LocalApic::new(base);
+    let lapic = LocalApic::new(LAPIC_VIRT_BASE);
 
     // enable with spurious vector
     lapic.enable(0xFF);
@@ -184,7 +185,7 @@ pub unsafe fn init() -> LocalApic {
 /// # Safety
 /// must be called from CPU0
 pub unsafe fn init_cpu0_lapic() {
-    CPU0_LAPIC.write(LocalApic::new(lapic_base()));
+    CPU0_LAPIC.write(LocalApic::new(LAPIC_VIRT_BASE));
 }
 
 static mut CPU0_LAPIC: MaybeUninit<LocalApic> = MaybeUninit::uninit();
@@ -217,7 +218,7 @@ pub fn current_cpu_lapic() -> Option<&'static LocalApic> {
 /// # Safety
 /// Must be called with the correct CPU index
 pub unsafe fn init_cpu_lapic(index: usize) -> &'static LocalApic {
-    CPUS_LAPIC[index].write(LocalApic::new(lapic_base()));
+    CPUS_LAPIC[index].write(LocalApic::new(LAPIC_VIRT_BASE));
     CPUS_LAPIC[index].assume_init_ref()
 }
 
@@ -225,7 +226,7 @@ pub unsafe fn init_cpu_lapic(index: usize) -> &'static LocalApic {
 /// This must be called after init_cpu0_lapic
 pub unsafe fn init_bsp_cpu_lapic() {
     // CPU0 is always at index 0
-    CPUS_LAPIC[0].write(LocalApic::new(lapic_base()));
+    CPUS_LAPIC[0].write(LocalApic::new(LAPIC_VIRT_BASE));
 }
 
 /// Get the BSP LAPIC during early initialization, before CPU discovery has

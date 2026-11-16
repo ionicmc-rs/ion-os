@@ -8,13 +8,11 @@ use alloc::boxed::Box;
 use linked_list_allocator::{align_up, align_up_size};
 
 use crate::address_space::{kernel_address_space, map_2mib_into_space, map_4k_into_space};
-use crate::arch::defs::PAGE_2MIB;
 use crate::arch::frame_allocator::alloc_2mib_frame;
 use crate::arch::mmu::{PageTable, PageTableFlags, map_2mib, virt_to_phys};
 use crate::arch::{PhysAddr, VirtAddr, defs};
 use crate::c_lib::libc::{self, OsError};
 use crate::io::{Error, ErrorKind, Result};
-use crate::lib_alloc::user::USER_DATA_BASE;
 
 /* ============================ PCI ============================ */
 
@@ -341,7 +339,7 @@ unsafe fn init(bus: u8, slot: u8) -> VirtioBlk {
         panic!("virtio: device set FAILED status");
     }
 
-    const SCRATCH_REGION: usize = USER_DATA_BASE - PAGE_2MIB;
+    const SCRATCH_REGION: usize = 0xffff_9000_8000_0000;
 
     let scratch_phys = alloc_2mib_frame();
 

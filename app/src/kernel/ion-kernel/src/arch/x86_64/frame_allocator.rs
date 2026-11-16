@@ -27,6 +27,9 @@ const SMALL_FRAMES_PER_LARGE: usize = FRAME_SIZE / SMALL_FRAME_SIZE; // 512
 /// Max number of tracked 2 MiB frames subdivided into 4 KiB frames
 const MAX_SUBDIVIDED_FRAMES: usize = 128;
 
+/// Bootstrap paging identity-maps physical memory only up to this address.
+const IDENTITY_MAPPED_LIMIT: usize = 1024 * 1024 * 1024;
+
 /* ============================================================
  * Boot-time 2 MiB frame allocator
  * ============================================================ */
@@ -51,7 +54,7 @@ impl BootInfoFrameAllocator {
         let mut idx = 0;
         for e in mem.entries.iter().filter(|e| e.entry_type == USABLE_ENTRY) {
             let start = align_up(e.start_addr(), FRAME_SIZE);
-            let end = align_down(e.end_addr(), FRAME_SIZE);
+            let end = align_down(e.end_addr().min(IDENTITY_MAPPED_LIMIT), FRAME_SIZE);
 
             let mut a = start;
             while a < end {

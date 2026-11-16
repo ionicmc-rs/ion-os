@@ -31,11 +31,9 @@ fn ensure_mmio_base() -> usize {
         return base;
     }
 
-    // choose clean aligned base
-    let computed = align_up_size(
-        1024 * 1024 * 1024, // 1GiB
-        FRAME_2M,
-    );
+    // Keep kernel MMIO in a shared upper-half range so it remains mapped while
+    // a process address space is active.
+    let computed = align_up_size(0xffff_9000_1000_0000, FRAME_2M);
 
     MMIO_BASE.store(computed, Ordering::Release);
     computed

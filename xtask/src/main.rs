@@ -868,12 +868,12 @@ fn run_vm(vm: Vm, arch: String, test: bool, firmware: Firmware) -> Result<()> {
     }
 
     match vm {
-        Vm::Qemu => run_qemu(&disk, firmware),
+        Vm::Qemu => run_qemu(&disk, firmware, test),
         Vm::Bochs => bail!("bochs backend not implemented yet"),
     }
 }
 
-fn run_qemu(disk_image: &str, firmware: Firmware) -> Result<()> {
+fn run_qemu(disk_image: &str, firmware: Firmware, test: bool) -> Result<()> {
     let mut binding = Command::new("qemu-system-x86_64");
     binding.args([
         "-debugcon",
@@ -910,8 +910,11 @@ fn run_qemu(disk_image: &str, firmware: Firmware) -> Result<()> {
     }
 
     let status = binding.status()?.code();
-    if status != Some(33) {
-        // qemu exit code for `OK`
+    if test && status != Some(33) {
+        // isa-debug-exit status used by the test harness for `OK`.
+        bail!("QEMU test run failed (exit status {status:?}): {:?}", binding);
+    }
+    if !test && status.is_some_and(|code| code != 0) {
         bail!("qemu failed: {:?}", binding);
     }
     Ok(())

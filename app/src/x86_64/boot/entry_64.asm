@@ -4,7 +4,7 @@ extern stack_top
 extern boot_info_data
 
 
-section .text
+section .boot_text
 bits 64
 long_mode_start:
     mov rsp, stack_top

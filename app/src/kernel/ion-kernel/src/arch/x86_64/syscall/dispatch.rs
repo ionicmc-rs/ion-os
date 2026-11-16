@@ -15,7 +15,6 @@ use crate::{
     c_lib::libc::{self, OsError},
     event_logger::{Event, EventData, EventLevel, SyscallEvent, push_event},
     io::{ErrorKind, File, OpenOptions},
-    lib_alloc::user::{USER_DATA_BASE, USER_DATA_SIZE},
     log::{self, info},
     privilege,
     process::{self, current_process, exit_proc, read_current_fd, write_current_fd},
@@ -397,10 +396,7 @@ fn validate_user_range(ptr: usize, len: usize) -> bool {
         None => return false,
     };
 
-    let base = USER_DATA_BASE;
-    let top = USER_DATA_BASE + USER_DATA_SIZE;
-
-    ptr >= base && end < top
+    VirtAddr::try_new(ptr).is_some() && VirtAddr::try_new(end).is_some()
 }
 
 #[derive(Debug, Clone, Copy)]

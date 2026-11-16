@@ -106,7 +106,9 @@ lazy_static! {
 const TIMER_VEC: u8 = 48;
 const KEYBOARD_VEC: u8 = 49;
 
-static mut IOAPIC: IoApic = unsafe { IoApic::new(0xFEC00000) };
+const IOAPIC_PHYS_BASE: usize = 0xFEC0_0000;
+const IOAPIC_VIRT_BASE: usize = 0xffff_9000_0000_1000;
+static mut IOAPIC: IoApic = unsafe { IoApic::new(IOAPIC_VIRT_BASE as u64) };
 
 /// inits the IDT, GDT, TSS, PIC8259, and interrupts.
 pub fn init_interrupt_operations() {
@@ -115,7 +117,7 @@ pub fn init_interrupt_operations() {
     unsafe {
         address_space::map_4k_into_space(
             &mut kernel_address_space(),
-            VirtAddr::new(apic::lapic_base() as usize),
+            VirtAddr::new(apic::LAPIC_VIRT_BASE as usize),
             PhysAddr::new(apic::lapic_base() as usize),
             PageTableFlags::PRESENT
                 | PageTableFlags::WRITABLE
@@ -125,8 +127,8 @@ pub fn init_interrupt_operations() {
 
         address_space::map_4k_into_space(
             &mut kernel_address_space(),
-            VirtAddr::new(0xFEC00000),
-            PhysAddr::new(0xFEC00000),
+            VirtAddr::new(IOAPIC_VIRT_BASE),
+            PhysAddr::new(IOAPIC_PHYS_BASE),
             PageTableFlags::PRESENT
                 | PageTableFlags::WRITABLE
                 | PageTableFlags::NO_CACHE

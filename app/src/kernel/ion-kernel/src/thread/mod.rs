@@ -152,10 +152,13 @@ impl Thread {
             "loaded ELF file, entry point: {:#x}",
             loaded.context.instruction_pointer()
         );
+        crate::serial_println!("user thread: ELF context ready");
 
+        crate::serial_println!("user thread: allocating TLS");
         let (tls, _tls_guard) = unsafe {
             alloc_thread_self(loaded.context.stack_pointer() as *mut u8, loaded.stack_size)
         };
+        crate::serial_println!("user thread: TLS allocated");
 
         let _tls_guard = Some(_tls_guard);
         let tls = tls.addr();

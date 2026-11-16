@@ -21,9 +21,7 @@ use core::any::{Any, TypeId, type_name};
 use alloc::{format, vec};
 
 use crate::{
-    log::error,
-    serial_print, serial_println,
-    thread::{self, JoinErrorKind, ThreadBuilder},
+    arch::port::Write, log::error, serial_print, serial_println, thread::{self, JoinErrorKind, ThreadBuilder},
 };
 
 /// Info Passed to Tests
@@ -110,7 +108,7 @@ pub fn run_tests(tests: &'static [&(dyn Testable + 'static)]) -> ! {
         let name = test.name();
         serial_print!("[{}] {name}: ", i + 1);
 
-        let options_ptr = &mut options;
+        let options_ptr = unsafe { (&raw mut options).as_mut().unwrap() };
 
         let thread = ThreadBuilder::new()
             .with_name(format!("test <{name}>"))
@@ -223,7 +221,7 @@ pub fn exit_raw(code: QemuExitCode) {
     use crate::arch::port::Port;
 
     unsafe {
-        let mut port = Port::new(0xf4);
+        let mut port = Port::<_, Write>::new(0xf4);
         port.write(code as u32);
     }
 }

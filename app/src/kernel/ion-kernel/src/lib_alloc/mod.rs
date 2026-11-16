@@ -21,7 +21,6 @@ use crate::{
         mmu::{PageTableFlags, map_2mib},
     },
     c_lib::libc,
-    lib_alloc::user::USER_DATA_BASE,
     thread,
 };
 
@@ -157,7 +156,8 @@ pub mod user;
 
 // Thread stacks
 
-pub const THREAD_STACK_REGION: usize = USER_DATA_BASE - PAGE_2MIB - (THREAD_STACK_SIZE);
+// Keep thread stacks beyond the 1 GiB high-half alias established by bootstrap.
+pub const THREAD_STACK_REGION: usize = crate::arch::KERNEL_BASE + 0x5000_0000;
 pub const THREAD_STACK_SIZE: usize = PAGE_2MIB * 2;
 pub static THREAD_STACK_ALLOC: RescheduleAlloc = RescheduleAlloc::empty();
 

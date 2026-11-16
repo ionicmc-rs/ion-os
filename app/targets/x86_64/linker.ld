@@ -1,5 +1,7 @@
 ENTRY(start)
 
+KERNEL_VMA = 0xffffffff80000000;
+
 PHDRS {
     boot PT_LOAD FLAGS(0x5);   /* low-memory boot and AP trampoline code */
     ap_data PT_LOAD FLAGS(0x6); /* mutable AP trampoline state */
@@ -22,44 +24,52 @@ SECTIONS
         KEEP(*(.multiboot_header))
     }: boot
 
+    .boot_text : ALIGN(16) { *(.boot_text) }: boot
+    .boot_rodata : ALIGN(16) { *(.boot_rodata) }: boot
+
     .ap_data : ALIGN(8)
     {
         KEEP(*(.ap_data))
     }: ap_data
 
-    . = 1M;
+    .boot_data : ALIGN(16) { *(.boot_data) }: ap_data
+    .boot_bss (NOLOAD) : ALIGN(16) { *(.boot_bss) }: ap_data
+
+    /* Bootstrap remains identity mapped; the kernel proper runs high. */
+    . = KERNEL_VMA + 1M;
+    __kernel_load_start = 1M;
 
 
-    .text : ALIGN(16)
+    .text : AT(ADDR(.text) - KERNEL_VMA) ALIGN(16)
     {
         *(.text .text.*)
     }: text
 
-    .rodata : ALIGN(16)
+    .rodata : AT(ADDR(.rodata) - KERNEL_VMA) ALIGN(16)
     {
         *(.rodata .rodata.*)
     }: rodata
 
-    .data : ALIGN(16)
+    .data : AT(ADDR(.data) - KERNEL_VMA) ALIGN(16)
     {
         *(.data .data.*)
     }: data
 
-    .tdata : ALIGN(16)
+    .tdata : AT(ADDR(.tdata) - KERNEL_VMA) ALIGN(16)
     {
         __tdata_start = .;
         *(.tdata .tdata.*)
         __tdata_end = .;
     }: data
 
-    .tbss : ALIGN(16)
+    .tbss : AT(ADDR(.tbss) - KERNEL_VMA) ALIGN(16)
     {
         __tbss_start = .;
         *(.tbss .tbss.*)
         __tbss_end = .;
     }: data
 
-    .bss : ALIGN(16) {
+    .bss : AT(ADDR(.bss) - KERNEL_VMA) ALIGN(16) {
         __bss_start = .;
         *(.bss .bss.*)
         *(COMMON)

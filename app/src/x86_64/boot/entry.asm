@@ -9,7 +9,7 @@ global start
 global stack_top
 extern long_mode_start           ; 64-bit entry point (defined in a separate bits 64 file)
 
-section .data
+section .boot_data
 global boot_info_data
 boot_info_data:
     dd 0              ; +0x00 multiboot_magic
@@ -22,7 +22,7 @@ boot_info_data:
     dq 0              ; +0x28 memory_map_addr
     dq 0              ; +0x30 kernel_entry
 
-section .text
+section .boot_text
 bits 32 ; the boot loader puts us in 32-bit "protected mode"
 start:
     ; Set initial stack pointer
@@ -368,6 +368,17 @@ setup_page_tables:
     mov     [page_table_l3 + 0], eax
     mov     dword [page_table_l3 + 4], 0
 
+    ; Map the first 1 GiB at ffffffff80000000 as the kernel's high half.
+    ; PML4[511] shares the existing PDPT; PDPT[510] shares the identity PD.
+    mov     eax, page_table_l3
+    or      eax, 0b11
+    mov     [page_table_l4 + 511 * 8], eax
+    mov     dword [page_table_l4 + 511 * 8 + 4], 0
+    mov     eax, page_table_l2
+    or      eax, 0b11
+    mov     [page_table_l3 + 510 * 8], eax
+    mov     dword [page_table_l3 + 510 * 8 + 4], 0
+
     ; Fill 512 PDEs (2MiB pages): identity map 0..1GiB
     xor     ecx, ecx
 .fill_pdes:
@@ -428,7 +439,7 @@ error:
     out     0xE9, al
     hlt
 
-section .bss
+section .boot_bss nobits
 align 4096
 page_table_l4:
     resb 4096
@@ -441,7 +452,7 @@ stack_bottom:
     resb 4096 * 32 ; 128 KiB stack
 stack_top:
 
-section .rodata
+section .boot_rodata
 gdt64:
     dq 0
 .code_segment: equ $ - gdt64

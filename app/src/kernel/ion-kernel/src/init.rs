@@ -28,7 +28,7 @@ use crate::{
     c_lib::BootInfo,
     disk,
     graphics::{self, Surface},
-    lib_alloc::{init_heap, init_thread_stack_region, user::init_user_data},
+    lib_alloc::{init_heap, init_thread_stack_region},
     privilege::init_users,
     serial_println,
 };
@@ -101,7 +101,6 @@ pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
     // unsafe { arch::mmu::init_kernel_heap() };
 
     unsafe { init_heap() };
-    unsafe { init_user_data() };
 
     // keyboard
 

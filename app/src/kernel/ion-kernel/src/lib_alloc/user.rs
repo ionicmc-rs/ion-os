@@ -1,5 +1,4 @@
 use core::alloc::Layout;
-use core::cell::RefCell;
 use core::ptr::NonNull;
 
 use alloc::{
@@ -12,7 +11,7 @@ use crate::{
     arch::{
         PhysAddr, VirtAddr,
         frame_allocator::alloc_4k_frame,
-        mmu::{PageTableFlags, virt_to_phys_in},
+        mmu::PageTableFlags,
     },
 };
 
@@ -254,95 +253,4 @@ unsafe impl Allocator for RegionAllocator {
 fn align_up(x: usize, align: usize) -> usize {
     debug_assert!(align.is_power_of_two());
     (x + align - 1) & !(align - 1)
-}
-
-/* ============================================================
- * Global user data allocator
- * ============================================================ */
-
-static mut USER_DATA: RegionAllocator = RegionAllocator::empty();
-
-pub const USER_DATA_SIZE: usize = 4 * 1024 * 1024;
-pub const USER_DATA_BASE: usize = 0x0000_0002_0000_0000;
-
-const USER_DATA_PAGES: usize = USER_DATA_SIZE / 0x1000;
-
-/// Physical backing for USER_DATA (allocated once)
-static mut USER_DATA_FRAMES: [usize; USER_DATA_PAGES] = [0; USER_DATA_PAGES];
-
-#[allow(static_mut_refs)]
-pub fn user_data_allocator() -> &'static RegionAllocator {
-    unsafe { &USER_DATA }
-}
-
-/* ============================================================
- * Initialization
- * ============================================================ */
-
-/// Initialize USER_DATA backing and allocator.
-///
-/// # Safety
-/// - Must be called exactly once at boot
-pub unsafe fn init_user_data() {
-    // allocate physical backing ONCE
-    for i in 0..USER_DATA_PAGES {
-        USER_DATA_FRAMES[i] = alloc_4k_frame().expect("out of physical memory");
-    }
-
-    USER_DATA = RegionAllocator::init(USER_DATA_BASE, USER_DATA_SIZE);
-}
-
-/// Map USER_DATA into an address space (process or kernel).
-///
-/// # Safety
-/// - `space` must be a valid address space
-pub unsafe fn map_user_data(space: &mut AddressSpace) {
-    for (i, &phys) in USER_DATA_FRAMES.iter().enumerate() {
-        let va = USER_DATA_BASE + i * 0x1000;
-
-        unsafe {
-            address_space::map_4k_into_space(
-                space,
-                VirtAddr::new(va),
-                PhysAddr::new(phys),
-                PageTableFlags::USER_PAGE | PageTableFlags::WRITABLE | PageTableFlags::PRESENT,
-            )
-        };
-
-        let mut kernel = unsafe { address_space::kernel_address_space() };
-
-        if unsafe { virt_to_phys_in(VirtAddr::new(va), kernel.page_table_mut()).is_none() } {
-            unsafe {
-                address_space::map_4k_into_space(
-                    &mut address_space::kernel_address_space(),
-                    VirtAddr::new(va),
-                    PhysAddr::new(phys),
-                    PageTableFlags::USER_PAGE | PageTableFlags::WRITABLE | PageTableFlags::PRESENT,
-                )
-            };
-        }
-    }
-}
-
-/* ============================================================
- * Sub-region reservation
- * ============================================================ */
-
-pub fn reserve_space_for_addr(
-    space: &mut AddressSpace,
-    size: usize,
-    align: usize,
-) -> RegionAllocator {
-    // Allocate virtual address range from global USER_DATA allocator
-    let alloc = unsafe {
-        USER_DATA
-            .allocate(Layout::from_size_align(size, align).unwrap())
-            .unwrap()
-            .as_ptr()
-            .cast::<u8>()
-    };
-
-    // Initialize the allocator for the allocated region
-    // Note: We don't pass the address_space here since we already mapped pages above
-    unsafe { RegionAllocator::init_with_space(alloc as usize, size, space.clone()) }
 }
