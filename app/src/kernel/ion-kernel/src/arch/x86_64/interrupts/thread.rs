@@ -73,11 +73,16 @@ pub extern "x86-interrupt" fn timer_trampoline(
         "push r15",
 
 
-        "mov rdi, rsp",   // &mut InterruptRegs
-        "lea rsi, [rsp + 120]", // above pushed registers
-        "sub rsp, 8",     // align the stack for the call
+        // IST top is aligned; hardware's 40-byte frame and 15 register
+        // pushes leave RSP aligned before the SysV call.
+        "sub rsp, 512",
+        "clts",
+        "fxsave64 [rsp]",
+        "lea rdi, [rsp + 512]", // &mut InterruptRegs
+        "lea rsi, [rsp + 632]", // InterruptStackFrame
+        "mov rdx, rsp",          // pre-handler FPU image
         "call {handler}",
-        "add rsp, 8",     // restore the stack pointer
+        "add rsp, 512",
 
 
         "pop r15",
@@ -103,7 +108,11 @@ pub extern "x86-interrupt" fn timer_trampoline(
 
 #[allow(unused)]
 #[unsafe(no_mangle)]
-pub extern "C" fn timer_handler(regs: &mut InterruptRegs, frame: &mut InterruptStackFrame) {
+pub extern "C" fn timer_handler(
+    regs: &mut InterruptRegs,
+    frame: &mut InterruptStackFrame,
+    fpu_state: *const u8,
+) {
     let t = TICKS.fetch_add(1, Ordering::Relaxed);
 
     if thread::current().is_none() {
@@ -111,15 +120,20 @@ pub extern "C" fn timer_handler(regs: &mut InterruptRegs, frame: &mut InterruptS
         // Acknowledge that early interrupt too, or the LAPIC leaves it in
         // service and will not deliver subsequent timer ticks.
         notify!(unsafe Timer);
+        unsafe { restore_fpu(fpu_state) };
         return;
     }
 
-    current_scheduler().switch_from_interrupt(ScheduleReason::Preempt, regs, frame);
-
+    // Finish interrupt-side work before restoring another thread's FPU state.
     scheduler::request_reschedule();
     scheduler::wake_done();
-
     notify!(unsafe Timer);
+
+    let switched =
+        current_scheduler().switch_from_interrupt(ScheduleReason::Preempt, regs, frame, fpu_state);
+    if !switched {
+        unsafe { restore_fpu(fpu_state) };
+    }
 }
 
 pub(super) const TIMER_IST: u16 = 4;
@@ -146,11 +160,16 @@ pub extern "x86-interrupt" fn yield_trampoline(
         "push r14",
         "push r15",
 
-        "mov rdi, rsp",   // &mut InterruptRegs
-        "lea rsi, [rsp + 120]", // above pushed registers
-        "sub rsp, 8",     // align the stack for the call
+        // IST top is aligned; hardware's 40-byte frame and 15 register
+        // pushes leave RSP aligned before the SysV call.
+        "sub rsp, 512",
+        "clts",
+        "fxsave64 [rsp]",
+        "lea rdi, [rsp + 512]", // &mut InterruptRegs
+        "lea rsi, [rsp + 632]", // InterruptStackFrame
+        "mov rdx, rsp",          // pre-handler FPU image
         "call {handler}",
-        "add rsp, 8",     // restore the stack pointer
+        "add rsp, 512",
 
         "pop r15",
         "pop r14",
@@ -173,14 +192,34 @@ pub extern "x86-interrupt" fn yield_trampoline(
     );
 }
 
-extern "C" fn yield_handler(regs: &mut InterruptRegs, frame: &mut InterruptStackFrame) {
-    without_interrupts(|| {
+extern "C" fn yield_handler(
+    regs: &mut InterruptRegs,
+    frame: &mut InterruptStackFrame,
+    fpu_state: *const u8,
+) {
+    let switched = without_interrupts(|| {
         if let Some(mut lock) = current_yield_reason().try_lock() {
             if let Some(reason) = lock.take() {
-                current_scheduler().switch_from_interrupt(reason.0, regs, frame);
+                return current_scheduler().switch_from_interrupt(reason.0, regs, frame, fpu_state);
             }
         }
+        false
     });
+    if !switched {
+        unsafe { restore_fpu(fpu_state) };
+    }
+}
+
+unsafe fn restore_fpu(state: *const u8) {
+    unsafe {
+        core::arch::asm!(
+            "clts",
+            "fxrstor64 [{}]",
+            in(reg) state,
+            clobber_abi("C"),
+            options(nostack)
+        );
+    }
 }
 
 // yield arguments

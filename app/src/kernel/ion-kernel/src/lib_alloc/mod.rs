@@ -4,9 +4,7 @@
 //! instead, use [`alloc`] types like `Box`, `Vec`, etc.
 
 use core::{
-    alloc::GlobalAlloc,
-    fmt,
-    ptr::{NonNull, addr_of_mut},
+    alloc::GlobalAlloc, fmt, ptr::{NonNull, addr_of_mut}, sync::atomic::{AtomicUsize, Ordering},
 };
 
 use alloc::alloc::{AllocError, Allocator};
@@ -88,6 +86,8 @@ unsafe impl GlobalAlloc for RescheduleAlloc {
 
         if res.is_null() {
             libc::set_os_error(libc::OsError::AllocFail);
+        } else {
+            TOTAL_ALLOC.fetch_add(layout.size(), Ordering::SeqCst);
         }
 
         res
@@ -97,7 +97,8 @@ unsafe impl GlobalAlloc for RescheduleAlloc {
     unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
         thread::critical_moment(|| {
             unsafe { self.0.dealloc(ptr, layout) };
-        })
+        });
+        TOTAL_ALLOC.fetch_sub(layout.size(), Ordering::SeqCst);
     }
 
     #[inline]
@@ -106,6 +107,8 @@ unsafe impl GlobalAlloc for RescheduleAlloc {
 
         if res.is_null() {
             libc::set_os_error(libc::OsError::AllocFail);
+        } else {
+            TOTAL_ALLOC.fetch_add(layout.size(), Ordering::SeqCst);
         }
 
         res
@@ -122,6 +125,9 @@ unsafe impl GlobalAlloc for RescheduleAlloc {
 
         if res.is_null() {
             libc::set_os_error(libc::OsError::AllocFail);
+        } else {
+            use core::cmp::{max, min};
+            TOTAL_ALLOC.fetch_add(max(layout.size(), new_size) - min(layout.size(), new_size), Ordering::SeqCst);
         }
 
         res
@@ -149,6 +155,7 @@ unsafe impl Allocator for RescheduleAlloc {
 /// Used implicitly by `Box`, `Vec`, etc.
 #[global_allocator]
 pub static GLOBAL_ALLOC: RescheduleAlloc = RescheduleAlloc::empty();
+pub static TOTAL_ALLOC: AtomicUsize = AtomicUsize::new(0);
 
 #[cfg(feature = "test")]
 pub mod tests;

@@ -251,14 +251,6 @@ impl Context {
                 in(reg) self.ctrl.cr3,
                 options(nostack),
             );
-
-            // Restore FPU
-            asm!(
-                "clts",
-                // "fxrstor64 [{}]",
-                // in(reg) &self.fpu.data,
-                options(nostack),
-            );
         }
 
         // Overwrite the GPRs on the stack
@@ -286,15 +278,30 @@ impl Context {
             frame_value.code_segment = SegmentSelector(self.segments.cs);
             frame_value.stack_segment = SegmentSelector(self.segments.ss);
         });
+
+        // Restore last so kernel-side work while installing the interrupt
+        // frame cannot overwrite the selected thread's x87/SSE state.
+        unsafe {
+            asm!(
+                "clts",
+                "fxrstor64 [{}]",
+                in(reg) self.fpu.data.as_ptr(),
+                clobber_abi("C"),
+                options(nostack),
+            );
+        }
     }
 
     pub(crate) fn save_from_interrupt(
         &mut self,
         regs: &InterruptRegs,
         stack_frame: Volatile<&mut InterruptStackFrameValue, volatile::access::ReadOnly>,
+        fpu_state: *const u8,
     ) {
         self.ctrl = capture_ctrl();
-        self.fpu = capture_fpu();
+        unsafe {
+            ptr::copy_nonoverlapping(fpu_state, self.fpu.data.as_mut_ptr(), self.fpu.data.len());
+        }
         self.regs.r8 = regs.r8;
         self.regs.r9 = regs.r9;
         self.regs.r10 = regs.r10;
@@ -508,13 +515,9 @@ fn capture_ctrl() -> Ctrl {
 fn capture_fpu() -> Fpu {
     let mut f = Fpu { data: [0u8; 512] };
 
-    // unsafe {
-    //     asm!(
-    //         "clts",
-    //         "fxsave64 [{}]",
-    //         in(reg) f.data.as_mut_ptr()
-    //     );
-    // }
+    unsafe {
+        asm!("clts", "fxsave64 [{}]", in(reg) f.data.as_mut_ptr(), options(nostack));
+    }
 
     f
 }

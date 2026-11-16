@@ -643,16 +643,24 @@ impl Scheduler {
         reason: ScheduleReason,
         regs: &mut arch::interrupts::InterruptRegs,
         frame: &mut InterruptStackFrame,
-    ) {
+        fpu_state: *const u8,
+    ) -> bool {
         arch::interrupts::without_interrupts(|| {
             let _guard = self.queues_lock.lock();
             if let Some((old, new)) = self.pick(reason) {
                 if let Some(old) = old {
-                    old.save_from_interrupt(regs, unsafe { frame.as_mut().read_only() });
+                    old.save_from_interrupt(
+                        regs,
+                        unsafe { frame.as_mut().read_only() },
+                        fpu_state,
+                    );
                 }
                 new.load_with_interrupt_frame(regs, unsafe { frame.as_mut() });
+                true
+            } else {
+                false
             }
-        });
+        })
     }
 
     // /// Switches contexts

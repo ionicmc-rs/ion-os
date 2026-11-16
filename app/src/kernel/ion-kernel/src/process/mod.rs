@@ -353,6 +353,15 @@ impl ProcManager {
         self.processes.set(processes);
         res
     }
+
+    pub fn proc_count(&self) -> usize {
+        thread::critical_moment(|| {
+            let procs = self.processes.take();
+            let len = procs.len();
+            self.processes.set(procs);
+            len
+        })
+    }
 }
 
 /// Spawn a new process - assuming its components already exist

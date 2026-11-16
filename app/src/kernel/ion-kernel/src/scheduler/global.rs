@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::{self, Vec}};
 
 use crate::{
-    arch, cls, log, privilege::UserID, scheduler::Priority, smp::{self, CpuID}, thread::{TPriority, Thread},
+    arch::{self, smp::cpu}, cls, log, privilege::UserID, scheduler::Priority, smp::{self, CpuID}, thread::{TPriority, Thread},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -573,4 +573,15 @@ fn work_stealing_eligible(
     };
 
     accepts(this.workload) && accepts(from.workload)
+}
+
+pub fn total_active_threads() -> usize {
+    let cpus = {
+        let lock = THREAD_CONTROLLER.lock();
+        lock.cpus.clone()
+    };
+    cpus.
+        iter()
+        .map(|cpu| cpu_active_threads(cpu.id))
+        .sum()
 }

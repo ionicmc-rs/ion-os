@@ -76,7 +76,7 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
     let syscall = Syscall::parse(frame.clone());
 
     push_event(Event {
-        cpu: super::super::cpu::core_id() as u16,
+        cpu: unsafe { super::super::cpu::core_id() } as u16,
         ticks: super::super::interrupts::ticks(),
         level: EventLevel::Trace,
         data: EventData::Syscall(SyscallEvent::Enter {

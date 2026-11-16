@@ -20,14 +20,17 @@ const MAX_CPUS: usize = 64;
 const IST_STACK_SIZE: usize = 32 * 1024;
 const IST_STACKS_PER_CPU: usize = 4;
 
+#[repr(C, align(16))]
+struct AlignedIstStacks([[[u8; IST_STACK_SIZE]; IST_STACKS_PER_CPU]; MAX_CPUS]);
+
 /// Each CPU must have its own TSS: the descriptor becomes busy after `ltr`,
 /// and each CPU needs private IST stacks for nested/fault interrupts.
 static mut TSS: [MaybeUninit<TaskStateSegment>; MAX_CPUS] =
     [const { MaybeUninit::uninit() }; MAX_CPUS];
 static mut GDT: [MaybeUninit<(GlobalDescriptorTable, Selectors)>; MAX_CPUS] =
     [const { MaybeUninit::uninit() }; MAX_CPUS];
-static mut IST_STACKS: [[[u8; IST_STACK_SIZE]; IST_STACKS_PER_CPU]; MAX_CPUS] =
-    [[[0; IST_STACK_SIZE]; IST_STACKS_PER_CPU]; MAX_CPUS];
+static mut IST_STACKS: AlignedIstStacks =
+    AlignedIstStacks([[[0; IST_STACK_SIZE]; IST_STACKS_PER_CPU]; MAX_CPUS]);
 
 /// GDT segment selectors used throughout the kernel.
 #[derive(Debug, Clone, Copy)]
@@ -50,7 +53,7 @@ pub fn init_cpu(cpu_index: usize) {
 
     unsafe {
         let mut tss = TaskStateSegment::new();
-        let stacks_base = core::ptr::addr_of_mut!(IST_STACKS).cast::<u8>();
+        let stacks_base = core::ptr::addr_of_mut!(IST_STACKS.0).cast::<u8>();
 
         for (stack_number, ist_index) in [
             DOUBLE_FAULT_IST_INDEX,

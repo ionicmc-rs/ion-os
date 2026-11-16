@@ -50,6 +50,40 @@ protected_mode:
     mov gs, ax
     mov ss, ax
 
+    ; Match the BSP's FPU/SSE setup before entering Rust or taking an
+    ; interrupt. The interrupt context code uses FXSAVE/FXRSTOR on every CPU.
+    mov eax, cr0
+    and eax, ~(1 << 2)      ; EM = 0
+    and eax, ~(1 << 3)      ; TS = 0
+    or  eax,  (1 << 1)      ; MP = 1
+    mov cr0, eax
+
+    mov eax, cr4
+    or  eax, 1 << 9         ; OSFXSR
+    or  eax, 1 << 10        ; OSXMMEXCPT
+    mov cr4, eax
+
+    ; Enable the same XSAVE state components as the BSP when supported.
+    mov eax, 1
+    cpuid
+    mov ebx, ecx            ; preserve CPUID.1:ECX feature bits
+    test ebx, 1 << 26       ; XSAVE
+    jz .fpu_ready
+
+    mov eax, cr4
+    or  eax, 1 << 18        ; OSXSAVE
+    mov cr4, eax
+
+    xor edx, edx
+    xor ecx, ecx            ; XCR0
+    mov eax, (1 << 0) | (1 << 1) ; x87 | SSE
+    test ebx, 1 << 28       ; AVX
+    jz .set_xcr0
+    or eax, 1 << 2          ; YMM state
+.set_xcr0:
+    xsetbv
+.fpu_ready:
+
     ; enable PAE
     mov eax, cr4
     or eax, (1 << 5)
@@ -95,7 +129,13 @@ long_mode:
     mov fs, ax
     mov gs, ax
 
-    mov rsp, [rel ap_stack]
+    ; Select this AP's private stack by its initial APIC ID. The BSP can now
+    ; start several APs without racing updates to one shared stack pointer.
+    mov eax, 1
+    cpuid
+    shr ebx, 24
+    lea rax, [rel ap_stacks_by_id]
+    mov rsp, [rax + rbx * 8]
 
     call ap_entry
 
@@ -116,12 +156,12 @@ align 8
 ap_pml4_ptr:
     dq 0
 
-global ap_stack
+global ap_stacks_by_id
 
 align 8
 
-ap_stack:
-    dq 0
+ap_stacks_by_id:
+    times 256 dq 0
 
 ; --------------------------------------------------
 ; GDT (minimal)

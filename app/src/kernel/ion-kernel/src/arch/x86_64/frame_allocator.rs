@@ -39,6 +39,7 @@ pub struct BootInfoFrameAllocator {
     _memory_map: NonNull<MultibootMemory>,
     frames: *mut usize,
     count: usize,
+    total_count: usize,
 }
 
 impl BootInfoFrameAllocator {
@@ -70,6 +71,7 @@ impl BootInfoFrameAllocator {
             _memory_map: memory_map,
             frames: core::ptr::addr_of_mut!(FRAME_BACKING) as *mut usize,
             count: idx,
+            total_count: idx,
         }
     }
 
@@ -107,6 +109,16 @@ pub fn alloc_2mib_frame() -> usize {
         .0
         .alloc_frame()
         .expect("out of physical memory")
+}
+
+/// Returns the allocator's tracked and currently free 2 MiB frame counts.
+///
+/// `None` means the global allocator has not been initialized yet.
+pub fn frame_counts() -> Option<(usize, usize)> {
+    let guard = FRAME_ALLOCATOR.lock();
+    guard
+        .as_ref()
+        .map(|alloc| (alloc.0.total_count, alloc.0.count))
 }
 
 pub fn dealloc_2mib_frame(addr: usize) {

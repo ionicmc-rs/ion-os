@@ -73,6 +73,7 @@ pub mod test;
 pub mod text;
 pub mod thread;
 pub mod vfs;
+pub mod analytics;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "test")] {

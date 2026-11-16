@@ -258,6 +258,13 @@ fn handle_kbd() -> ! {
 
 /// final init.
 pub fn kernel_main() {
+    log::info!("System Information: ");
+    log::info!("Vendor Name: {}", arch::cpu::vendor_name());
+    log::info!("Brand Name: {}", arch::cpu::brand_name());
+    log::info!("Family: {:#x}", arch::cpu::family());
+    log::info!("Model: {:#x}", arch::cpu::model());
+    log::info!("Stepping: {:#x}", arch::cpu::stepping());
+
     #[cfg(debug_assertions)]
     event::add_key_listener(|ev| {
         if ev.state != KeyState::Up {
@@ -282,34 +289,20 @@ pub fn kernel_main() {
                                 disk::{self, DiskId},
                                 log::debug,
                                 process::current_process,
+                                analytics::*
                             };
 
+                            let used = display_memory(used_memory());
+                            let usable = display_memory(usable_memory());
+                            let allocated = display_memory(total_kernel_allocated());
+
                             debug!("DEBUG KEY PRESSED:");
-                            debug!("Thread: \n{:#?}", thread::current());
-                            debug!("Process ID: {:?}", current_process());
-                            debug!("Context: \n{:#?}", arch::ctx::current());
-                            debug!("Boot Info: \n{:#?}", boot_info());
-                            debug!("Kernel Address Space: \n{:#?}", unsafe {
-                                address_space::kernel_address_space()
-                            });
-
-                            if let Some(id) = DiskId::new(0) {
-                                use crate::vfs::fs::parse::read_superblock;
-
-                                let dev = disk::get_disk(id);
-
-                                debug!("Disk0 Data:");
-                                asyncio::run_future(async {
-                                    use crate::vfs::fs::parse::{read_alloc_block, read_inode};
-
-                                    debug!("Super Block: \n{:#?}", read_superblock(dev).await);
-                                    debug!("Alloc Block: \n{:#?}", read_alloc_block(dev).await);
-                                    debug!("Root Inode: \n{:#?}", read_inode(dev, 0).await);
-                                });
-                                debug!("End of Dump")
-                            }
+                            debug!("Memory Usage: {}/{} ({:.2}%)", used, usable, used_memory_percentage());
+                            debug!("Runnable Threads: {}", total_active_threads());
+                            debug!("Total Processes: {}", total_processes());
+                            debug!("Kernel Allocation Usage: {}", allocated)
                         },
-                        64 * 1024,
+                        8 * 1024,
                     );
                 }
                 _ => {}

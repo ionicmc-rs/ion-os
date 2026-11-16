@@ -190,7 +190,7 @@ pub fn get_madt() -> (*const u8, usize) {
 
 unsafe extern "C" {
     static mut ap_pml4_ptr: u64;
-    static mut ap_stack: u64;
+    static mut ap_stacks_by_id: [u64; 256];
 }
 
 pub unsafe fn start_aps(trampoline: u64) {
@@ -200,6 +200,12 @@ pub unsafe fn start_aps(trampoline: u64) {
     let vector = (trampoline >> 12) as u8;
 
     let bsp = lapic.id();
+    unsafe {
+        write_volatile(
+            core::ptr::addr_of_mut!(ap_pml4_ptr),
+            arch::mmu::active_pml4().as_phys().as_inner() as u64,
+        );
+    }
 
     for (i, cpu) in cpus.enumerate() {
         if cpu.apic_id == bsp {
@@ -207,18 +213,15 @@ pub unsafe fn start_aps(trampoline: u64) {
         }
 
         unsafe {
+            let stack_slot = core::ptr::addr_of_mut!(ap_stacks_by_id)
+                .cast::<u64>()
+                .add(cpu.apic_id as usize);
             write_volatile(
-                unsafe { &mut ap_stack },
+                stack_slot,
                 align_up_size(
                     (&CPU_STACKS[i] as *const [u8; STACK_SIZE]).wrapping_add(1) as usize,
                     16,
                 ) as u64,
-            )
-        };
-        unsafe {
-            write_volatile(
-                unsafe { &mut ap_pml4_ptr },
-                arch::mmu::active_pml4().as_phys().as_inner() as u64,
             )
         };
 
