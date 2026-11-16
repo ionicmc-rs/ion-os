@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use crate::{arch::syscall::dispatch::SyscallFrame, process::ProcessID};
+use crate::{arch::syscall::dispatch::SyscallFrame, process::ProcessID, resources::OpenFlags};
 
 #[derive(Debug, Clone)]
 pub enum ThreadCommand {
@@ -37,7 +37,7 @@ pub enum ProcessCommand {
 pub enum IoCommand {
     Write(usize, usize, usize),  // fd, buf, len
     Read(usize, usize, usize),   // fd, buf, len
-    Open(*const i8, usize, u32), // path, path length
+    Open(*const i8, usize, OpenFlags), // path, path length, flags
     Close(usize),                // fd
     Seek(usize, i64),            // fd, offset
     Unknown,
@@ -65,11 +65,17 @@ impl Syscall {
             0 => Self::Ack,
             1 => Self::Process(match frame.rdi {
                 0 => ProcessCommand::Exit(frame.rsi as i32),
+                1 => ProcessCommand::ChangeName(frame.rsi as usize as *const i8, frame.rdx as usize),
+                2 => ProcessCommand::Kill(ProcessID(frame.rsi)),
+                3 => ProcessCommand::Spawn(frame.rsi as usize as *const i8, frame.rdx as usize as *const *const i8, frame.r10 as usize, ProcessFlags::from_bits_truncate(frame.r9 as u32)),
                 _ => ProcessCommand::Unknown,
             }),
             2 => Self::Io(match frame.rdi {
                 0 => IoCommand::Write(frame.rsi as usize, frame.rdx as usize, frame.r10 as usize),
                 1 => IoCommand::Read(frame.rsi as usize, frame.rdx as usize, frame.r10 as usize),
+                2 => IoCommand::Close(frame.rsi as usize),
+                3 => IoCommand::Open(frame.rsi as usize as *const i8, frame.rdx as usize, OpenFlags::from_bits_truncate(frame.r10 as u32)),
+                4 => IoCommand::Seek(frame.rsi as usize, frame.rdx as i64),
                 _ => IoCommand::Unknown,
             }),
             3 => Self::Thread(match frame.rdi {

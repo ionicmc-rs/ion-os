@@ -319,14 +319,6 @@ fn syscall_dispatch_inner(frame: *const SyscallFrame) -> (u64, u64) {
                     }
                 };
 
-                let flags = match OpenFlags::from_bits(flags) {
-                    Some(f) => f,
-                    None => {
-                        libc::set_os_error(OsError::InvalidInput);
-                        return (FAIL_MAGIC_VAL, flags as u64);
-                    }
-                };
-
                 let mut opts = OpenOptions::new();
                 let fut = opts
                     .read(flags.contains(OpenFlags::READ))
