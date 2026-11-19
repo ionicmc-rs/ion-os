@@ -10,14 +10,14 @@
 //!   - almost never fails
 //!   - basic - does not support [`fmt::Arguments`](core::fmt::Arguments)
 //! - Port form
-//!   - use the active [`SERIAL1`] port
+//!   - uses the active [`SERIAL1`] port
 //!   - prone to failure.
 //!   - supports all input forms
 //! # Example
 //! debug logs
 //! ```
 //! serial_println!("Initialized Ion OS!");
-//! serial::dbg::str("An it did not crash!\n");
+//! serial::dbg::str("And it did not crash!\n");
 //! ```
 
 use lazy_static::lazy_static;
@@ -93,6 +93,7 @@ pub mod dbg {
     #[inline(always)]
     pub fn byte(b: u8) {
         unsafe {
+            // TODO: arch-independent abstraction
             core::arch::asm!("out dx, al", in("dx") 0xE9u16, in("al") b);
         }
     }
