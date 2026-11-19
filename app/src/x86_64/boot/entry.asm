@@ -1,10 +1,3 @@
-; ============================================
-; Ion OS 32-bit bootstrap with debug prints
-; - Robust paging bring-up (PML4->PDPT->PD 2MiB)
-; - OSXSAVE/SSE/AVX enable (if supported)
-; - VGA breadcrumbs + QEMU debug port (0xE9)
-; ============================================
-
 global start
 global stack_top
 extern long_mode_start           ; 64-bit entry point (defined in a separate bits 64 file)

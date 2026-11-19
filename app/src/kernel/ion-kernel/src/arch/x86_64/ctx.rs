@@ -80,7 +80,10 @@ impl Context {
     ///
     /// on x86_64, this inherits the control registers from the current context
     pub fn initial(entry: usize, arg: usize, stack: usize) -> Self {
-        let mut rsp = (align_up_size(stack, 16));
+        // `stack` is the exclusive end of the allocation. Round down so the
+        // initial frame (and its return sentinel) stays inside the stack even
+        // when callers provide a top that is not 16-byte aligned.
+        let mut rsp = align_down_size(stack, 16);
 
         rsp -= size_of::<usize>();
         unsafe {
