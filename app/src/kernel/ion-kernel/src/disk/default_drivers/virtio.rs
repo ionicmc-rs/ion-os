@@ -165,7 +165,6 @@ pub struct VirtioBlk {
     dma_virt: *mut u8,
     dma_phys: u64,
 
-    // NEW: Slot tracking
     // true = in use, false = free
     slot_in_use: [bool; MAX_CONCURRENT],
 }

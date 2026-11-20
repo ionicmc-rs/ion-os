@@ -33,13 +33,9 @@ use crate::{
     serial_println,
 };
 
-/// An error while Initializing the Kernel
-///
-/// # Possible Values
-/// - HeapInitializationErr(MapToError<Size4KIB>)
-///   - we failed to init the heap.
-///
-/// and the rest is TODO.
+/// Error during initialization.
+/// 
+/// This is currently under-utilized
 #[derive(Debug)]
 pub enum InitErr {
     /// An Error while initializing the Heap.
@@ -69,18 +65,10 @@ impl InitErr {
     }
 }
 
-/// Initializes the kernel.
-///
-/// The Full list:
-/// - The I.D.T. (Interrupt Descriptor Table)
-/// - GDT and TSS tables
-/// - PIC8259 interrupts.
-/// - Keyboard handler.
-/// - Threads.
-///
-/// and the rest is TODO.
-/// # Errors
-/// returns the first error, as an [`InitErr`]
+/// Initializes the most essential kernel systems.
+/// 
+/// frame allocator, interrupts, heap, graphics, thread (stacks), 
+/// keyboard (to some extent), syscall, users, disk and finally vfs/mounts
 #[allow(static_mut_refs)]
 pub fn init(boot_info: BootInfo) -> Result<(), InitErr> {
     // allocation (essential)

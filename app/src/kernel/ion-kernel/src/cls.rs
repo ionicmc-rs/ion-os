@@ -38,6 +38,7 @@ pub fn cpu_cls(id: usize) -> Option<&'static CpuLocalStorage> {
 }
 
 /// Get the current CPU's local storage
+// TODO: arch abstraction
 pub fn current() -> Option<&'static CpuLocalStorage> {
     // Use the per-CPU LAPIC to get the correct LAPIC ID for the current CPU
     let lapic = current_cpu_lapic()?;

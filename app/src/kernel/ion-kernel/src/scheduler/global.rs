@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::{self, Vec}};
 
 use crate::{
-    arch::{self, smp::cpu}, cls, log, privilege::UserID, scheduler::Priority, smp::{self, CpuID}, thread::{TPriority, Thread},
+    arch::{self, smp::cpu}, cls, log, privilege::UserID, scheduler::Priority, smp::{self, CpuID}, thread::{TPriority, Thread, ThreadID},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -585,4 +585,11 @@ pub fn total_active_threads() -> usize {
         iter()
         .map(|cpu| cpu_active_threads(cpu.id))
         .sum()
+}
+
+pub fn has_panicked(id: ThreadID) -> bool {
+    with_controller(|c| c.cpus.clone())
+        .iter()
+        .filter_map(|c| cls::cpu_cls(c.id.0))
+        .any(|ls| ls.scheduler.has_panicked(id))
 }

@@ -1,5 +1,3 @@
-// app/src/kernel/ion-kernel/src/disk/default_drivers/mod.rs
-
 use crate::log;
 
 pub mod virtio;
@@ -8,6 +6,7 @@ pub mod virtio;
 pub fn init() {
     log::info!("disk: probing default drivers");
 
-    // Order matters later (virtio first is fine)
+    // Order matters
+    // virtio should be the last one.
     virtio::probe_and_register();
 }

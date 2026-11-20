@@ -97,6 +97,7 @@ macro feature_missing {
     }
 }
 
+// TODO: arch abstraction
 #[allow(unused)]
 fn assert_cpuid_features(edx: BitFlags, ecx: BitFlags) {
     // edx

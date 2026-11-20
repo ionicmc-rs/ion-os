@@ -150,7 +150,7 @@ struct Queues {
     idle: Option<Thread>,
 
     /// List of threads that have panicked.
-    panicked: Vec<Thread>,
+    panicked: Vec<ThreadID>,
 }
 
 pub extern "C" fn idle_entry(_: usize) -> ! {
@@ -265,24 +265,13 @@ impl Queues {
         self.idle.as_mut().unwrap()
     }
 
-    pub fn set_panic(&mut self, thread: Thread) -> &mut Thread {
-        self.panicked.push(thread);
+    pub fn set_panic(&mut self, thread: Thread) -> &mut ThreadID {
+        self.panicked.push(thread.id());
         self.panicked.last_mut().unwrap()
     }
 
-    pub fn remove_panic(&mut self, id: ThreadID) {
-        let i = self
-            .panicked
-            .iter()
-            .enumerate()
-            .find_map(|(i, v)| (v.id() == id).then_some(i));
-        if let Some(i) = i {
-            self.panicked.remove(i);
-        }
-    }
-
     pub fn has_panicked(&self, id: ThreadID) -> bool {
-        self.panicked.iter().any(|v| v.id() == id)
+        self.panicked.contains(&id)
     }
 
     // waking sleeping/blocked threads
@@ -573,49 +562,47 @@ impl Scheduler {
                 }
             }
         };
-        let mut no_store = false;
         let (mut old, old_priority) = current.replace((next, next_priority)).unwrap();
         let old_ref = match reason {
             ScheduleReason::Yield | ScheduleReason::Preempt => {
                 match old_priority {
-                    Priority::High => queues.queue_high_ref(old),
-                    Priority::Med => queues.queue_med_ref(old),
-                    Priority::Low => queues.queue_low_ref(old),
+                    Priority::High => Some(queues.queue_high_ref(old)),
+                    Priority::Med => Some(queues.queue_med_ref(old)),
+                    Priority::Low => Some(queues.queue_low_ref(old)),
                     Priority::None => {
                         // it is an idle thread - we give it back to the queue list
-                        queues.place_idle(old)
+                        Some(queues.place_idle(old))
                     }
                 }
             }
             ScheduleReason::Block(ev) => {
                 old.set_state(State::Blocked(ev));
-                queues.queue_norun_ref(old_priority, old)
+                Some(queues.queue_norun_ref(old_priority, old))
             }
             ScheduleReason::Sleep(ticks) => {
                 old.set_sleep(ticks);
-                queues.queue_norun_ref(old_priority, old)
+                Some(queues.queue_norun_ref(old_priority, old))
             }
             ScheduleReason::Exit => {
                 old.set_state(State::Terminated);
-                no_store = true;
-                queues.queue_norun_ref(Priority::None, old)
+                queues.queue_norun_ref(Priority::None, old);
+                None
             }
             ScheduleReason::Panicked => {
                 old.set_state(State::Terminated);
-                no_store = true;
-                queues.set_panic(old)
+                queues.set_panic(old);
+                None
             }
             ScheduleReason::Start => {
                 if old_priority != Priority::None {
                     panic!("threads must only start when the current thread is the idle thread.")
                 }
-                no_store = true;
-                // this ref should not actually be used.
-                queues.place_idle(old)
+                queues.place_idle(old);
+                None
             }
         };
 
-        let old_ctx = old_ref.ctx_mut();
+        let old_ctx = old_ref.map(|t| t.ctx_mut());
         let new_ctx = current.as_ref().unwrap().0.ctx();
         let new_tls = current.as_ref().unwrap().0.tls_block();
         // after switching contexts we will update TLS registers
@@ -628,11 +615,7 @@ impl Scheduler {
         // user FS.base is set by the user program itself via syscall
 
         // interrupts enabled here.
-        if no_store {
-            Some((None, new_ctx))
-        } else {
-            Some((Some(old_ctx), new_ctx))
-        }
+        Some((old_ctx, new_ctx))
     }
 
     /// Select and install the next context while holding this CPU's run-queue
@@ -679,10 +662,6 @@ impl Scheduler {
 
     pub fn has_panicked(&self, id: ThreadID) -> bool {
         self.with_queues(|queues| queues.has_panicked(id))
-    }
-
-    pub fn remove_panic(&self, id: ThreadID) {
-        self.with_queues(|queues| queues.remove_panic(id));
     }
 
     pub fn reschedule_if_needed(&self) {
@@ -857,16 +836,12 @@ pub fn critical_moment_raw<R>(f: impl FnOnce() -> R) -> R {
 }
 
 pub fn has_panicked(id: ThreadID) -> bool {
-    current_scheduler().has_panicked(id)
+    global::has_panicked(id)
 }
 
 
 pub unsafe fn start() {
     schedule(ScheduleReason::Start);
-}
-
-pub unsafe fn remove_panic_id(id: ThreadID) {
-    current_scheduler().remove_panic(id);
 }
 
 pub unsafe fn panic_current() -> ! {

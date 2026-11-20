@@ -1,24 +1,10 @@
 //! User and privilege management for Ion OS.
 //!
-//! # Overview
-//!
-//! This module defines **user identities** and **privilege levels** within Ion OS.
-//! A *user* represents an **authority / security principal**, not an execution
-//! context and not an owner of resources.
-//!
-//! ## Core design principles
-//!
-//! - The **kernel owns all resources** (memory, threads, address spaces, devices).
-//! - Users are given **references / handles**, never ownership.
-//! - Privilege is a **policy decision**, enforced at kernel boundaries.
-//! - Threads act *on behalf of* users.
-//!
-//! This module intentionally avoids:
-//! - dynamic ownership models
-//! - reference counting
-//! - userspace-visible mutation
-//!
-//! The kernel remains the sole authority.
+//! The "OS" user is UserID 0, used for drivers and internal operations.
+//! this user must never be exposed to userspace, ever.
+//! 
+//! The "Atom" user is UserID 1, similar to "root" on linux but less privileged than OS. this is the most capable userspace user.
+
 
 use crate::thread::sync::Mutex;
 use alloc::vec::Vec;
@@ -46,7 +32,7 @@ impl UserID {
 
 /// Privilege levels within Ion OS.
 ///
-/// This enum represents **authority**, not CPU rings or execution context.
+/// This enum represents authority, not CPU rings or execution context.
 /// It is used by the kernel to decide which operations are permitted.
 ///
 /// Privilege does not imply ownership, memory access, or scheduling priority.
@@ -170,12 +156,6 @@ pub fn create_user(name: &str, privilege: PrivilegeLevel) -> Option<UserID> {
 /// Retrieve a user by ID.
 ///
 /// Returns an immutable reference to a kernel-owned `User`.
-///
-/// # Safety model
-///
-/// - Users are never removed
-/// - User storage is stable for the kernel lifetime
-/// - Mutation is centralized inside the registry
 pub fn get_user(id: UserID) -> Option<&'static User> {
     let reg = USER_REGISTRY.lock();
     let user = reg.users.get(id.get() as usize)? as *const User;

@@ -54,7 +54,6 @@ struct Meta<T: Send + 'static> {
 }
 
 extern "C" fn thread_entry<T: Send + 'static>(arg: usize) -> ! {
-    // Reconstruct the box WITH the correct allocator
     let meta_ptr = arg as *mut Meta<T>;
 
     let boxed: Box<Meta<T>, Arc<dyn Allocator>> = unsafe {
@@ -77,7 +76,6 @@ extern "C" fn thread_entry<T: Send + 'static>(arg: usize) -> ! {
         tcb().is_kill_safe = safe;
     }
 
-    // Call FnOnce — consumes it
     func();
 
     // All remaining fields are dropped naturally here
@@ -241,8 +239,6 @@ pub fn kill_safe() -> bool {
 }
 
 pub fn set_kill_safe(safe: bool) {
-    // Early initialization can run futures before the scheduler creates the
-    // boot thread's TCB. In that context there is no per-thread state to set.
     if arch::tls::read_ptr().is_null() {
         return;
     }
